@@ -51,6 +51,10 @@ body {
     cursor: not-allowed;
 }
 
+input[type='checkbox'] {
+    border-radius: 0.375rem;
+}
+
 button:enabled,
 [role='button'] {
     cursor: pointer;

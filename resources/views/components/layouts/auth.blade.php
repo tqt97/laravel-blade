@@ -56,8 +56,9 @@
                     </button>
                     <div data-sidebar-group-content class="mt-2 space-y-1">
                         <x-admin.nav-item :label="__('ui.navigation.dashboard')" href="{{ route('admin.dashboard') }}"
-                            active>
-                            <x-slot:icon><svg class="size-5 text-neutral-300 dark:text-neutral-950" viewBox="0 0 24 24"
+                            :active="request()->routeIs('admin.dashboard')">
+                            <x-slot:icon>
+                                <svg class="size-5 text-neutral-300 dark:text-neutral-950" viewBox="0 0 24 24"
                                     fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
                                     <rect width="7" height="7" x="3" y="3" rx="1" />
                                     <rect width="7" height="7" x="14" y="3" rx="1" />
@@ -88,7 +89,8 @@
                         </svg>
                     </button>
                     <div data-sidebar-group-content class="mt-2 space-y-1">
-                        <x-admin.nav-item :label="__('ui.navigation.users')" disabled :badge="__('ui.navigation.soon')">
+                        <x-admin.nav-item :label="__('ui.navigation.users')" href="{{ route('admin.users.index') }}"
+                            :active="request()->routeIs('admin.users.*')">
                             <x-slot:icon><svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                                     stroke-width="1.8" aria-hidden="true">
                                     <path
@@ -137,6 +139,8 @@
 
         <div class="relative min-w-0 flex-1">
             <button type="button" data-sidebar-toggle
+                data-sidebar-expand-label="{{ __('ui.navigation.expand_sidebar') }}"
+                data-sidebar-collapse-label="{{ __('ui.navigation.collapse_sidebar') }}"
                 class="fixed top-5 z-50 hidden size-10 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-500 shadow-md shadow-neutral-900/10 transition-[left,color,background-color,border-color,box-shadow] hover:border-neutral-400 hover:text-neutral-900 focus:outline-none focus:ring-4 focus:ring-neutral-500/10 dark:border-white/15 dark:bg-neutral-900 dark:text-neutral-400 dark:hover:border-white/30 dark:hover:text-white lg:flex"
                 aria-label="{{ __('ui.navigation.collapse_sidebar') }}" aria-expanded="true"
                 title="{{ __('ui.navigation.collapse_sidebar') }}">

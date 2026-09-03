@@ -32,7 +32,7 @@ return [
         'confirm' => 'Xác nhận',
         'close' => 'Đóng',
         'reset' => 'Đặt lại',
-        'save' => 'Lưu thay đổi',
+        'save' => 'Lưu thay đổi', 'no_actions' => 'Chưa có thao tác',
     ],
     'modal' => [
         'confirm_action' => 'Xác nhận thao tác',
@@ -41,11 +41,37 @@ return [
     'guest' => [
         'footer' => 'Học tập và xây dựng tốt hơn mỗi ngày.',
     ],
+    'user_dashboard' => [
+        'title' => 'Tổng quan của bạn',
+        'welcome' => 'Chào mừng trở lại, :name.',
+        'description' => 'Tài khoản của bạn đã sẵn sàng. Các tính năng workspace cá nhân sẽ được bổ sung tại đây.',
+        'logout' => 'Đăng xuất',
+    ],
     'feedback' => [
         'close_notification' => 'Đóng thông báo',
+        'check_information' => 'Vui lòng kiểm tra lại thông tin.',
     ],
+    'password' => ['generate' => 'Tạo mật khẩu', 'show' => 'Hiện mật khẩu', 'hide' => 'Ẩn mật khẩu'],
+    'bulk_actions' => 'Thao tác hàng loạt',
     'blank' => [
         'title' => 'Chưa có dữ liệu',
-        'description' => 'Khu vực này sẽ hiển thị nội dung khi bạn bắt đầu làm việc.',
+        'description' => 'Khu vực này sẽ hiển thị nội dung khi bạn bắt đầu làm việc.', 'build_title' => 'Bắt đầu xây dựng module', 'build_description' => 'Thay thế trạng thái này bằng table, form hoặc nội dung riêng của module.',
+    ],
+    'security' => [
+        'title' => 'Bảo mật', 'account_title' => 'Bảo mật tài khoản', 'description' => 'Quản lý xác thực hai bước và các mã khôi phục cho tài khoản của bạn.', 'two_factor' => 'Xác thực hai bước', 'enable_description' => 'Bảo vệ tài khoản bằng mã xác thực từ ứng dụng như Google Authenticator, 1Password hoặc Authy.', 'enable' => 'Bật 2FA', 'finish_setup' => 'Hoàn tất thiết lập', 'scan_qr' => 'Quét mã QR để bật 2FA', 'scan_description' => 'Mở ứng dụng xác thực, quét mã bên dưới rồi nhập mã 6 chữ số để xác nhận.', 'cannot_scan' => 'Không thể quét mã?', 'manual_key' => 'Nhập khóa thiết lập thủ công vào ứng dụng xác thực.', 'confirm' => 'Xác nhận', 'enabled_title' => '2FA đang được bật', 'enabled_description' => 'Tài khoản của bạn cần mã xác thực khi đăng nhập trên thiết bị mới.', 'disable' => 'Tắt 2FA', 'recovery_codes' => 'Mã khôi phục', 'recovery_description' => 'Lưu các mã này ở nơi an toàn. Mỗi mã chỉ dùng được một lần.', 'create_new_codes' => 'Tạo mã mới',
+    ],
+    'samples' => [
+        'title' => 'Mẫu giao diện', 'description' => 'Các mẫu nền tảng để phát triển nhanh module admin mới.', 'open_modal' => 'Mở modal', 'students' => 'Học viên', 'table_description' => 'Mẫu table list với trạng thái và thao tác.', 'add' => 'Thêm mới', 'status' => 'Trạng thái', 'updated' => 'Cập nhật', 'actions' => 'Thao tác', 'studying' => 'Đang học', 'pending' => 'Chờ duyệt', 'today' => 'Hôm nay', 'yesterday' => 'Hôm qua', 'edit' => 'Chỉnh sửa', 'delete' => 'Xóa', 'form_title' => 'Form tạo / chỉnh sửa', 'form_description' => 'Mẫu form dùng chung cho tạo và cập nhật dữ liệu.', 'save_student' => 'Lưu học viên', 'description' => 'Mô tả', 'max_chars' => 'Tối đa 500 ký tự.', 'blank' => 'Trạng thái trống', 'blank_description' => 'Dùng khi module chưa có dữ liệu hoặc chưa được triển khai.', 'toast' => 'Thao tác mẫu đã sẵn sàng.', 'confirm_delete' => 'Xác nhận xóa', 'modal_description' => 'Đây là modal mẫu. Bạn có thể truyền action thật khi dùng trong module.', 'continue' => 'Tiếp tục',
+    ],
+    'dashboard' => [
+        'overview' => 'Chỉ số tổng quan', 'online' => 'Hệ thống đang hoạt động', 'welcome' => 'Chào mừng trở lại,', 'description' => 'Theo dõi tiến độ học tập, quản lý các module và tiếp tục xây dựng sản phẩm Laravel của bạn.', 'home' => 'Xem trang chủ', 'completed_lessons' => 'Bài học hoàn thành', 'active_projects' => 'Dự án đang làm', 'study_time' => 'Thời gian học', 'learning_streak' => 'Chuỗi ngày học', 'continue_learning' => 'Tiếp tục học', 'week' => 'Tuần này', 'days' => '7 ngày', 'lessons_count' => '17 / 25 bài học', 'time_left' => 'Khoảng 2 giờ còn lại', 'continue_lesson' => 'Tiếp tục bài học', 'recent_activity' => 'Hoạt động gần đây', 'completed_lesson' => 'Hoàn thành bài học', 'created_project' => 'Tạo project mới', 'saved_reference' => 'Lưu tài liệu tham khảo', 'this_week' => 'Tuần này', 'yesterday' => 'Hôm qua', 'two_hours_ago' => '2 giờ trước', 'two_days_ago' => '2 ngày trước', 'shortcuts' => 'Lối tắt', 'quick_start' => 'Bắt đầu nhanh', 'coming_soon_description' => 'Các khu vực sẽ được mở rộng trong những phiên bản tiếp theo.', 'create_lesson' => 'Tạo bài học', 'manage_students' => 'Quản lý học viên', 'workspace_setup' => 'Thiết lập workspace',
+    ],
+    'users' => [
+        'title' => 'Người dùng', 'management' => 'Quản lý người dùng', 'management_description' => 'Tìm kiếm, lọc và quản lý người dùng tại một nơi.', 'add' => 'Thêm người dùng', 'all' => 'Tất cả người dùng', 'active' => 'Đang hoạt động', 'all_statuses' => 'Tất cả trạng thái', 'deleted' => 'Đã xóa', 'restore' => 'Khôi phục', 'force_delete' => 'Xóa vĩnh viễn', 'restore_selected' => 'Khôi phục mục đã chọn', 'force_delete_selected' => 'Xóa vĩnh viễn mục đã chọn', 'restore_user' => 'Khôi phục :name', 'force_delete_user' => 'Xóa vĩnh viễn :name', 'found' => 'Tìm thấy :count người dùng.', 'clear_filters' => 'Xóa bộ lọc', 'search' => 'Tìm kiếm người dùng', 'search_placeholder' => 'Tìm theo tên hoặc email...', 'all_verification' => 'Tất cả trạng thái email', 'verified' => 'Đã xác minh', 'unverified' => 'Chưa xác minh', 'all_roles' => 'Tất cả vai trò', 'admin' => 'Quản trị viên', 'user' => 'Người dùng', 'all_2fa' => 'Tất cả 2FA', 'enabled' => 'Đã bật 2FA', 'disabled' => 'Chưa bật 2FA', 'per_page' => ':count / trang', 'apply' => 'Áp dụng', 'select_all' => 'Chọn tất cả người dùng trong trang này', 'select_user' => 'Chọn :name', 'role' => 'Vai trò', 'verification' => 'Xác minh', 'two_factor' => '2FA', 'joined' => 'Tham gia', 'actions' => 'Thao tác', 'delete_selected' => 'Xóa mục đã chọn', 'no_match' => 'Không có người dùng phù hợp với bộ lọc.', 'edit' => 'Chỉnh sửa', 'delete' => 'Xóa', 'edit_user' => 'Chỉnh sửa :name', 'delete_user' => 'Xóa :name', 'delete_title' => 'Đưa người dùng vào thùng rác?', 'delete_description' => 'Người dùng đã chọn sẽ được đưa vào thùng rác và có thể khôi phục sau.', 'delete_confirm' => 'Đưa vào thùng rác', 'restore_title' => 'Khôi phục người dùng?', 'restore_description' => 'Người dùng đã chọn sẽ được khôi phục và hoạt động trở lại.', 'restore_confirm' => 'Khôi phục người dùng', 'force_delete_title' => 'Xóa vĩnh viễn người dùng?', 'force_delete_description' => 'Thao tác này xóa vĩnh viễn người dùng và không thể hoàn tác.', 'force_delete_confirm' => 'Xóa vĩnh viễn', 'edit_title' => 'Chỉnh sửa người dùng', 'create_title' => 'Tạo người dùng', 'edit_description' => 'Cập nhật thông tin tài khoản và quyền truy cập.', 'create_description' => 'Thêm người dùng mới vào workspace.', 'new_password_optional' => 'Mật khẩu mới (không bắt buộc)', 'administrator_access' => 'Quyền quản trị viên', 'administrator_description' => 'Cho phép người dùng này truy cập quản lý người dùng.',
+    ],
+    'auth_pages' => [
+        'generate_password' => 'Tạo mật khẩu', 'show_password' => 'Hiện mật khẩu', 'social_unavailable' => 'Cấu hình route :route để bật đăng nhập bằng :provider',
+        'back_to_login' => 'Quay lại đăng nhập', 'identity' => 'Xác nhận danh tính', 'enter_password' => 'Nhập lại mật khẩu', 'confirm_password_description' => 'Vui lòng xác nhận mật khẩu trước khi tiếp tục đến khu vực bảo mật.', 'current_password' => 'Mật khẩu hiện tại',
+        'recover_access' => 'Khôi phục quyền truy cập', 'forgot_password' => 'Bạn quên mật khẩu?', 'reset_description' => 'Nhập email đã đăng ký. Chúng tôi sẽ gửi cho bạn liên kết để đặt lại mật khẩu.', 'send_reset_link' => 'Gửi liên kết đặt lại', 'welcome_back' => 'Chào mừng trở lại', 'login_title' => 'Đăng nhập vào tài khoản', 'login_description' => 'Nhập thông tin của bạn để tiếp tục đến không gian làm việc.', 'email' => 'Địa chỉ email', 'password' => 'Mật khẩu', 'forgot_link' => 'Quên mật khẩu?', 'remember_device' => 'Ghi nhớ đăng nhập trên thiết bị này', 'continue_with' => 'Hoặc tiếp tục với', 'no_account' => 'Chưa có tài khoản?', 'create_account' => 'Tạo tài khoản', 'start_today' => 'Bắt đầu ngay hôm nay', 'new_account' => 'Tạo tài khoản mới', 'register_description' => 'Thiết lập tài khoản để bắt đầu học và xây dựng với Laravel.', 'full_name' => 'Họ và tên', 'name_placeholder' => 'Nguyễn Văn A', 'password_hint' => 'Tối thiểu 8 ký tự.', 'confirm_password' => 'Xác nhận mật khẩu', 'sign_up' => 'Tạo tài khoản', 'sign_up_with' => 'Hoặc đăng ký với', 'has_account' => 'Đã có tài khoản?', 'new_password' => 'Mật khẩu mới', 'reset_password' => 'Đặt lại mật khẩu', 'reset_password_description' => 'Chọn một mật khẩu mới để tiếp tục sử dụng tài khoản an toàn.', 'security_step' => 'Bước bảo mật bổ sung', 'login_verification' => 'Xác thực đăng nhập', 'two_factor_description' => 'Nhập mã từ ứng dụng xác thực hoặc sử dụng một mã khôi phục.', 'verification_code' => 'Mã xác thực', 'or' => 'hoặc', 'recovery_code' => 'Mã khôi phục', 'recovery_placeholder' => 'Nhập mã khôi phục nếu có', 'remember' => 'Ghi nhớ thiết bị này', 'confirm_login' => 'Xác nhận đăng nhập', 'last_step' => 'Một bước cuối cùng', 'verify_email' => 'Xác minh địa chỉ email', 'verify_email_description' => 'Chúng tôi đã gửi một liên kết xác minh đến email của bạn. Hãy kiểm tra hộp thư để hoàn tất thiết lập tài khoản.', 'resend_verification' => 'Gửi lại email xác minh',
     ],
 ];

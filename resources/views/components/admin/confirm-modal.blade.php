@@ -21,14 +21,14 @@
                     <path d="M10.3 4.5 2.9 17a2 2 0 0 0 1.7 3h14.8a2 2 0 0 0 1.7-3L13.7 4.5a2 2 0 0 0-3.4 0Z" />
                 </svg>
             </div>
-            <h2 id="{{ $id }}-title" class="min-w-0 flex-1 pt-1 text-lg font-semibold text-neutral-950 dark:text-white">
+             <h2 data-modal-title id="{{ $id }}-title" class="min-w-0 flex-1 pt-1 text-lg font-semibold text-neutral-950 dark:text-white">
                 {{ $title }}
             </h2>
 
             <x-admin.button type="button" variant="ghost" icon="close" icon-only :title="__('ui.actions.close')" data-modal-close />
         </div>
         <div class="p-6">
-            <p id="{{ $id }}-description" class="text-sm leading-6 text-neutral-600 dark:text-neutral-300">
+             <p data-modal-description id="{{ $id }}-description" class="text-sm leading-6 text-neutral-600 dark:text-neutral-300">
                 {{ $description }}
             </p>
         </div>
@@ -37,7 +37,7 @@
             <x-admin.button type="button" variant="secondary" icon="close" data-modal-close>{{ __('ui.actions.cancel') }}
             </x-admin.button>
             <x-admin.button type="button" variant="danger" icon="trash" data-modal-confirm
-                data-action="{{ $confirmAction }}" data-method="{{ $method }}">{{ $confirmLabel }}
+                data-action="{{ $confirmAction }}" data-method="{{ $method }}"><span data-modal-label>{{ $confirmLabel }}</span>
             </x-admin.button>
         </div>
     </div>

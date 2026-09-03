@@ -73,7 +73,8 @@ return [
     |
     */
 
-    'home' => '/admin/dashboard',
+    // LoginResponse chooses admin/user dashboard by the authenticated role.
+    'home' => '/user/dashboard',
 
     /*
     |--------------------------------------------------------------------------

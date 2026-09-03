@@ -7,7 +7,7 @@
 
 @if ($errors->any())
     <div class="mb-6 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800 dark:border-rose-400/20 dark:bg-rose-400/10 dark:text-rose-300" role="alert">
-        <p class="font-semibold">Vui lòng kiểm tra lại thông tin.</p>
+        <p class="font-semibold">{{ __('ui.feedback.check_information') }}</p>
         <ul class="mt-2 list-disc space-y-1 pl-5 text-rose-700 dark:text-rose-300">
             @foreach ($errors->all() as $error)
                 <li>{{ $error }}</li>

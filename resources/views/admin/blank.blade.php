@@ -1,15 +1,15 @@
-<x-layouts.auth title="New page" heading="New page">
+<x-layouts.auth title="{{ __('ui.blank.title') }}" heading="{{ __('ui.blank.title') }}">
     <x-slot:breadcrumbs>
-        <x-admin.breadcrumbs :items="[['label' => 'Trang mới']]" />
+        <x-admin.breadcrumbs :items="[['label' => __('ui.blank.title')]]" />
     </x-slot:breadcrumbs>
     <div class="mx-auto max-w-7xl space-y-6">
-        <x-admin.page-header title="New page" description="A starting template for new admin modules.">
+        <x-admin.page-header title="{{ __('ui.blank.title') }}" description="{{ __('ui.blank.description') }}">
             <x-slot:actions>
-                <x-admin.button variant="secondary" disabled>No actions yet</x-admin.button>
+                <x-admin.button variant="secondary" disabled>{{ __('ui.actions.no_actions') }}</x-admin.button>
             </x-slot:actions>
         </x-admin.page-header>
 
-        <x-admin.blank-state title="Bắt đầu xây dựng module"
-            description="Thay thế trạng thái này bằng table-shell, form-shell hoặc nội dung riêng của module." />
+        <x-admin.blank-state title="{{ __('ui.blank.build_title') }}"
+            description="{{ __('ui.blank.build_description') }}" />
     </div>
 </x-layouts.auth>
