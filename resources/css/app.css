@@ -1,9 +1,137 @@
 @import 'tailwindcss';
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
 @source '../../storage/framework/views/*.php';
 
 @theme {
-    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
+    --font-sans: 'Instrument Sans', 'Segoe UI', 'Noto Sans', Arial, ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
         'Segoe UI Symbol', 'Noto Color Emoji';
+}
+
+:root {
+    color-scheme: light;
+}
+
+:root.dark {
+    color-scheme: dark;
+}
+
+html {
+    scroll-behavior: smooth;
+}
+
+.admin-sidebar-nav {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(148 163 184 / 0.45) transparent;
+}
+
+.admin-sidebar-nav::-webkit-scrollbar {
+    width: 5px;
+}
+
+.admin-sidebar-nav::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: rgb(148 163 184 / 0.45);
+}
+
+body {
+    font-family: var(--font-sans);
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+}
+
+.ui-action {
+    cursor: pointer;
+}
+
+.ui-action:disabled,
+.ui-action[aria-disabled='true'] {
+    cursor: not-allowed;
+}
+
+button:enabled,
+[role='button'] {
+    cursor: pointer;
+}
+
+button:disabled {
+    cursor: not-allowed;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    [data-toast] {
+        transition: opacity 200ms ease, transform 200ms ease;
+    }
+}
+
+::selection {
+    background: rgb(0 0 0 / 0.16);
+}
+
+:root.dark ::selection {
+    background: rgb(255 255 255 / 0.22);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    html {
+        scroll-behavior: auto;
+    }
+
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+.admin-shell[data-sidebar-collapsed='true'] .admin-sidebar {
+    width: 5rem;
+}
+
+.admin-shell [data-sidebar-toggle] {
+    left: 16.75rem;
+}
+
+.admin-shell[data-sidebar-collapsed='true'] [data-sidebar-toggle] {
+    left: 3.75rem;
+}
+
+.admin-shell[data-sidebar-collapsed='true'] [data-sidebar-label],
+.admin-shell[data-sidebar-collapsed='true'] [data-sidebar-badge],
+.admin-shell[data-sidebar-collapsed='true'] [data-sidebar-chevron] {
+    display: none;
+}
+
+.admin-shell[data-sidebar-collapsed='true'] [data-sidebar-nav-item] {
+    justify-content: center;
+    padding-inline: 0.75rem;
+}
+
+.admin-shell[data-sidebar-collapsed='true'] [data-sidebar-group-button] {
+    justify-content: center;
+    padding-inline: 0.75rem;
+}
+
+.admin-shell[data-sidebar-collapsed='true'] [data-sidebar-icon-expanded] {
+    display: none;
+}
+
+.admin-shell[data-sidebar-collapsed='true'] [data-sidebar-icon-collapsed] {
+    display: block;
+}
+
+@media (max-width: 1023px) {
+    .admin-shell[data-mobile-sidebar-open='true'] .admin-sidebar {
+        translate: 0 0;
+        visibility: visible;
+    }
+
+    .admin-shell[data-mobile-sidebar-open='true'] .admin-sidebar-backdrop {
+        display: block;
+    }
 }
