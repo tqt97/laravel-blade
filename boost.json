@@ -9,8 +9,23 @@
     "sail": false,
     "skills": [
         "infer-conventions",
+        "fortify-development",
         "laravel-best-practices",
         "testing-best-practices",
-        "tailwindcss-development"
+        "tailwindcss-development",
+        "eloquent-best-practices",
+        "laravel-api",
+        "laravel-database-optimization",
+        "laravel-expert",
+        "laravel-patterns",
+        "laravel-permission-development",
+        "laravel-security",
+        "laravel-security-audit",
+        "php-best-practices",
+        "php-pro",
+        "php-specialist",
+        "phpstan-fixer",
+        "review-php",
+        "solid-php"
     ]
 }
