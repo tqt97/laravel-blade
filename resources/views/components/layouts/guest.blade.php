@@ -1,7 +1,7 @@
 @props(['title' => config('app.name', 'Laravel'), 'wide' => false])
 
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="h-full bg-neutral-50">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="h-full bg-background">
 
 <head>
     <meta charset="UTF-8">
@@ -21,8 +21,7 @@
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 
-<body
-    class="min-h-full bg-neutral-50 font-sans text-neutral-900 antialiased transition-colors duration-300 dark:bg-neutral-950 dark:text-neutral-100">
+<body class="min-h-full bg-background font-sans text-foreground antialiased transition-colors duration-300">
     <div class="relative flex min-h-screen flex-col overflow-hidden">
         <div
             class="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,rgba(15,23,42,0.06),transparent_38%),linear-gradient(to_bottom,transparent,rgba(226,232,240,0.45))] dark:bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.08),transparent_38%),linear-gradient(to_bottom,transparent,rgba(15,23,42,0.65))]">
@@ -41,13 +40,13 @@
 
         <main class="flex flex-1 items-center justify-center px-5 pb-12 pt-4 sm:px-8">
             <div class="w-full {{ $wide ? 'max-w-2xl' : 'max-w-md' }}">
-                <div
-                    class="rounded-3xl border border-neutral-200/80 bg-white/90 p-6 shadow-xl shadow-neutral-900/5 backdrop-blur-xl dark:border-white/10 dark:bg-neutral-900/85 dark:shadow-black/20 sm:p-8">
+                <div class="rounded-xl border border-border bg-card p-6 shadow-sm sm:p-8">
                     {{ $slot }}
                 </div>
 
-                <p class="mt-7 text-center text-xs text-neutral-400">© {{ now()->year }}
-                    {{ config('app.name', 'Laravel') }} · {{ __('ui.guest.footer') }}</p>
+                <p class="mt-7 text-center text-xs text-muted-foreground">© {{ now()->year }}
+                    {{ config('app.name', 'Laravel') }} · {{ __('ui.guest.footer') }}
+                </p>
             </div>
         </main>
     </div>

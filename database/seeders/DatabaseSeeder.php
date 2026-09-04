@@ -6,6 +6,7 @@ use App\Models\User;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
+use RuntimeException;
 
 class DatabaseSeeder extends Seeder
 {
@@ -16,12 +17,25 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // User::factory(10)->create();
+        if (! app()->environment('local', 'testing') && (! filled(config('app.seed_admin_email')) || ! filled(config('app.seed_admin_password')))) {
+            throw new RuntimeException('Refusing to seed the admin account outside local/testing without SEED_ADMIN_EMAIL and SEED_ADMIN_PASSWORD.');
+        }
 
-        User::factory()->create([
-            'name' => 'TuanTQ',
-            'email' => 'admin@gmail.com',
-            'password' => Hash::make('12341234'),
+        $adminEmail = (string) (config('app.seed_admin_email') ?: 'admin@example.test');
+        $adminPassword = (string) (config('app.seed_admin_password') ?: 'password');
+
+        User::updateOrCreate(['email' => $adminEmail], [
+            'name' => 'Administrator',
+            'password' => Hash::make($adminPassword),
+            'is_admin' => true,
         ]);
+
+        $targetUsers = 10000;
+        $existingUsers = User::query()->regularUsers()->count();
+        $remainingUsers = max(0, $targetUsers - $existingUsers);
+
+        if ($remainingUsers > 0) {
+            User::factory()->count($remainingUsers)->create();
+        }
     }
 }

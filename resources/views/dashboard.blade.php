@@ -4,35 +4,34 @@
     </x-slot:breadcrumbs>
     <div class="mx-auto px-2 space-y-6">
         <section
-            class="relative overflow-hidden rounded-3xl bg-neutral-950 p-6 text-white shadow-xl shadow-neutral-900/10 dark:bg-white dark:text-neutral-950 sm:p-8">
+            class="relative overflow-hidden rounded-3xl bg-primary p-6 text-primary-foreground shadow-xl shadow-primary/20 sm:p-8">
             <div
-                class="pointer-events-none absolute -right-16 -top-24 size-72 rounded-full bg-neutral-400/20 blur-3xl dark:bg-white/30">
+                class="pointer-events-none absolute -right-16 -top-24 size-72 rounded-full bg-primary-foreground/20 blur-3xl">
             </div>
             <div class="relative flex flex-col justify-between gap-8 sm:flex-row sm:items-end">
                 <div class="max-w-2xl">
                     <div
-                        class="mb-5 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-3 py-1.5 text-xs font-semibold text-neutral-200 dark:border-neutral-950/10 dark:bg-neutral-950/10 dark:text-neutral-950">
-                        <span class="size-1.5 rounded-full bg-emerald-400 dark:bg-emerald-600"></span> Hệ thống đang
-                        hoạt động
+                        class="mb-5 inline-flex items-center gap-2 rounded-full border border-primary-foreground/20 bg-primary-foreground/10 px-3 py-1.5 text-xs font-semibold text-primary-foreground">
+                        <span class="size-1.5 rounded-full bg-emerald-400 dark:bg-emerald-600"></span>
+                        {{ __('ui.dashboard.online') }}
                     </div>
                     <h2 class="text-2xl font-semibold tracking-tight sm:text-4xl">
-                        Chào mừng trở lại,
+                        {{ __('ui.dashboard.welcome') }}
                         {{ auth()->user()->name }}.
                     </h2>
-                    <p class="mt-4 max-w-xl text-sm leading-6 text-neutral-400 dark:text-neutral-800">Theo dõi tiến độ
-                        học tập, quản lý các module và tiếp tục xây dựng sản phẩm Laravel của bạn.
+                    <p class="mt-4 max-w-xl text-sm leading-6 text-primary-foreground/75">
+                        {{ __('ui.dashboard.description') }}
                     </p>
                 </div>
                 <a href="{{ url('/') }}"
-                    class="inline-flex w-fit items-center gap-2 rounded-xl bg-white/10 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/15 dark:bg-neutral-950/10 dark:text-neutral-950 dark:hover:bg-neutral-950/20">Xem
-                    trang chủ
+                    class="inline-flex w-fit items-center gap-2 rounded-xl bg-primary-foreground/10 px-4 py-3 text-sm font-semibold text-primary-foreground transition hover:bg-primary-foreground/20">{{ __('ui.dashboard.home') }}
                     <span aria-hidden="true">→</span>
                 </a>
             </div>
         </section>
 
-        <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Chỉ số tổng quan">
-            <x-admin.stat-card label="Bài học hoàn thành" value="12" delta="+8.2%">
+        <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="{{ __('ui.dashboard.overview') }}">
+            <x-admin.stat-card label="{{ __('ui.dashboard.completed_lessons') }}" value="12" delta="+8.2%">
                 <x-slot:icon>
                     <svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
                         aria-hidden="true">
@@ -42,7 +41,7 @@
                     </svg>
                 </x-slot:icon>
             </x-admin.stat-card>
-            <x-admin.stat-card label="Dự án đang làm" value="03" delta="+02">
+            <x-admin.stat-card label="{{ __('ui.dashboard.active_projects') }}" value="03" delta="+02">
                 <x-slot:icon>
                     <svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
                         aria-hidden="true">
@@ -51,7 +50,7 @@
                     </svg>
                 </x-slot:icon>
             </x-admin.stat-card>
-            <x-admin.stat-card label="Thời gian học" value="18.5h" delta="+14.5%">
+            <x-admin.stat-card label="{{ __('ui.dashboard.study_time') }}" value="18.5h" delta="+14.5%">
                 <x-slot:icon>
                     <svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
                         aria-hidden="true">
@@ -60,7 +59,8 @@
                     </svg>
                 </x-slot:icon>
             </x-admin.stat-card>
-            <x-admin.stat-card label="Chuỗi ngày học" value="07 ngày" delta="+03">
+            <x-admin.stat-card label="{{ __('ui.dashboard.learning_streak') }}" value="07 {{ __('ui.dashboard.days') }}"
+                delta="+03">
                 <x-slot:icon>
                     <svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
                         aria-hidden="true">
@@ -73,37 +73,35 @@
         </section>
 
         <section class="grid gap-6 xl:grid-cols-[1.25fr_0.75fr]">
-            <div
-                class="rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-neutral-900 sm:p-7">
+            <div class="rounded-3xl border border-border bg-card p-6 text-card-foreground shadow-sm sm:p-7">
                 <div class="flex items-center justify-between gap-4">
                     <div>
-                        <p
-                            class="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-600 dark:text-neutral-300">
-                            Tiếp tục học</p>
+                        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                            {{ __('ui.dashboard.continue_learning') }}
+                        </p>
                         <h2 class="mt-2 text-xl font-semibold tracking-tight">Laravel Fundamentals</h2>
                     </div><span
-                        class="rounded-full bg-neutral-50 px-3 py-1 text-xs font-semibold text-neutral-700 dark:bg-neutral-400/10 dark:text-neutral-300">68%</span>
+                        class="rounded-full bg-muted px-3 py-1 text-xs font-semibold text-muted-foreground">68%</span>
                 </div>
-                <div class="mt-8 h-2 overflow-hidden rounded-full bg-neutral-100 dark:bg-white/10">
-                    <div class="h-full w-[68%] rounded-full bg-neutral-500"></div>
+                <div class="mt-8 h-2 overflow-hidden rounded-full bg-muted">
+                    <div class="h-full w-[68%] rounded-full bg-primary"></div>
                 </div>
-                <div class="mt-4 flex items-center justify-between text-sm text-neutral-500 dark:text-neutral-400">
-                    <span>17 / 25 bài học</span><span>Khoảng 2 giờ còn lại</span>
+                <div class="mt-4 flex items-center justify-between text-sm text-muted-foreground">
+                    <span>{{ __('ui.dashboard.lessons_count') }}</span><span>{{ __('ui.dashboard.time_left') }}</span>
                 </div>
                 <a href="#"
-                    class="mt-7 inline-flex items-center gap-2 text-sm font-semibold text-neutral-900 transition hover:text-neutral-600 dark:text-white dark:hover:text-neutral-300">Tiếp
-                    tục bài học <span aria-hidden="true">→</span></a>
+                    class="mt-7 inline-flex items-center gap-2 text-sm font-semibold text-primary transition hover:text-primary-strong">{{ __('ui.dashboard.continue_lesson') }}
+                    <span aria-hidden="true">→</span></a>
             </div>
 
-            <div
-                class="rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-neutral-900 sm:p-7">
+            <div class="rounded-3xl border border-border bg-card p-6 text-card-foreground shadow-sm sm:p-7">
                 <div class="flex items-center justify-between">
                     <div>
-                        <p
-                            class="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-600 dark:text-neutral-300">
-                            Hoạt động gần đây</p>
-                        <h2 class="mt-2 text-xl font-semibold tracking-tight">Tuần này</h2>
-                    </div><span class="text-xs font-medium text-neutral-400">7 ngày</span>
+                        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                            {{ __('ui.dashboard.recent_activity') }}
+                        </p>
+                        <h2 class="mt-2 text-xl font-semibold tracking-tight">{{ __('ui.dashboard.week') }}</h2>
+                    </div><span class="text-xs font-medium text-muted-foreground">{{ __('ui.dashboard.days') }}</span>
                 </div>
                 <div class="mt-6 space-y-5">
                     <div class="flex gap-3"><span
@@ -113,9 +111,9 @@
                                 <path d="m5 12 4 4L19 6" />
                             </svg></span>
                         <div>
-                            <p class="text-sm font-semibold">Hoàn thành bài học</p>
-                            <p class="mt-1 text-xs text-neutral-500 dark:text-neutral-400">Eloquent relationships · 2
-                                giờ trước</p>
+                            <p class="text-sm font-semibold">{{ __('ui.dashboard.completed_lesson') }}</p>
+                            <p class="mt-1 text-xs text-muted-foreground">Eloquent relationships ·
+                                {{ __('ui.dashboard.two_hours_ago') }}</p>
                         </div>
                     </div>
                     <div class="flex gap-3"><span
@@ -125,8 +123,9 @@
                                 <path d="M12 3v18M3 12h18" />
                             </svg></span>
                         <div>
-                            <p class="text-sm font-semibold">Tạo project mới</p>
-                            <p class="mt-1 text-xs text-neutral-500 dark:text-neutral-400">Laravel Auth Lab · Hôm qua
+                            <p class="text-sm font-semibold">{{ __('ui.dashboard.created_project') }}</p>
+                            <p class="mt-1 text-xs text-muted-foreground">Laravel Auth Lab ·
+                                {{ __('ui.dashboard.yesterday') }}
                             </p>
                         </div>
                     </div>
@@ -138,26 +137,24 @@
                                     d="M4 19.5V4.5A2.5 2.5 0 0 1 6.5 2H20v17H6.5A2.5 2.5 0 0 0 4 21.5m0-2A2.5 2.5 0 0 1 6.5 17H20" />
                             </svg></span>
                         <div>
-                            <p class="text-sm font-semibold">Lưu tài liệu tham khảo</p>
-                            <p class="mt-1 text-xs text-neutral-500 dark:text-neutral-400">Validation & Requests · 2
-                                ngày trước</p>
+                            <p class="text-sm font-semibold">{{ __('ui.dashboard.saved_reference') }}</p>
+                            <p class="mt-1 text-xs text-muted-foreground">Validation & Requests ·
+                                {{ __('ui.dashboard.two_days_ago') }}</p>
                         </div>
                     </div>
                 </div>
             </div>
         </section>
 
-        <section
-            class="rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-neutral-900 sm:p-7">
+        <section class="rounded-3xl border border-border bg-card p-6 text-card-foreground shadow-sm sm:p-7">
             <div class="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
                 <div>
-                    <p class="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-600 dark:text-neutral-300">
-                        Lối tắt
+                    <p class="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                        {{ __('ui.dashboard.shortcuts') }}
                     </p>
-                    <h2 class="mt-2 text-xl font-semibold tracking-tight">Bắt đầu nhanh</h2>
+                    <h2 class="mt-2 text-xl font-semibold tracking-tight">{{ __('ui.dashboard.quick_start') }}</h2>
                 </div>
-                <p class="text-sm text-neutral-500 dark:text-neutral-400">Các khu vực sẽ được mở rộng trong những phiên
-                    bản tiếp theo.</p>
+                <p class="text-sm text-muted-foreground">{{ __('ui.dashboard.coming_soon_description') }}</p>
             </div>
             <div class="mt-6 grid gap-3 sm:grid-cols-3">
                 <button type="button" disabled
@@ -170,7 +167,7 @@
                         </svg>
                     </span>
                     <span>
-                        <span class="block text-sm font-semibold">Tạo bài học</span>
+                        <span class="block text-sm font-semibold">{{ __('ui.dashboard.create_lesson') }}</span>
                         <span class="mt-1 block text-xs text-neutral-500 dark:text-neutral-400">Sắp
                             có
                         </span>
@@ -187,7 +184,7 @@
                         </svg>
                     </span>
                     <span>
-                        <span class="block text-sm font-semibold">Quản lý học viên
+                        <span class="block text-sm font-semibold">{{ __('ui.dashboard.manage_students') }}
 
                         </span>
                         <span class="mt-1 block text-xs text-neutral-500 dark:text-neutral-400">Sắp
@@ -206,7 +203,7 @@
                         </svg>
                     </span>
                     <span>
-                        <span class="block text-sm font-semibold">Thiết lập workspace
+                        <span class="block text-sm font-semibold">{{ __('ui.dashboard.workspace_setup') }}
 
                         </span>
                         <span class="mt-1 block text-xs text-neutral-500 dark:text-neutral-400">Sắp
