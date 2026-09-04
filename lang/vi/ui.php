@@ -33,6 +33,7 @@ return [
         'close' => 'Đóng',
         'reset' => 'Đặt lại',
         'save' => 'Lưu thay đổi',
+        'create' => 'Tạo mới',
         'no_actions' => 'Chưa có thao tác',
     ],
     'modal' => [
@@ -52,6 +53,7 @@ return [
         'close_notification' => 'Đóng thông báo',
         'check_information' => 'Vui lòng kiểm tra lại thông tin.',
     ],
+    'validation' => ['fix_errors' => 'Vui lòng sửa các thông tin được đánh dấu rồi thử lại.'],
     'password' => ['generate' => 'Tạo mật khẩu', 'show' => 'Hiện mật khẩu', 'hide' => 'Ẩn mật khẩu'],
     'bulk_actions' => 'Thao tác hàng loạt',
     'blank' => [

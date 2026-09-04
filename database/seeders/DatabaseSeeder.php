@@ -17,6 +17,8 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
+        $this->call(BookableResourceSeeder::class);
+
         if (! app()->environment('local', 'testing') && (! filled(config('app.seed_admin_email')) || ! filled(config('app.seed_admin_password')))) {
             throw new RuntimeException('Refusing to seed the admin account outside local/testing without SEED_ADMIN_EMAIL and SEED_ADMIN_PASSWORD.');
         }

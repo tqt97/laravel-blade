@@ -108,6 +108,22 @@
                     </div>
                 </div>
 
+                <div data-sidebar-group class="mb-6">
+                    <button type="button" data-sidebar-group-button aria-expanded="true"
+                        class="flex w-full items-center justify-between rounded-lg px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground transition hover:text-foreground">
+                        <span data-sidebar-label>{{ __('booking.nav.group') }}</span>
+                        <svg data-sidebar-chevron class="size-4 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+                    </button>
+                    <div data-sidebar-group-content class="mt-2 space-y-1">
+                        <x-admin.nav-item :label="__('booking.nav.resources')" href="{{ route('admin.resources.index') }}" :active="request()->routeIs('admin.resources.*')">
+                            <x-slot:icon><svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M8 4v16M3 9h5M3 15h5" /></svg></x-slot:icon>
+                        </x-admin.nav-item>
+                        <x-admin.nav-item :label="__('booking.nav.bookings')" href="{{ route('admin.bookings.index') }}" :active="request()->routeIs('admin.bookings.*')">
+                            <x-slot:icon><svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M16 3v4M8 3v4M3 10h18" /></svg></x-slot:icon>
+                        </x-admin.nav-item>
+                    </div>
+                </div>
+
                 <div data-sidebar-group>
                     <button type="button" data-sidebar-group-button aria-expanded="true"
                         class="flex w-full items-center justify-between rounded-lg px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground transition hover:text-foreground">

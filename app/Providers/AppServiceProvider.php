@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use App\Booking\Models\Booking;
+use App\Booking\Policies\BookingPolicy;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Gate;
@@ -28,5 +30,6 @@ class AppServiceProvider extends ServiceProvider
         Model::preventLazyLoading(! app()->isProduction());
 
         Gate::define('manage-users', fn (User $user): bool => $user->is_admin);
+        Gate::policy(Booking::class, BookingPolicy::class);
     }
 }

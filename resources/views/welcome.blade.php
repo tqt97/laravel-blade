@@ -95,6 +95,25 @@
                     </div>
                 </div>
             </section>
+            <section id="booking" class="grid gap-8 rounded-3xl border border-primary/15 bg-primary-soft/40 p-6 sm:p-10 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
+                <div>
+                    <p class="text-sm font-semibold text-primary">{{ __('booking.landing.eyebrow') }}</p>
+                    <h2 class="mt-3 text-3xl font-semibold tracking-tight text-foreground">{{ __('booking.landing.title') }}</h2>
+                    <p class="mt-4 text-sm leading-7 text-muted-foreground">{{ __('booking.landing.description') }}</p>
+                    @auth
+                        <x-admin.button href="{{ auth()->user()->is_admin ? route('admin.bookings.index') : route('user.resources.index') }}" icon="arrow-right" class="mt-6">
+                            {{ __('booking.landing.cta') }}
+                        </x-admin.button>
+                    @else
+                        @if (Route::has('login'))
+                            <x-admin.button href="{{ route('login') }}" icon="arrow-right" class="mt-6">
+                                {{ __('booking.landing.cta') }}
+                            </x-admin.button>
+                        @endif
+                    @endauth
+                </div>
+                <div class="grid gap-4 sm:grid-cols-3">@foreach (['browse', 'hold', 'manage'] as $step)<div class="rounded-2xl border border-border bg-card p-5 shadow-sm"><div class="flex size-9 items-center justify-center rounded-xl bg-primary text-sm font-bold text-primary-foreground">{{ $loop->iteration }}</div><h3 class="mt-4 font-semibold text-card-foreground">{{ __('booking.landing.steps.'.$step.'.title') }}</h3><p class="mt-2 text-sm leading-6 text-muted-foreground">{{ __('booking.landing.steps.'.$step.'.description') }}</p></div>@endforeach</div>
+            </section>
             <section id="features" class="grid gap-4 md:grid-cols-3">
                 @foreach ([['title' => __('ui.dashboard.continue_learning'), 'description' => __('ui.dashboard.description')], ['title' => __('ui.dashboard.shortcuts'), 'description' => __('ui.dashboard.coming_soon_description')], ['title' => __('ui.dashboard.recent_activity'), 'description' => __('ui.dashboard.completed_lesson')]] as $feature)
                     <article class="rounded-2xl border border-border bg-card p-6 shadow-sm">

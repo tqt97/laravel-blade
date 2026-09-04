@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Controllers\Admin\BookingController;
+use App\Http\Controllers\Admin\ResourceController;
 use App\Http\Controllers\Admin\UserController;
 use Illuminate\Support\Facades\Route;
 
@@ -8,6 +10,9 @@ Route::get('/', fn () => redirect()->route('admin.dashboard'))->name('home');
 Route::view('/dashboard', 'dashboard')->name('dashboard');
 Route::view('/samples', 'admin.samples')->name('samples');
 Route::view('/blank', 'admin.blank')->name('blank');
+Route::get('/bookings', [BookingController::class, 'index'])->name('bookings.index');
+Route::patch('/bookings/{booking}/cancel', [BookingController::class, 'cancel'])->name('bookings.cancel');
+Route::resource('resources', ResourceController::class)->except(['show']);
 Route::view('/settings/security', 'admin.settings.security')
     ->middleware('password.confirm')
     ->name('settings.security');
