@@ -5,9 +5,8 @@
     'actionHref' => null,
 ])
 
-<div {{ $attributes->merge(['class' => 'flex min-h-72 flex-col items-center justify-center rounded-2xl border border-dashed border-neutral-200 bg-white p-8 text-center dark:border-white/10 dark:bg-white/[0.03]']) }}>
-    <div
-        class="flex size-14 items-center justify-center rounded-2xl bg-neutral-50 text-[#0f172a] dark:bg-neutral-400/10 dark:text-[#e2e8f0]">
+<div {{ $attributes->merge(['class' => 'flex min-h-72 flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card p-8 text-center']) }}>
+    <div class="flex size-14 items-center justify-center rounded-xl bg-muted text-muted-foreground">
         @if (isset($icon))
             {{ $icon }}
         @else
@@ -17,10 +16,10 @@
             </svg>
         @endif
     </div>
-    <h3 class="mt-5 text-base font-semibold text-neutral-950 dark:text-white">
+    <h3 class="mt-5 text-base font-semibold text-card-foreground">
         {{ $title }}
     </h3>
-    <p class="mt-2 max-w-md text-sm leading-6 text-neutral-500 dark:text-neutral-400">
+    <p class="mt-2 max-w-md text-sm leading-6 text-muted-foreground">
         {{ $description }}
     </p>
     @if ($actionLabel && $actionHref)

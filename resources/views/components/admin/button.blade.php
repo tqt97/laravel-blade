@@ -10,11 +10,11 @@
 
 @php
     $variants = [
-        'primary' => 'bg-[#0f172a] text-white shadow-sm shadow-neutral-500/20 hover:bg-[#1e293b] focus:ring-neutral-500/20',
-        'secondary' => 'border border-neutral-200 bg-white text-neutral-700 hover:border-neutral-300 hover:bg-neutral-50 focus:ring-neutral-500/10 dark:border-white/10 dark:bg-white/[0.06] dark:text-neutral-200 dark:hover:bg-white/10',
-        'danger' => 'bg-rose-600 text-white shadow-sm shadow-rose-500/20 hover:bg-rose-700 focus:ring-rose-500/20 dark:bg-rose-500 dark:hover:bg-rose-600',
-        'success' => 'bg-emerald-600 text-white shadow-sm shadow-emerald-500/20 hover:bg-emerald-700 focus:ring-emerald-500/20 dark:bg-emerald-500 dark:hover:bg-emerald-600',
-        'ghost' => 'text-neutral-600 hover:bg-neutral-100 hover:text-neutral-950 focus:ring-neutral-500/10 dark:text-neutral-300 dark:hover:bg-white/10 dark:hover:text-white',
+        'primary' => 'bg-primary text-primary-foreground shadow-sm hover:bg-primary-strong',
+        'secondary' => 'border border-border bg-secondary text-secondary-foreground hover:bg-muted',
+        'danger' => 'bg-destructive text-destructive-foreground shadow-sm hover:brightness-95',
+        'success' => 'bg-success text-success-foreground shadow-sm hover:brightness-95',
+        'ghost' => 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
     ];
 
     $classes = 'ui-action inline-flex items-center justify-center gap-2 font-semibold outline-none transition focus:ring-4 disabled:cursor-not-allowed disabled:opacity-50 ' . ($iconOnly ? 'size-9 rounded-lg p-0 text-sm' : ($compact ? 'min-h-9 rounded-lg px-3 text-xs' : 'min-h-10 rounded-lg px-3.5 py-2 text-sm')) . ' ' . ($variants[$variant] ?? $variants['primary']);

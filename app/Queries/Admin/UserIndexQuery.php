@@ -9,6 +9,7 @@ use App\Enums\Admin\UserVerificationStatus;
 use App\Models\User;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\DB;
 
 class UserIndexQuery
 {
@@ -38,7 +39,31 @@ class UserIndexQuery
                 'deleted_at',
                 'created_at',
             ])
-            ->when($filters['search'] ?? null, function (Builder $query, string $search): void {
+            ->when(filled($filters['search'] ?? null), function (Builder $query) use ($filters): void {
+                $search = trim((string) $filters['search']);
+
+                // MySQL FULLTEXT avoids scanning all 10k+ rows. Very short
+                // terms are intentionally kept on LIKE because InnoDB's
+                // default minimum token length would otherwise hide results.
+                $tokens = preg_split('/[^\p{L}\p{N}]+/u', mb_strtolower($search), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+                $tokens = array_values(array_filter(
+                    $tokens,
+                    fn (string $token): bool => mb_strlen($token) >= 3,
+                ));
+
+                if (DB::connection()->getDriverName() === 'mysql' && $tokens !== []) {
+                    // Boolean mode requires every meaningful token and uses a
+                    // prefix wildcard, avoiding the broad matches caused by
+                    // common email tokens such as "example" and "com".
+                    $booleanSearch = implode(' ', array_map(
+                        fn (string $token): string => '+'.$token.'*',
+                        $tokens,
+                    ));
+                    $query->whereFullText(['name', 'email'], $booleanSearch, ['mode' => 'boolean']);
+
+                    return;
+                }
+
                 $term = '%'.$search.'%';
                 $query->where(fn (Builder $query): Builder => $query
                     ->where('name', 'like', $term)

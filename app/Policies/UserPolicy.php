@@ -32,7 +32,7 @@ class UserPolicy
             return false;
         }
 
-        return ! $managedUser->is_admin || User::query()->administrators()->count() > 1;
+        return true;
     }
 
     public function restore(User $user, User $managedUser): bool
@@ -46,6 +46,6 @@ class UserPolicy
             return false;
         }
 
-        return ! $managedUser->is_admin || User::withTrashed()->administrators()->count() > 1;
+        return true;
     }
 }

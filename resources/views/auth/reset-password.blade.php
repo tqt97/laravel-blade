@@ -1,8 +1,8 @@
 <x-layouts.guest :title="__('ui.auth_pages.reset_password')">
     <div class="mb-8">
-        <p class="mb-3 text-sm font-semibold text-neutral-600 dark:text-neutral-300">{{ __('ui.security.account_title') }}</p>
-        <h1 class="text-3xl font-semibold tracking-tight text-neutral-950 dark:text-white">{{ __('ui.auth_pages.reset_password') }}</h1>
-        <p class="mt-3 text-sm leading-6 text-neutral-500 dark:text-neutral-400">{{ __('ui.auth_pages.reset_password_description') }}</p>
+        <p class="mb-3 text-sm font-semibold text-muted-foreground">{{ __('ui.security.account_title') }}</p>
+        <h1 class="text-3xl font-semibold tracking-tight text-foreground">{{ __('ui.auth_pages.reset_password') }}</h1>
+        <p class="mt-3 text-sm leading-6 text-muted-foreground">{{ __('ui.auth_pages.reset_password_description') }}</p>
     </div>
 
     <x-auth.feedback />

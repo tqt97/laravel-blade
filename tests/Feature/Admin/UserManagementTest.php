@@ -1,7 +1,10 @@
 <?php
 
 use App\Models\User;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 uses(RefreshDatabase::class);
 
@@ -54,6 +57,24 @@ it('lists users with search filters and pagination', function (): void {
 
     $response->assertOk()
         ->assertViewHas('users', fn ($users): bool => $users->total() === 1);
+});
+
+it('mirrors self-protection rules in the user management UI', function (): void {
+    $admin = User::factory()->admin()->create();
+    $user = User::factory()->create();
+
+    $index = $this->actingAs($admin)->get(route('admin.users.index'));
+
+    $index->assertOk()
+        ->assertDontSee('/admin/users/'.$admin->id.'" data-modal-method="DELETE', false)
+        ->assertSee('/admin/users/'.$user->id.'" data-modal-method="DELETE', false);
+
+    $this->actingAs($admin)
+        ->get(route('admin.users.edit', $admin))
+        ->assertOk()
+        ->assertSee('name="is_admin" value="1"', false)
+        ->assertSee('disabled', false)
+        ->assertSee(__('ui.user_warnings.self_admin_warning'));
 });
 
 it('paginates the user list with the requested page size', function (): void {
@@ -142,6 +163,35 @@ it('does not allow an administrator to delete themselves', function (): void {
     $this->assertDatabaseHas('users', ['id' => $admin->id]);
 });
 
+it('does not allow the last administrator to be demoted', function (): void {
+    $admin = User::factory()->admin()->create();
+
+    $this->actingAs($admin)
+        ->put(route('admin.users.update', $admin), [
+            'name' => $admin->name,
+            'email' => $admin->email,
+            'is_admin' => '0',
+        ])
+        ->assertSessionHasErrors('is_admin');
+
+    expect($admin->refresh()->is_admin)->toBeTrue();
+});
+
+it('does not allow an administrator to demote themselves', function (): void {
+    $admin = User::factory()->admin()->create();
+    User::factory()->admin()->create();
+
+    $this->actingAs($admin)
+        ->put(route('admin.users.update', $admin), [
+            'name' => $admin->name,
+            'email' => $admin->email,
+            'is_admin' => '0',
+        ])
+        ->assertSessionHasErrors('is_admin');
+
+    expect($admin->refresh()->is_admin)->toBeTrue();
+});
+
 it('deletes another user', function (): void {
     $admin = User::factory()->admin()->create();
     $user = User::factory()->create();
@@ -150,7 +200,7 @@ it('deletes another user', function (): void {
         ->delete(route('admin.users.destroy', $user))
         ->assertRedirect(route('admin.users.index'));
 
-    $this->assertDatabaseMissing('users', ['id' => $user->id]);
+    $this->assertSoftDeleted('users', ['id' => $user->id]);
 });
 
 it('deletes multiple selected users and keeps unselected users', function (): void {
@@ -165,7 +215,7 @@ it('deletes multiple selected users and keeps unselected users', function (): vo
     $response->assertRedirect(route('admin.users.index'));
 
     foreach ($selectedUsers as $user) {
-        $this->assertDatabaseMissing('users', ['id' => $user->id]);
+        $this->assertSoftDeleted('users', ['id' => $user->id]);
     }
 
     $this->assertDatabaseHas('users', ['id' => $unselectedUser->id]);
@@ -196,6 +246,44 @@ it('soft deletes, restores and force deletes a user', function (): void {
     $this->assertDatabaseMissing('users', ['id' => $user->id]);
 });
 
+it('returns a validation error and keeps a user trashed when restore email conflicts', function (): void {
+    $admin = User::factory()->admin()->create();
+    Schema::table('users', function (Blueprint $table): void {
+        $table->dropUnique('users_email_unique');
+    });
+    DB::statement('CREATE UNIQUE INDEX users_email_active_unique ON users(email) WHERE deleted_at IS NULL');
+    $deletedUser = User::factory()->create(['email' => 'restore-conflict@example.com']);
+    $deletedUser->delete();
+    User::factory()->create(['email' => 'restore-conflict@example.com']);
+
+    $this->actingAs($admin)
+        ->patch(route('admin.users.restore', $deletedUser->id))
+        ->assertSessionHasErrors('email');
+
+    $this->assertSoftDeleted('users', ['id' => $deletedUser->id]);
+    expect(session('errors')->first('email'))->toBe(__('admin.users.errors.restore_email_conflict'));
+});
+
+it('rolls back a bulk restore when any email conflicts', function (): void {
+    $admin = User::factory()->admin()->create();
+    Schema::table('users', function (Blueprint $table): void {
+        $table->dropUnique('users_email_unique');
+    });
+    DB::statement('CREATE UNIQUE INDEX users_email_active_unique ON users(email) WHERE deleted_at IS NULL');
+    $conflictingUser = User::factory()->create(['email' => 'bulk-restore-conflict@example.com']);
+    $validUser = User::factory()->create(['email' => 'bulk-restore-valid@example.com']);
+    $conflictingUser->delete();
+    $validUser->delete();
+    User::factory()->create(['email' => 'bulk-restore-conflict@example.com']);
+
+    $this->actingAs($admin)
+        ->patch(route('admin.users.bulk-restore'), ['ids' => [$conflictingUser->id, $validUser->id]])
+        ->assertSessionHasErrors('ids');
+
+    $this->assertSoftDeleted('users', ['id' => $conflictingUser->id]);
+    $this->assertSoftDeleted('users', ['id' => $validUser->id]);
+});
+
 it('bulk restores and force deletes selected trashed users', function (): void {
     $admin = User::factory()->admin()->create();
     $users = User::factory()->count(3)->create();
@@ -217,11 +305,47 @@ it('rejects bulk actions when selected users are in the wrong lifecycle state', 
 
     $this->actingAs($admin)
         ->patch(route('admin.users.bulk-restore'), ['ids' => [$activeUser->id]])
-        ->assertSessionHasErrors('ids');
+        ->assertSessionHasErrors('ids.0');
 
     $this->actingAs($admin)
         ->delete(route('admin.users.bulk-destroy'), ['ids' => [$deletedUser->id]])
-        ->assertSessionHasErrors('ids');
+        ->assertSessionHasErrors('ids.0');
+});
+
+it('does not render a confirmed two factor secret', function (): void {
+    $admin = User::factory()->admin()->create();
+    $secret = 'confirmed-secret';
+
+    $admin->forceFill([
+        'two_factor_secret' => encrypt($secret),
+        'two_factor_recovery_codes' => encrypt(json_encode(['recovery-code'])),
+        'two_factor_confirmed_at' => now(),
+    ])->save();
+
+    $this->actingAs($admin)
+        ->post(route('password.confirm'), ['password' => 'password'])
+        ->assertRedirect();
+
+    $this
+        ->get(route('admin.settings.security'))
+        ->assertOk()
+        ->assertDontSee($secret);
+});
+
+it('keeps the user index query count bounded', function (): void {
+    $admin = User::factory()->admin()->create();
+    User::factory()->count(50)->create();
+    $queryCount = 0;
+
+    DB::listen(function ($query) use (&$queryCount): void {
+        if (str_starts_with(strtolower($query->sql), 'select')) {
+            $queryCount++;
+        }
+    });
+
+    $this->actingAs($admin)->get(route('admin.users.index'));
+
+    expect($queryCount)->toBeLessThanOrEqual(5);
 });
 
 it('does not serialize two factor secrets', function (): void {

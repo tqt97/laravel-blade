@@ -2,35 +2,63 @@
 
 namespace App\Actions\Admin;
 
+use App\DTO\AdminUserData;
 use App\Models\User;
+use App\Support\Admin\LastAdministratorGuard;
 use App\Support\Audit\UserManagementAuditLogger;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\ValidationException;
 
 class UpdateUser
 {
-    public function __construct(private readonly UserManagementAuditLogger $auditLogger) {}
+    public function __construct(
+        private readonly UserManagementAuditLogger $auditLogger,
+        private readonly LastAdministratorGuard $lastAdministratorGuard,
+    ) {}
 
     /**
      * Update an admin-managed user.
-     *
-     * @param  array{name: string, email: string, password?: string|null, is_admin: bool}  $data
      */
-    public function execute(User $user, array $data, ?User $actor = null): User
+    public function execute(User $user, AdminUserData $data, ?User $actor = null): User
     {
-        if (filled($data['password'] ?? null)) {
-            $data['password'] = Hash::make($data['password']);
-        } else {
-            unset($data['password']);
-        }
+        return DB::transaction(function () use ($user, $data, $actor): User {
+            // Re-read and lock the target so concurrent role changes cannot
+            // bypass the minimum-administrator invariant.
+            $user = User::query()->whereKey($user)->lockForUpdate()->firstOrFail();
+            $isDemotingAdministrator = $user->is_admin && ! $data->isAdmin;
 
-        $user->update($data);
+            if ($isDemotingAdministrator) {
+                if ($user->is($actor)) {
+                    throw ValidationException::withMessages([
+                        'is_admin' => __('admin.users.errors.cannot_demote_self'),
+                    ]);
+                }
 
-        // The update query may have changed timestamps/casts and model
-        // events can mutate attributes. Refresh gives the caller a snapshot
-        // that matches the database instead of the stale in-memory object.
-        $user->refresh();
-        $this->auditLogger->log('updated', $actor, $user);
+                $this->lastAdministratorGuard->ensureAdministratorRemains(
+                    administratorsBeingRemoved: 1,
+                    includeTrashed: false,
+                    messageKey: 'admin.users.errors.cannot_demote_last_admin',
+                );
+            }
 
-        return $user;
+            $attributes = $data->toArray();
+
+            if (filled($data->password)) {
+                $attributes['password'] = Hash::make($data->password);
+            } else {
+                unset($attributes['password']);
+            }
+
+            $user->update($attributes);
+
+            // The update query may have changed timestamps/casts and model
+            // events can mutate attributes. Refresh gives the caller a snapshot
+            // that matches the database instead of the stale in-memory object.
+            $user->refresh();
+            $this->auditLogger->log('updated', $actor, $user);
+
+            return $user;
+        }, 3);
     }
 }

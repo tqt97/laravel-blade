@@ -1,12 +1,11 @@
 @props(['title', 'description' => null])
 
-<section {{ $attributes->merge(['class' => 'overflow-hidden rounded-2xl border border-neutral-200/80 bg-white shadow-sm shadow-neutral-200/40 dark:border-white/10 dark:bg-white/[0.03] dark:shadow-none']) }}>
-    <div
-        class="flex flex-col gap-4 border-b border-neutral-100 p-5 sm:flex-row sm:items-center sm:justify-between dark:border-white/10">
+<section {{ $attributes->merge(['class' => 'overflow-hidden rounded-xl border border-border bg-card']) }}>
+    <div class="flex flex-col gap-4 border-b border-border p-5 sm:flex-row sm:items-center sm:justify-between">
         <div>
-            <h3 class="font-semibold text-neutral-950 dark:text-white">{{ $title }}</h3>
+            <h3 class="font-semibold text-card-foreground">{{ $title }}</h3>
             @if ($description)
-            <p class="mt-1 text-sm text-neutral-500 dark:text-neutral-400">{{ $description }}</p>@endif
+            <p class="mt-1 text-sm text-muted-foreground">{{ $description }}</p>@endif
         </div>
         @if (isset($actions))
         <div class="flex flex-wrap gap-2">{{ $actions }}</div>@endif

@@ -284,11 +284,11 @@ Không nên thêm index cho mọi filter vì `boolean` và nullable columns có 
 
 ### Không được tự xóa
 
-Actor không thể soft delete hoặc force delete chính mình. Điều này ngăn admin tự khóa account trong UI hoặc request thủ công.
+Actor không thể soft delete hoặc force delete chính mình. UI ẩn action xóa và disable checkbox bulk của active account hiện tại; backend vẫn là source of truth để chặn cả request thủ công.
 
 ### Không được xóa admin cuối cùng
 
-Delete, force delete và demote đều phải giữ lại ít nhất một administrator. Kiểm tra này nằm ở Policy/Request/Action vì kiểm tra UI là không đủ.
+Delete, force delete và demote đều phải giữ lại ít nhất một administrator. Invariant được thực thi tại một boundary duy nhất là `LastAdministratorGuard` bên trong transaction của Action; Policy/Request chỉ xử lý authorization và input contract, UI chỉ phản ánh UX.
 
 ### Bulk chứa trạng thái sai
 
@@ -296,7 +296,7 @@ Bulk delete chỉ nhận active user. Bulk restore và force delete chỉ nhận
 
 ### User bị thay đổi đồng thời
 
-Bulk mutation dùng transaction và row lock. Production nên bổ sung deadlock retry và test concurrency nếu nhiều admin cùng thao tác.
+Bulk mutation dùng transaction, row lock và retry tối đa 3 lần cho deadlock transient. Test concurrency production-like nên chạy trên MySQL/InnoDB vì SQLite không mô phỏng đúng row lock.
 
 ### Force delete
 
@@ -316,7 +316,7 @@ Audit lưu snapshot trước khi force delete và foreign key dùng `nullOnDelet
 
 ### 2FA data
 
-Secret và recovery codes phải được mã hóa theo Fortify, không mass assign, không serialize và không log. Mọi màn hình hiển thị secret nên yêu cầu password confirmation và giới hạn thời gian.
+Secret và recovery codes phải được mã hóa theo Fortify, không mass assign, không serialize và không log. Secret chỉ xuất hiện trong bước setup đang chờ confirm sau password confirmation; sau khi confirm không render lại secret. Recovery codes chỉ hiển thị ở flow Fortify tương ứng và cần được coi là dữ liệu nhạy cảm.
 
 ## 10. UI/accessibility checklist
 
@@ -328,7 +328,7 @@ Secret và recovery codes phải được mã hóa theo Fortify, không mass ass
 - Dropdown có khoảng cách, shadow, width cố định và không làm rớt dòng label.
 - Sidebar có scrollbar mỏng, header/sidebar sticky và mobile backdrop.
 - Escape đóng modal/sidebar/dropdown.
-- Focus cần được trả về trigger sau khi đóng modal; production nên bổ sung focus trap.
+- Modal không tự động focus nút X hoặc nút xác nhận khi mở; Escape đóng modal, focus trap vẫn bảo vệ vòng Tab, và focus được trả về trigger sau khi đóng.
 - Không dùng text hard-code trong Blade/JS; mọi label cần đi qua locale.
 
 ## 11. Testing strategy
@@ -355,13 +355,12 @@ vendor/bin/pint --dirty --format agent
 npm run build
 ```
 
-### Nên bổ sung tiếp
+### Trạng thái coverage hiện tại
 
-- query count regression test;
-- EXPLAIN benchmark trên dataset lớn;
-- concurrency/deadlock test;
-- browser test cho modal, bulk dropdown, select-all và mobile sidebar;
-- accessibility test cho keyboard navigation và focus trap.
+- query count regression test và EXPLAIN benchmark đã được bổ sung/chạy trên MySQL dataset lớn;
+- concurrency/deadlock retry đã được kiểm thử ở mức Action; concurrency production-like cần chạy trong CI trên MySQL/InnoDB;
+- browser test cho modal, bulk dropdown, select-all và mobile sidebar vẫn là lớp kiểm thử nên bổ sung khi có browser runner;
+- focus trap, keyboard Escape, initial focus vào confirm và focus return đã được triển khai trong module modal; cần kiểm tra lại bằng browser/assistive technology trong CI.
 
 ## 12. Seeder và môi trường
 
@@ -579,3 +578,71 @@ Khi thêm mutation có lock:
 4. ghi audit sau khi state change thành công;
 5. thêm test cạnh tranh hoặc ít nhất test rollback;
 6. không dùng `lockForUpdate()` cho read-only query.
+
+## 22. Trạng thái implementation hiện tại
+
+Các nguyên tắc dưới đây là source of truth cho code hiện tại:
+
+- Input create/update đi qua `AdminUserData`; không truyền array trực tiếp vào Admin Action.
+- Last-admin invariant được thực thi tại `LastAdministratorGuard` trong transaction Action. Policy chỉ chịu trách nhiệm authorization/self-target; Request không được dùng query count để quyết định invariant.
+- `DeleteUserRequest`, `RestoreUserRequest` và `ForceDeleteUserRequest` tách riêng contract của mutation đơn.
+- Restore đơn re-query target bằng `onlyTrashed()->lockForUpdate()` để không dùng model stale.
+- Mọi admin mutation transaction có retry 3 lần cho deadlock transient.
+- Bulk Action lock target, kiểm tra lại số lượng record sau validation và reject stale lifecycle state thay vì silently no-op.
+- Bulk audit select đầy đủ snapshot fields trước khi gọi một lần `insert()`.
+
+Ví dụ boundary đúng:
+
+```php
+public function update(
+    UpdateUserRequest $request,
+    User $user,
+    UpdateUser $updateUser,
+): RedirectResponse {
+    $updateUser->execute(
+        $user,
+        AdminUserData::fromArray($request->validated()),
+        $request->user(),
+    );
+
+    return to_route('admin.users.index');
+}
+```
+
+## 23. MySQL search strategy
+
+MySQL hiện tại là `8.0.33`, bảng `users` có khoảng 10.000 record. Migration `add_users_name_email_fulltext_index` tạo:
+
+```sql
+FULLTEXT KEY users_name_email_fulltext (name, email)
+```
+
+Search token được chuẩn hóa trước khi tạo Boolean query:
+
+```php
+$tokens = preg_split('/[^\p{L}\p{N}]+/u', mb_strtolower($search), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+$tokens = array_values(array_filter(
+    $tokens,
+    fn (string $token): bool => mb_strlen($token) >= 3,
+));
+
+$query->whereFullText(
+    ['name', 'email'],
+    implode(' ', array_map(fn (string $token): string => '+'.$token.'*', $tokens)),
+    ['mode' => 'boolean'],
+);
+```
+
+Boolean mode được chọn vì natural-language mode từng match quá rộng với token phổ biến như `example` và `com`. Token ngắn fallback về `LIKE` vì InnoDB mặc định không index token dưới 3 ký tự.
+
+`EXPLAIN` phải cho thấy `type = fulltext` và key `users_name_email_fulltext`. Nếu dataset tăng mạnh, cần kiểm tra lại stopword/min-token configuration và cân nhắc search engine nếu cần substring search.
+
+## 24. Concurrency verification
+
+Test [UserManagementConcurrencyTest.php](../tests/Feature/Admin/UserManagementConcurrencyTest.php) chỉ chạy khi có MySQL/PostgreSQL, `pcntl` và bật flag:
+
+```bash
+RUN_CONCURRENCY_TESTS=true php artisan test --filter=concurrent
+```
+
+SQLite local skip có chủ đích. Khi chạy CI production-like, test phải chứng minh hai destructive request đồng thời không làm số admin active giảm xuống dưới một.

@@ -4,25 +4,27 @@
     </x-slot:breadcrumbs>
     <div class="mx-auto px-2 space-y-6">
         <section
-            class="relative overflow-hidden rounded-3xl bg-neutral-950 p-6 text-white shadow-xl shadow-neutral-900/10 dark:bg-white dark:text-neutral-950 sm:p-8">
+            class="relative overflow-hidden rounded-3xl bg-primary p-6 text-primary-foreground shadow-xl shadow-primary/20 sm:p-8">
             <div
-                class="pointer-events-none absolute -right-16 -top-24 size-72 rounded-full bg-neutral-400/20 blur-3xl dark:bg-white/30">
+                class="pointer-events-none absolute -right-16 -top-24 size-72 rounded-full bg-primary-foreground/20 blur-3xl">
             </div>
             <div class="relative flex flex-col justify-between gap-8 sm:flex-row sm:items-end">
                 <div class="max-w-2xl">
                     <div
-                        class="mb-5 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-3 py-1.5 text-xs font-semibold text-neutral-200 dark:border-neutral-950/10 dark:bg-neutral-950/10 dark:text-neutral-950">
-                        <span class="size-1.5 rounded-full bg-emerald-400 dark:bg-emerald-600"></span> {{ __('ui.dashboard.online') }}
+                        class="mb-5 inline-flex items-center gap-2 rounded-full border border-primary-foreground/20 bg-primary-foreground/10 px-3 py-1.5 text-xs font-semibold text-primary-foreground">
+                        <span class="size-1.5 rounded-full bg-emerald-400 dark:bg-emerald-600"></span>
+                        {{ __('ui.dashboard.online') }}
                     </div>
                     <h2 class="text-2xl font-semibold tracking-tight sm:text-4xl">
                         {{ __('ui.dashboard.welcome') }}
                         {{ auth()->user()->name }}.
                     </h2>
-                    <p class="mt-4 max-w-xl text-sm leading-6 text-neutral-400 dark:text-neutral-800">{{ __('ui.dashboard.description') }}
+                    <p class="mt-4 max-w-xl text-sm leading-6 text-primary-foreground/75">
+                        {{ __('ui.dashboard.description') }}
                     </p>
                 </div>
                 <a href="{{ url('/') }}"
-                    class="inline-flex w-fit items-center gap-2 rounded-xl bg-white/10 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/15 dark:bg-neutral-950/10 dark:text-neutral-950 dark:hover:bg-neutral-950/20">{{ __('ui.dashboard.home') }}
+                    class="inline-flex w-fit items-center gap-2 rounded-xl bg-primary-foreground/10 px-4 py-3 text-sm font-semibold text-primary-foreground transition hover:bg-primary-foreground/20">{{ __('ui.dashboard.home') }}
                     <span aria-hidden="true">→</span>
                 </a>
             </div>
@@ -57,7 +59,8 @@
                     </svg>
                 </x-slot:icon>
             </x-admin.stat-card>
-            <x-admin.stat-card label="{{ __('ui.dashboard.learning_streak') }}" value="07 {{ __('ui.dashboard.days') }}" delta="+03">
+            <x-admin.stat-card label="{{ __('ui.dashboard.learning_streak') }}" value="07 {{ __('ui.dashboard.days') }}"
+                delta="+03">
                 <x-slot:icon>
                     <svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
                         aria-hidden="true">
@@ -70,36 +73,35 @@
         </section>
 
         <section class="grid gap-6 xl:grid-cols-[1.25fr_0.75fr]">
-            <div
-                class="rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-neutral-900 sm:p-7">
+            <div class="rounded-3xl border border-border bg-card p-6 text-card-foreground shadow-sm sm:p-7">
                 <div class="flex items-center justify-between gap-4">
                     <div>
-                        <p
-                            class="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-600 dark:text-neutral-300">
-                            {{ __('ui.dashboard.continue_learning') }}</p>
+                        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                            {{ __('ui.dashboard.continue_learning') }}
+                        </p>
                         <h2 class="mt-2 text-xl font-semibold tracking-tight">Laravel Fundamentals</h2>
                     </div><span
-                        class="rounded-full bg-neutral-50 px-3 py-1 text-xs font-semibold text-neutral-700 dark:bg-neutral-400/10 dark:text-neutral-300">68%</span>
+                        class="rounded-full bg-muted px-3 py-1 text-xs font-semibold text-muted-foreground">68%</span>
                 </div>
-                <div class="mt-8 h-2 overflow-hidden rounded-full bg-neutral-100 dark:bg-white/10">
-                    <div class="h-full w-[68%] rounded-full bg-neutral-500"></div>
+                <div class="mt-8 h-2 overflow-hidden rounded-full bg-muted">
+                    <div class="h-full w-[68%] rounded-full bg-primary"></div>
                 </div>
-                <div class="mt-4 flex items-center justify-between text-sm text-neutral-500 dark:text-neutral-400">
+                <div class="mt-4 flex items-center justify-between text-sm text-muted-foreground">
                     <span>{{ __('ui.dashboard.lessons_count') }}</span><span>{{ __('ui.dashboard.time_left') }}</span>
                 </div>
                 <a href="#"
-                    class="mt-7 inline-flex items-center gap-2 text-sm font-semibold text-neutral-900 transition hover:text-neutral-600 dark:text-white dark:hover:text-neutral-300">{{ __('ui.dashboard.continue_lesson') }} <span aria-hidden="true">→</span></a>
+                    class="mt-7 inline-flex items-center gap-2 text-sm font-semibold text-primary transition hover:text-primary-strong">{{ __('ui.dashboard.continue_lesson') }}
+                    <span aria-hidden="true">→</span></a>
             </div>
 
-            <div
-                class="rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-neutral-900 sm:p-7">
+            <div class="rounded-3xl border border-border bg-card p-6 text-card-foreground shadow-sm sm:p-7">
                 <div class="flex items-center justify-between">
                     <div>
-                        <p
-                            class="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-600 dark:text-neutral-300">
-                            {{ __('ui.dashboard.recent_activity') }}</p>
+                        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                            {{ __('ui.dashboard.recent_activity') }}
+                        </p>
                         <h2 class="mt-2 text-xl font-semibold tracking-tight">{{ __('ui.dashboard.week') }}</h2>
-                    </div><span class="text-xs font-medium text-neutral-400">{{ __('ui.dashboard.days') }}</span>
+                    </div><span class="text-xs font-medium text-muted-foreground">{{ __('ui.dashboard.days') }}</span>
                 </div>
                 <div class="mt-6 space-y-5">
                     <div class="flex gap-3"><span
@@ -110,7 +112,8 @@
                             </svg></span>
                         <div>
                             <p class="text-sm font-semibold">{{ __('ui.dashboard.completed_lesson') }}</p>
-                            <p class="mt-1 text-xs text-neutral-500 dark:text-neutral-400">Eloquent relationships · {{ __('ui.dashboard.two_hours_ago') }}</p>
+                            <p class="mt-1 text-xs text-muted-foreground">Eloquent relationships ·
+                                {{ __('ui.dashboard.two_hours_ago') }}</p>
                         </div>
                     </div>
                     <div class="flex gap-3"><span
@@ -121,7 +124,8 @@
                             </svg></span>
                         <div>
                             <p class="text-sm font-semibold">{{ __('ui.dashboard.created_project') }}</p>
-                            <p class="mt-1 text-xs text-neutral-500 dark:text-neutral-400">Laravel Auth Lab · {{ __('ui.dashboard.yesterday') }}
+                            <p class="mt-1 text-xs text-muted-foreground">Laravel Auth Lab ·
+                                {{ __('ui.dashboard.yesterday') }}
                             </p>
                         </div>
                     </div>
@@ -134,23 +138,23 @@
                             </svg></span>
                         <div>
                             <p class="text-sm font-semibold">{{ __('ui.dashboard.saved_reference') }}</p>
-                            <p class="mt-1 text-xs text-neutral-500 dark:text-neutral-400">Validation & Requests · {{ __('ui.dashboard.two_days_ago') }}</p>
+                            <p class="mt-1 text-xs text-muted-foreground">Validation & Requests ·
+                                {{ __('ui.dashboard.two_days_ago') }}</p>
                         </div>
                     </div>
                 </div>
             </div>
         </section>
 
-        <section
-            class="rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-neutral-900 sm:p-7">
+        <section class="rounded-3xl border border-border bg-card p-6 text-card-foreground shadow-sm sm:p-7">
             <div class="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
                 <div>
-                    <p class="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-600 dark:text-neutral-300">
+                    <p class="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                         {{ __('ui.dashboard.shortcuts') }}
                     </p>
                     <h2 class="mt-2 text-xl font-semibold tracking-tight">{{ __('ui.dashboard.quick_start') }}</h2>
                 </div>
-                <p class="text-sm text-neutral-500 dark:text-neutral-400">{{ __('ui.dashboard.coming_soon_description') }}</p>
+                <p class="text-sm text-muted-foreground">{{ __('ui.dashboard.coming_soon_description') }}</p>
             </div>
             <div class="mt-6 grid gap-3 sm:grid-cols-3">
                 <button type="button" disabled

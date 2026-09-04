@@ -2,8 +2,10 @@
 
 namespace App\Actions\Admin;
 
+use App\DTO\AdminUserData;
 use App\Models\User;
 use App\Support\Audit\UserManagementAuditLogger;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 
 class CreateUser
@@ -12,16 +14,17 @@ class CreateUser
 
     /**
      * Create an admin-managed user.
-     *
-     * @param  array{name: string, email: string, password: string, is_admin: bool}  $data
      */
-    public function execute(array $data, ?User $actor = null): User
+    public function execute(AdminUserData $data, ?User $actor = null): User
     {
-        $data['password'] = Hash::make($data['password']);
+        return DB::transaction(function () use ($data, $actor): User {
+            $attributes = $data->toArray(includeEmptyPassword: true);
+            $attributes['password'] = Hash::make($data->password ?? '');
 
-        $user = User::create($data);
-        $this->auditLogger->log('created', $actor, $user);
+            $user = User::create($attributes);
+            $this->auditLogger->log('created', $actor, $user);
 
-        return $user;
+            return $user;
+        }, 3);
     }
 }

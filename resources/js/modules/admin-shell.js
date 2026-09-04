@@ -31,7 +31,9 @@ export const initAdminShell = () => {
     }));
     const closeMobileSidebar = () => {
         shell.dataset.mobileSidebarOpen = 'false';
-        document.body.classList.remove('overflow-hidden');
+        if (!document.querySelector('[data-modal][data-modal-open="true"]')) {
+            document.body.classList.remove('overflow-hidden');
+        }
         document.querySelector('[data-sidebar-mobile-toggle]')?.setAttribute('aria-expanded', 'false');
     };
     document.querySelector('[data-sidebar-mobile-close]')?.addEventListener('click', closeMobileSidebar);

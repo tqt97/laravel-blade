@@ -1,10 +1,14 @@
 const localeLabels = { vi: 'Tiếng Việt', en: 'English' };
 
 export const initLanguageMenus = () => {
-    document.querySelectorAll('[data-language-menu]').forEach((menu) => {
+    const menus = [...document.querySelectorAll('[data-language-menu]')];
+    const closers = [];
+
+    menus.forEach((menu) => {
         const trigger = menu.querySelector('[data-language-trigger]');
         const options = menu.querySelector('[data-language-options]');
         const label = menu.querySelector('[data-language-label]');
+        if (!trigger || !options || !label) return;
         const stored = window.localStorage.getItem('app-locale');
         const current = localeLabels[stored] ? stored : (localeLabels[menu.dataset.locale] ? menu.dataset.locale : 'en');
         const setLocale = (locale) => {
@@ -26,10 +30,21 @@ export const initLanguageMenus = () => {
             const locale = option.dataset.locale;
             option.disabled = true;
             fetch('/locale', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content ?? '', Accept: 'application/json' }, body: JSON.stringify({ locale }) })
-                .then(() => { window.localStorage.setItem('app-locale', locale); window.location.reload(); })
-                .catch(() => { option.disabled = false; setLocale(locale); close(); });
+                .then((response) => {
+                    if (!response.ok) throw new Error(`Locale update failed: ${response.status}`);
+                    window.localStorage.setItem('app-locale', locale);
+                    window.location.reload();
+                })
+                .catch(() => { option.disabled = false; setLocale(current); close(); });
             trigger.focus();
         }));
-        document.addEventListener('click', (event) => { if (!menu.contains(event.target)) close(); });
+        closers.push({ menu, close });
+    });
+
+    if (!closers.length) return;
+    document.addEventListener('click', (event) => {
+        closers.forEach(({ menu, close }) => {
+            if (!menu.contains(event.target)) close();
+        });
     });
 };

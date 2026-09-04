@@ -10,17 +10,20 @@ use App\Actions\Admin\ForceDeleteUsers;
 use App\Actions\Admin\RestoreUser;
 use App\Actions\Admin\RestoreUsers;
 use App\Actions\Admin\UpdateUser;
+use App\DTO\AdminUserData;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\BulkDeleteUsersRequest;
 use App\Http\Requests\Admin\BulkForceDeleteUsersRequest;
 use App\Http\Requests\Admin\BulkRestoreUsersRequest;
+use App\Http\Requests\Admin\DeleteUserRequest;
+use App\Http\Requests\Admin\ForceDeleteUserRequest;
 use App\Http\Requests\Admin\IndexUserRequest;
+use App\Http\Requests\Admin\RestoreUserRequest;
 use App\Http\Requests\Admin\StoreUserRequest;
 use App\Http\Requests\Admin\UpdateUserRequest;
 use App\Models\User;
 use App\Queries\Admin\UserIndexQuery;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Http\Request;
 use Illuminate\View\View;
 
 class UserController extends Controller
@@ -41,7 +44,7 @@ class UserController extends Controller
 
     public function store(StoreUserRequest $request, CreateUser $createUser): RedirectResponse
     {
-        $createUser->execute($request->validated(), $request->user());
+        $createUser->execute(AdminUserData::fromArray($request->validated()), $request->user());
 
         return to_route('admin.users.index')->with('status', 'admin.users.messages.created');
     }
@@ -55,14 +58,13 @@ class UserController extends Controller
 
     public function update(UpdateUserRequest $request, User $user, UpdateUser $updateUser): RedirectResponse
     {
-        $updateUser->execute($user, $request->validated(), $request->user());
+        $updateUser->execute($user, AdminUserData::fromArray($request->validated()), $request->user());
 
         return to_route('admin.users.index')->with('status', 'admin.users.messages.updated');
     }
 
-    public function destroy(Request $request, User $user, DeleteUser $deleteUser): RedirectResponse
+    public function destroy(DeleteUserRequest $request, User $user, DeleteUser $deleteUser): RedirectResponse
     {
-        $this->authorize('delete', $user);
         $deleteUser->execute($user, $request->user());
 
         return to_route('admin.users.index')->with('status', 'admin.users.messages.deleted');
@@ -78,10 +80,9 @@ class UserController extends Controller
         ]);
     }
 
-    public function restore(Request $request, int $userId, RestoreUser $restoreUser): RedirectResponse
+    public function restore(RestoreUserRequest $request, int $userId, RestoreUser $restoreUser): RedirectResponse
     {
         $user = User::onlyTrashed()->findOrFail($userId);
-        $this->authorize('restore', $user);
         $restoreUser->execute($user, $request->user());
 
         return to_route('admin.users.index', ['status' => 'deleted'])->with('status', 'admin.users.messages.restored');
@@ -97,10 +98,9 @@ class UserController extends Controller
         ]);
     }
 
-    public function forceDestroy(Request $request, int $userId, ForceDeleteUser $forceDeleteUser): RedirectResponse
+    public function forceDestroy(ForceDeleteUserRequest $request, int $userId, ForceDeleteUser $forceDeleteUser): RedirectResponse
     {
         $user = User::onlyTrashed()->findOrFail($userId);
-        $this->authorize('forceDelete', $user);
         $forceDeleteUser->execute($user, $request->user());
 
         return to_route('admin.users.index', ['status' => 'deleted'])->with('status', 'admin.users.messages.force_deleted');

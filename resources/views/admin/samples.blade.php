@@ -13,9 +13,9 @@
             <x-slot:actions>
                 <x-admin.button variant="secondary" icon="plus" href="#sample-form">{{ __('ui.samples.add') }}</x-admin.button>
             </x-slot:actions>
-            <table class="min-w-full divide-y divide-neutral-100 text-left text-sm dark:divide-white/10">
+            <table class="min-w-full divide-y divide-border text-left text-sm">
                 <thead
-                    class="bg-neutral-50 text-xs uppercase tracking-wider text-neutral-500 dark:bg-white/3 dark:text-neutral-400">
+                    class="bg-muted text-xs uppercase tracking-wider text-muted-foreground">
                     <tr>
                         <th class="px-5 py-3 font-semibold">{{ __('ui.samples.students') }}</th>
                         <th class="px-5 py-3 font-semibold">{{ __('ui.samples.status') }}</th>
@@ -23,17 +23,17 @@
                         <th class="px-5 py-3 text-right font-semibold">{{ __('ui.samples.actions') }}</th>
                     </tr>
                 </thead>
-                <tbody class="divide-y divide-neutral-100 dark:divide-white/10">
+                <tbody class="divide-y divide-border">
                     @foreach ([['name' => 'Nguyễn Minh Anh', 'email' => 'minhanh@example.com', 'status' => __('ui.samples.studying'), 'date' => __('ui.samples.today')], ['name' => 'Trần Quốc Bảo', 'email' => 'quocbao@example.com', 'status' => __('ui.samples.pending'), 'date' => __('ui.samples.yesterday')]] as $student)
-                        <tr class="transition hover:bg-neutral-50/80 dark:hover:bg-white/3">
+                        <tr class="transition hover:bg-accent/50">
                             <td class="whitespace-nowrap px-5 py-4">
-                                <p class="font-medium text-neutral-900 dark:text-white">{{ $student['name'] }}</p>
-                                <p class="mt-1 text-xs text-neutral-500 dark:text-neutral-400">{{ $student['email'] }}</p>
+                                <p class="font-medium text-card-foreground">{{ $student['name'] }}</p>
+                                <p class="mt-1 text-xs text-muted-foreground">{{ $student['email'] }}</p>
                             </td>
                             <td class="px-5 py-4"><span
-                                    class="rounded-full bg-neutral-100 px-2.5 py-1 text-xs font-semibold text-neutral-700 dark:bg-white/10 dark:text-neutral-300">{{ $student['status'] }}</span>
+                                    class="rounded-full bg-muted px-2.5 py-1 text-xs font-semibold text-muted-foreground">{{ $student['status'] }}</span>
                             </td>
-                            <td class="whitespace-nowrap px-5 py-4 text-neutral-500 dark:text-neutral-400">
+                            <td class="whitespace-nowrap px-5 py-4 text-muted-foreground">
                                 {{ $student['date'] }}
                             </td>
                             <td class="px-5 py-4">
