@@ -26,6 +26,34 @@ it('redirects administrators to the admin dashboard after login', function (): v
     ])->assertRedirect(route('admin.dashboard'));
 });
 
+it('redirects regular users away from an intended admin page after login', function (string $route): void {
+    $user = User::factory()->create();
+    $this->get(route($route))->assertRedirect(route('login'));
+
+    $this->post('/login', [
+        'email' => $user->email,
+        'password' => 'password',
+    ])->assertRedirect(route('user.dashboard'))
+        ->assertSessionMissing('url.intended');
+
+    $this->assertAuthenticatedAs($user);
+})->with(['admin.home', 'admin.dashboard', 'admin.users.index']);
+
+it('preserves an accessible intended page after login', function (bool $isAdmin, string $route): void {
+    $user = User::factory()->create(['is_admin' => $isAdmin]);
+    $this->get(route($route))->assertRedirect(route('login'));
+
+    $this->post('/login', [
+        'email' => $user->email,
+        'password' => 'password',
+    ])->assertRedirect(route($route));
+
+    $this->assertAuthenticatedAs($user);
+})->with([
+    'user bookings' => [false, 'user.bookings.index'],
+    'admin users' => [true, 'admin.users.index'],
+]);
+
 it('redirects guests away from user management', function (): void {
     $this->get(route('admin.users.index'))
         ->assertRedirect(route('login'));
