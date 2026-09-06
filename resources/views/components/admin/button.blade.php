@@ -30,6 +30,7 @@
         'close' => '<path d="m6 6 12 12M18 6 6 18" />',
         'arrow-right' => '<path d="M5 12h14M13 6l6 6-6 6" />',
         'restore' => '<path d="M3 12a9 9 0 1 0 3-6.7" /><path d="M3 4v6h6" /><path d="M12 7v5l3 2" />',
+        'eye' => '<path d="M2.5 12s3.5-5 9.5-5 9.5 5 9.5 5-3.5 5-9.5 5-9.5-5-9.5-5Z" /><circle cx="12" cy="12" r="2.5" />',
         default => '',
     };
 @endphp

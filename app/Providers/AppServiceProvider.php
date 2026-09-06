@@ -2,11 +2,17 @@
 
 namespace App\Providers;
 
-use App\Booking\Models\Booking;
-use App\Booking\Policies\BookingPolicy;
+use App\Contracts\PaymentGateway;
+use App\Models\Cinema\Booking;
 use App\Models\User;
+use App\Policies\BookingPolicy;
+use App\Support\Payment\FakePaymentGateway;
+use App\Support\Payment\StripePaymentGateway;
+use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -16,7 +22,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->bind(PaymentGateway::class, fn (): PaymentGateway => filled(config('services.stripe.secret'))
+            ? new StripePaymentGateway
+            : new FakePaymentGateway);
     }
 
     /**
@@ -31,5 +39,10 @@ class AppServiceProvider extends ServiceProvider
 
         Gate::define('manage-users', fn (User $user): bool => $user->is_admin);
         Gate::policy(Booking::class, BookingPolicy::class);
+        RateLimiter::for('booking-mutations', function (Request $request): Limit {
+            $user = $request->user();
+
+            return Limit::perMinute(30)->by((string) ($user !== null ? $user->id : $request->ip()));
+        });
     }
 }

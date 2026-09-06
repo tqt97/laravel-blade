@@ -17,8 +17,6 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        $this->call(BookableResourceSeeder::class);
-
         if (! app()->environment('local', 'testing') && (! filled(config('app.seed_admin_email')) || ! filled(config('app.seed_admin_password')))) {
             throw new RuntimeException('Refusing to seed the admin account outside local/testing without SEED_ADMIN_EMAIL and SEED_ADMIN_PASSWORD.');
         }
@@ -31,6 +29,10 @@ class DatabaseSeeder extends Seeder
             'password' => Hash::make($adminPassword),
             'is_admin' => true,
         ]);
+        User::updateOrCreate(['email' => 'user@gmail.com'], [
+            'name' => 'User',
+            'password' => Hash::make('12341234'),
+        ]);
 
         $targetUsers = 10000;
         $existingUsers = User::query()->regularUsers()->count();
@@ -39,5 +41,7 @@ class DatabaseSeeder extends Seeder
         if ($remainingUsers > 0) {
             User::factory()->count($remainingUsers)->create();
         }
+
+        $this->call(CinemaSeeder::class);
     }
 }

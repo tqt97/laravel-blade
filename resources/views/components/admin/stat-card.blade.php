@@ -1,11 +1,11 @@
-@props(['label', 'value', 'delta' => null, 'positive' => true])
+@props(['label', 'value', 'icon' => null, 'delta' => null, 'positive' => true])
 
 <div class="rounded-xl border border-border bg-card p-5 transition hover:border-primary/30">
     <div class="flex items-start justify-between gap-4">
         <p class="text-sm font-medium text-muted-foreground">{{ $label }}</p>
-        <div class="flex size-10 items-center justify-center rounded-xl bg-muted text-muted-foreground">
-            {{ $icon }}
-        </div>
+        @if ($icon)
+            <div class="flex size-10 items-center justify-center rounded-xl bg-muted text-muted-foreground">{{ $icon }}</div>
+        @endif
     </div>
     <div class="mt-5 flex items-end justify-between gap-3">
         <p class="text-3xl font-semibold tracking-tight">{{ $value }}</p>

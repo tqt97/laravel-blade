@@ -4,8 +4,7 @@
             <div>
                 <h1 class="text-3xl font-semibold tracking-tight">{{ __('booking.bookings.title') }}</h1>
                 <p class="mt-2 text-sm text-muted-foreground">{{ __('booking.dashboard.history_description') }}</p>
-            </div><x-admin.button :href="route('user.bookings.create')"
-                icon="plus">{{ __('booking.bookings.create') }}</x-admin.button>
+            </div><x-admin.button :href="route('cinema.movies.index')" icon="arrow-right">{{ __('cinema.public.movies') }}</x-admin.button>
         </div>
         @if ($bookings->isEmpty())
             <div class="rounded-2xl border border-border bg-card p-8 text-center text-sm text-muted-foreground">
@@ -19,20 +18,22 @@
                                 <th class="px-5 py-4">{{ __('booking.bookings.resource') }}</th>
                                 <th class="px-5 py-4">{{ __('booking.bookings.period') }}</th>
                                 <th class="px-5 py-4">{{ __('booking.bookings.status') }}</th>
-                                <th class="px-5 py-4 text-right">{{ __('booking.bookings.actions') }}</th>
+                                <th class="whitespace-nowrap px-5 py-4 text-right">{{ __('booking.bookings.actions') }}</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-border">@foreach ($bookings as $booking)
                             <tr class="align-top">
-                                <td class="px-5 py-4 font-semibold">{{ $booking->resource?->name ?? '—' }}</td>
+                                <td class="px-5 py-4 font-semibold">{{ $booking->screening?->movie?->title ?? '—' }}</td>
                                 <td class="whitespace-nowrap px-5 py-4 text-muted-foreground">
-                                    {{ $booking->start_at->timezone(config('app.timezone'))->format('d/m/Y H:i') }}<br>{{ $booking->end_at->timezone(config('app.timezone'))->format('d/m/Y H:i') }}
+                                    {{ $booking->screening?->starts_at?->timezone($booking->screening?->room?->timezone ?? config('app.timezone'))->format('d/m/Y H:i') ?? '—' }}<br>{{ $booking->screening?->ends_at?->timezone($booking->screening?->room?->timezone ?? config('app.timezone'))->format('H:i') ?? '—' }}
                                 </td>
                                 <td class="px-5 py-4"><span
                                         class="rounded-full bg-muted px-2.5 py-1 text-xs font-semibold">{{ __('booking.status.' . $booking->status->value) }}</span>
                                 </td>
-                                <td class="px-5 py-4 text-right"><a class="font-semibold text-primary hover:underline"
-                                        href="{{ route('user.bookings.show', $booking) }}">{{ __('booking.bookings.details') }}</a>
+                                <td class="whitespace-nowrap px-5 py-4 text-right">
+                                    <x-admin.button :href="route('user.bookings.show', $booking)" variant="ghost"
+                                        icon="eye" icon-only :title="__('booking.bookings.details')"
+                                        aria-label="{{ __('booking.bookings.details') }}: {{ $booking->screening?->movie?->title ?? $booking->resource?->name ?? '—' }}" />
                                 </td>
                         </tr>@endforeach
                         </tbody>

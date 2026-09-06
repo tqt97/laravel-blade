@@ -2,9 +2,9 @@
 
 namespace Database\Factories;
 
-use App\Booking\Enums\BookingStatus;
-use App\Booking\Models\Booking;
-use App\Models\BookableResource;
+use App\Enums\Booking\BookingStatus;
+use App\Models\Cinema\Booking;
+use App\Models\Cinema\Screening;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
@@ -13,17 +13,41 @@ class BookingFactory extends Factory
 {
     protected $model = Booking::class;
 
+    public function configure(): static
+    {
+        return $this->afterMaking(function (Booking $booking): void {
+            $booking->setAttribute('status', BookingStatus::Held);
+        });
+    }
+
     public function definition(): array
     {
-        $start = now()->addDay()->startOfHour();
-
         return [
             'user_id' => User::factory(),
-            'resource_id' => BookableResource::factory(),
-            'status' => BookingStatus::Held,
-            'start_at' => $start,
-            'end_at' => $start->copy()->addHour(),
+            'screening_id' => Screening::factory(),
             'expires_at' => now()->addMinutes(10),
+            'amount_minor_units' => 100000,
+            'currency' => 'VND',
+            'subtotal_minor_units' => 100000,
+            'discount_minor_units' => 0,
+            'total_minor_units' => 100000,
+            'pricing_currency' => 'VND',
         ];
+    }
+
+    public function confirmed(): static
+    {
+        return $this->afterCreating(function (Booking $booking): void {
+            $booking->transitionTo(BookingStatus::Confirmed);
+            $booking->saveQuietly();
+        });
+    }
+
+    public function expired(): static
+    {
+        return $this->afterCreating(function (Booking $booking): void {
+            $booking->transitionTo(BookingStatus::Expired);
+            $booking->saveQuietly();
+        });
     }
 }

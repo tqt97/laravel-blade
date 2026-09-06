@@ -34,6 +34,7 @@ return [
         'reset' => 'Reset',
         'save' => 'Save changes',
         'create' => 'Create',
+        'edit' => 'Edit',
         'no_actions' => 'No actions yet',
     ],
     'modal' => [

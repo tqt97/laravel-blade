@@ -8,4 +8,5 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-Schedule::command('booking:expire-holds')->everyMinute()->withoutOverlapping();
+Schedule::command('booking:expire-holds')->everyMinute()->withoutOverlapping()->onOneServer();
+Schedule::command('app:outbox-publish')->everyMinute()->withoutOverlapping()->onOneServer();

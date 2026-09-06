@@ -35,8 +35,8 @@
                         <x-admin.nav-item :label="__('booking.nav.dashboard')" href="{{ route('user.dashboard') }}" :active="request()->routeIs('user.dashboard')">
                             <x-slot:icon><svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect width="7" height="7" x="3" y="3" rx="1" /><rect width="7" height="7" x="14" y="3" rx="1" /><rect width="7" height="7" x="3" y="14" rx="1" /><rect width="7" height="7" x="14" y="14" rx="1" /></svg></x-slot:icon>
                         </x-admin.nav-item>
-                        <x-admin.nav-item :label="__('booking.nav.resources')" href="{{ route('user.resources.index') }}" :active="request()->routeIs('user.resources.*')">
-                            <x-slot:icon><svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M8 4v16M3 9h5M3 15h5" /></svg></x-slot:icon>
+                        <x-admin.nav-item :label="__('cinema.public.movies')" href="{{ route('cinema.movies.index') }}" :active="request()->routeIs('cinema.*')">
+                            <x-slot:icon><svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="m8 4 3 4-3 4M16 4l-3 4 3 4M8 20l3-4M16 20l-3-4" /></svg></x-slot:icon>
                         </x-admin.nav-item>
                         <x-admin.nav-item :label="__('booking.nav.bookings')" href="{{ route('user.bookings.index') }}" :active="request()->routeIs('user.bookings.*')">
                             <x-slot:icon><svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M16 3v4M8 3v4M3 10h18" /></svg></x-slot:icon>

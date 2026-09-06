@@ -2,8 +2,8 @@
 
 namespace App\Models;
 
-use App\Booking\Models\Booking;
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Models\Cinema\Booking;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;

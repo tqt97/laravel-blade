@@ -2,9 +2,9 @@
 
 namespace App\Console\Commands;
 
-use App\Booking\Actions\ExpireBooking;
-use App\Booking\Enums\BookingStatus;
-use App\Booking\Models\Booking;
+use App\Actions\Booking\ExpireBooking;
+use App\Enums\Booking\BookingStatus;
+use App\Models\Cinema\Booking;
 use Illuminate\Console\Command;
 
 class ExpireBookings extends Command
@@ -15,13 +15,21 @@ class ExpireBookings extends Command
 
     public function handle(ExpireBooking $expireBooking): int
     {
+        $chunkSize = (int) $this->option('chunk');
+
+        if ($chunkSize < 1) {
+            $this->error('The chunk size must be greater than zero.');
+
+            return self::INVALID;
+        }
+
         $count = 0;
 
         Booking::query()
-            ->where('status', BookingStatus::Held->value)
-            ->where('expires_at', '<=', now())
+            ->whereIn('status', [BookingStatus::Held->value, BookingStatus::PendingPayment->value])
+            ->where('expires_at', '<=', now()->utc())
             ->orderBy('id')
-            ->chunkById((int) $this->option('chunk'), function ($bookings) use ($expireBooking, &$count): void {
+            ->chunkById($chunkSize, function ($bookings) use ($expireBooking, &$count): void {
                 foreach ($bookings as $booking) {
                     $count += (int) $expireBooking->execute($booking);
                 }

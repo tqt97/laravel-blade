@@ -34,6 +34,7 @@ return [
         'reset' => 'Đặt lại',
         'save' => 'Lưu thay đổi',
         'create' => 'Tạo mới',
+        'edit' => 'Chỉnh sửa',
         'no_actions' => 'Chưa có thao tác',
     ],
     'modal' => [

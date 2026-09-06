@@ -115,11 +115,14 @@
                         <svg data-sidebar-chevron class="size-4 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
                     </button>
                     <div data-sidebar-group-content class="mt-2 space-y-1">
-                        <x-admin.nav-item :label="__('booking.nav.resources')" href="{{ route('admin.resources.index') }}" :active="request()->routeIs('admin.resources.*')">
-                            <x-slot:icon><svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M8 4v16M3 9h5M3 15h5" /></svg></x-slot:icon>
+                        <x-admin.nav-item :label="__('cinema.admin.title')" href="{{ route('admin.cinema.index') }}" :active="request()->routeIs('admin.cinema.*')">
+                            <x-slot:icon><svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m4 5 16 0M4 19l16 0M6 5v14M18 5v14M9 8h6M9 16h6" /></svg></x-slot:icon>
                         </x-admin.nav-item>
-                        <x-admin.nav-item :label="__('booking.nav.bookings')" href="{{ route('admin.bookings.index') }}" :active="request()->routeIs('admin.bookings.*')">
+                        <x-admin.nav-item :label="__('booking.admin.bookings_title')" href="{{ route('admin.bookings.index') }}" :active="request()->routeIs('admin.bookings.*')">
                             <x-slot:icon><svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M16 3v4M8 3v4M3 10h18" /></svg></x-slot:icon>
+                        </x-admin.nav-item>
+                        <x-admin.nav-item :label="__('cinema.reports.title')" href="{{ route('admin.reports.index') }}" :active="request()->routeIs('admin.reports.*')">
+                            <x-slot:icon><svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 19V5M4 19h16" /><path d="m7 15 3-4 3 2 4-6" /></svg></x-slot:icon>
                         </x-admin.nav-item>
                     </div>
                 </div>

@@ -27,6 +27,7 @@
         <header class="mx-auto flex max-w-7xl items-center justify-between px-5 py-6 sm:px-8 lg:px-12">
             <x-ui.brand-mark />
             <div class="flex items-center gap-2">
+                <x-cinema.public-menu />
                 <x-ui.language-switcher />
                 <x-ui.theme-toggle />
                 @auth
@@ -35,8 +36,8 @@
                         icon="arrow-right">{{ __('ui.dashboard.home') }}</x-admin.button>
                 @else
                     @if (Route::has('login'))
-                        <x-admin.button href="{{ route('login') }}" variant="secondary"
-                            compact>{{ __('ui.auth_pages.login_title') }}</x-admin.button>
+                        <x-admin.button href="{{ route('login') }}" variant="secondary" icon="arrow-right" iconOnly
+                            title="{{ __('cinema.public.login') }}" compact />
                     @endif
                 @endauth
             </div>
@@ -101,12 +102,12 @@
                     <h2 class="mt-3 text-3xl font-semibold tracking-tight text-foreground">{{ __('booking.landing.title') }}</h2>
                     <p class="mt-4 text-sm leading-7 text-muted-foreground">{{ __('booking.landing.description') }}</p>
                     @auth
-                        <x-admin.button href="{{ auth()->user()->is_admin ? route('admin.bookings.index') : route('user.resources.index') }}" icon="arrow-right" class="mt-6">
+                        <x-admin.button href="{{ auth()->user()->is_admin ? route('admin.cinema.index') : route('cinema.movies.index') }}" icon="arrow-right" class="mt-6">
                             {{ __('booking.landing.cta') }}
                         </x-admin.button>
                     @else
                         @if (Route::has('login'))
-                            <x-admin.button href="{{ route('login') }}" icon="arrow-right" class="mt-6">
+                            <x-admin.button href="{{ route('cinema.movies.index') }}" icon="arrow-right" class="mt-6">
                                 {{ __('booking.landing.cta') }}
                             </x-admin.button>
                         @endif

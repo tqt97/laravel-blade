@@ -5,7 +5,7 @@
             stroke-width="2" aria-hidden="true">
             <path d="m5 12 4 4L19 6" />
         </svg>
-        <p>{{ session('status') }}</p>
+        <p>{{ __(session('status')) }}</p>
     </div>
 @endif
 

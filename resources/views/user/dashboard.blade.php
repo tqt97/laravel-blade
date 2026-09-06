@@ -8,7 +8,7 @@
             </p>
         </div>
         <div class="grid gap-4 sm:grid-cols-2">
-            <a href="{{ route('user.resources.index') }}"
+            <a href="{{ route('cinema.movies.index') }}"
                 class="rounded-2xl border border-border bg-card p-6 shadow-sm transition hover:-translate-y-0.5 hover:border-primary/50">
                 <p class="text-sm font-semibold">{{ __('booking.dashboard.browse_title') }}</p>
                 <p class="mt-2 text-sm text-muted-foreground">{{ __('booking.dashboard.browse_description') }}</p>
