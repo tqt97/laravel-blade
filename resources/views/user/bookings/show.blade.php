@@ -29,15 +29,15 @@
             </dl>@if ($booking->status->value === 'held')
                 <p class="rounded-xl bg-warning-soft p-4 text-sm text-warning-foreground">
             {{ __('booking.bookings.hold_hint', ['minutes' => config('booking.hold_minutes')]) }}</p>@endif
-            @if ($booking->items->isNotEmpty())
+            @if (in_array($booking->status->value, ['confirmed', 'completed'], true) && $booking->items->isNotEmpty())
                 <div class="border-t border-border pt-6"><h3 class="text-sm font-semibold">{{ __('cinema.tickets.title') }}</h3><div class="mt-3 grid gap-2 sm:grid-cols-2">@foreach ($booking->items as $item)<a href="{{ route('user.tickets.show', $item) }}" class="rounded-lg bg-muted p-3 text-sm hover:bg-accent"><span class="font-semibold">{{ $item->screeningSeat?->seat?->row_label }}{{ $item->screeningSeat?->seat?->seat_number }}</span><span class="ml-2 text-muted-foreground">{{ $item->ticket_code }}</span></a>@endforeach</div></div>
             @endif
             <div class="flex flex-col gap-3 border-t border-border pt-6 sm:flex-row sm:justify-end">
-                @if ($booking->status->value === 'held')
-                    <form method="POST" action="{{ route('user.bookings.pay', $booking) }}">@csrf<x-admin.button
-                type="submit" icon="save">{{ __('booking.bookings.pay') }}</x-admin.button></form>
-                    <form method="POST" action="{{ route('user.bookings.confirm', $booking) }}">@csrf<x-admin.button
-                type="submit" icon="save">{{ __('booking.bookings.confirm') }}</x-admin.button></form>@endif
+                @if (in_array($booking->status->value, ['held', 'pending_payment'], true))
+                    <x-admin.button :href="route('user.bookings.checkout', $booking)" icon="arrow-right">
+                        {{ __('booking.bookings.pay') }}
+                    </x-admin.button>
+                @endif
                 @if (in_array($booking->status->value, ['held', 'pending_payment'], true))
                     <form method="POST" action="{{ route('user.bookings.cancel', $booking) }}">@csrf
                         @method('PATCH')<x-admin.button type="submit" variant="danger"

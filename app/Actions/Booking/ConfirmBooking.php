@@ -14,6 +14,7 @@ final class ConfirmBooking
     {
         return DB::transaction(function () use ($booking): Booking {
             $booking = Booking::query()->whereKey($booking->id)->lockForUpdate()->firstOrFail();
+
             $status = BookingStatus::from((string) $booking->getRawOriginal('status'));
             $expiresAt = $booking->getRawOriginal('expires_at') !== null
                 ? CarbonImmutable::parse((string) $booking->getRawOriginal('expires_at'), 'UTC')

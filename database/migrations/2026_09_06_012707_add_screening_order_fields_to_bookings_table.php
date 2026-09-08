@@ -12,7 +12,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('bookings', function (Blueprint $table): void {
-            $table->foreignId('screening_id')->nullable()->after('resource_id')->constrained()->restrictOnDelete();
+            $table->foreign('screening_id')->references('id')->on('screenings')->restrictOnDelete();
             $table->unsignedBigInteger('subtotal_minor_units')->default(0)->after('currency');
             $table->unsignedBigInteger('discount_minor_units')->default(0)->after('subtotal_minor_units');
             $table->unsignedBigInteger('total_minor_units')->default(0)->after('discount_minor_units');

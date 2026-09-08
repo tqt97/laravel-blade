@@ -13,7 +13,9 @@ return new class extends Migration
     {
         Schema::create('payments', function (Blueprint $table): void {
             $table->id();
-            $table->foreignId('booking_id')->unique()->constrained()->cascadeOnDelete();
+            $table->string('payable_type');
+            $table->unsignedBigInteger('payable_id');
+            $table->unique(['payable_type', 'payable_id']);
             $table->string('provider', 32);
             $table->string('provider_payment_id')->nullable()->unique();
             $table->string('status', 32)->index();

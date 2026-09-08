@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Cinema\PublicCinemaController;
 use App\Http\Controllers\Webhooks\StripeWebhookController;
+use App\Models\Cinema\BookingItem;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -23,6 +24,19 @@ Route::get('/movies', [PublicCinemaController::class, 'index'])->name('cinema.mo
 Route::get('/movies/{movie:slug}', [PublicCinemaController::class, 'movie'])->name('cinema.movies.show');
 Route::get('/showtimes/{screening}', [PublicCinemaController::class, 'screening'])->name('cinema.screenings.show');
 Route::post('/showtimes/{screening}/hold', [PublicCinemaController::class, 'hold'])->middleware('throttle:booking-mutations')->name('cinema.screenings.hold');
+Route::get('/ticket-verify/{ticket}', function (string $ticket) {
+    $ticket = BookingItem::query()
+        ->with(['booking.screening.movie', 'booking.screening.room', 'screeningSeat.seat'])
+        ->where('ticket_code', $ticket)
+        ->firstOrFail();
+    abort_unless(
+        in_array($ticket->booking->getRawOriginal('status'), ['confirmed', 'completed'], true)
+        && in_array($ticket->getRawOriginal('status'), ['issued', 'checked_in'], true),
+        404,
+    );
+
+    return view('user.tickets.verify', compact('ticket'));
+})->middleware('signed')->name('user.tickets.verify');
 
 Route::post('/webhooks/stripe', StripeWebhookController::class)
     ->withoutMiddleware([ValidateCsrfToken::class])

@@ -43,7 +43,10 @@ final class HoldSeats
                 throw new SeatHoldConflict('This screening is not available for booking.');
             }
             $screeningStart = $screening->getRawOriginal('starts_at');
-            if ($screeningStart === null || now()->utc()->greaterThanOrEqualTo(CarbonImmutable::parse((string) $screeningStart, 'UTC')) || now()->utc()->addDays((int) config('booking.maximum_horizon_days'))->lessThan(CarbonImmutable::parse((string) $screeningStart, 'UTC'))) {
+            $startsAt = $screeningStart !== null ? CarbonImmutable::parse((string) $screeningStart, 'UTC') : null;
+            $minimumLeadAt = now()->utc()->addMinutes((int) config('booking.minimum_lead_minutes'));
+            $maximumBookingAt = now()->utc()->addDays((int) config('booking.maximum_horizon_days'));
+            if ($startsAt === null || $startsAt->lessThanOrEqualTo($minimumLeadAt) || $startsAt->greaterThan($maximumBookingAt)) {
                 throw new SeatHoldConflict('This screening is outside the booking window.');
             }
 
@@ -57,7 +60,7 @@ final class HoldSeats
                     $row->forceFill(['status' => ScreeningSeatStatus::Available, 'hold_token' => null, 'held_until' => null])->save();
                 }
                 if ($row->getAttribute('status') !== ScreeningSeatStatus::Available) {
-                    throw new SeatHoldConflict('One or more selected seats are no longer available.');
+                    throw new SeatHoldConflict(__('booking.validation.seats_unavailable'));
                 }
             }
             $expiresAt = $now->addMinutes((int) config('booking.hold_minutes'));

@@ -7,6 +7,7 @@ return [
     'unique' => ':attribute đã được sử dụng.',
     'boolean' => ':attribute phải là đúng hoặc sai.',
     'max' => [
+        'array' => 'Bạn chỉ được chọn tối đa :max ghế.',
         'string' => ':attribute không được vượt quá :max ký tự.',
     ],
     'attributes' => [
@@ -15,5 +16,6 @@ return [
         'description' => 'Mô tả',
         'timezone' => 'Múi giờ',
         'is_active' => 'Trạng thái hoạt động',
+        'seat_ids' => 'Danh sách ghế',
     ],
 ];

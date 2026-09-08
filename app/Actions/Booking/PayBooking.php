@@ -4,21 +4,21 @@ namespace App\Actions\Booking;
 
 use App\Contracts\PaymentGateway;
 use App\Enums\Booking\BookingStatus;
-use App\Enums\Cinema\ScreeningSeatStatus;
 use App\Enums\Payment\PaymentStatus;
 use App\Models\Cinema\Booking;
-use App\Models\Cinema\ScreeningSeat;
-use App\Models\Infrastructure\OutboxMessage;
 use App\Models\Payments\Payment;
+use App\Support\Booking\Exceptions\BookingExpired;
 use App\Support\Payment\PaymentResult;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 use RuntimeException;
 
 final class PayBooking
 {
-    public function __construct(private readonly PaymentGateway $gateway) {}
+    public function __construct(
+        private readonly PaymentGateway $gateway,
+        private readonly FinalizeSuccessfulPayment $finalizeSuccessfulPayment,
+    ) {}
 
     public function execute(Booking $booking, ?string $paymentMethodId = null): Payment
     {
@@ -27,19 +27,27 @@ final class PayBooking
             $status = BookingStatus::from((string) $booking->getRawOriginal('status'));
             if ($status === BookingStatus::Confirmed) {
                 return Payment::query()->firstOrCreate(['payable_type' => Booking::class, 'payable_id' => $booking->id], [
-                    'provider' => config('booking.payment.provider', 'fake'), 'status' => PaymentStatus::Succeeded,
-                    'amount_minor_units' => $booking->amount_minor_units, 'currency' => $booking->currency, 'paid_at' => now()->utc(),
+                    'provider' => config('booking.payment.provider', 'fake'),
+                    'status' => PaymentStatus::Succeeded,
+                    'amount_minor_units' => $booking->amount_minor_units,
+                    'currency' => $booking->currency,
+                    'paid_at' => now()->utc(),
                 ]);
             }
             if (! in_array($status, [BookingStatus::Held, BookingStatus::PendingPayment], true)) {
                 throw new RuntimeException('This booking cannot be paid.');
             }
             if ($booking->expires_at !== null && CarbonImmutable::parse($booking->getRawOriginal('expires_at'), 'UTC')->lessThanOrEqualTo(now()->utc())) {
-                throw new RuntimeException('The booking hold has expired.');
+                throw new BookingExpired('The booking hold has expired.');
             }
-            $payment = Payment::query()->firstOrCreate(['payable_type' => Booking::class, 'payable_id' => $booking->id], [
-                'provider' => config('booking.payment.provider', 'fake'), 'status' => PaymentStatus::Pending,
-                'amount_minor_units' => $booking->amount_minor_units, 'currency' => $booking->currency,
+            $payment = Payment::query()->firstOrCreate([
+                'payable_type' => Booking::class,
+                'payable_id' => $booking->id,
+            ], [
+                'provider' => config('booking.payment.provider', 'fake'),
+                'status' => PaymentStatus::Pending,
+                'amount_minor_units' => $booking->amount_minor_units,
+                'currency' => $booking->currency,
             ]);
             if ($status === BookingStatus::Held) {
                 $booking->transitionTo(BookingStatus::PendingPayment);
@@ -58,7 +66,11 @@ final class PayBooking
             $payment->save();
         }
 
-        return $this->applyResult($payment, $this->gateway->charge($payment));
+        $payment = $this->applyResult($payment, $this->gateway->charge($payment));
+
+        return $payment->getRawOriginal('status') === PaymentStatus::Succeeded->value
+            ? $this->finalizeSuccessfulPayment->execute($payment)
+            : $payment;
     }
 
     private function applyResult(Payment $payment, PaymentResult $result): Payment
@@ -73,31 +85,9 @@ final class PayBooking
             $payment->setAttribute('provider_payment_id', $result->providerPaymentId);
             $payment->setAttribute('metadata', $result->metadata);
             $payment->setAttribute('failure_message', $result->failureMessage);
+
             if ($status === PaymentStatus::Succeeded) {
                 $payment->setAttribute('paid_at', now()->utc());
-                $booking = Booking::query()->whereKey($payment->getAttribute('payable_id'))->lockForUpdate()->firstOrFail();
-                if (in_array(BookingStatus::from((string) $booking->getRawOriginal('status')), [BookingStatus::Held, BookingStatus::PendingPayment], true)) {
-                    $booking->transitionTo(BookingStatus::Confirmed);
-                    $booking->expires_at = null;
-                    $booking->save();
-                }
-                $items = $booking->items()->with('screeningSeat')->lockForUpdate()->get();
-                foreach ($items as $item) {
-                    $screeningSeat = ScreeningSeat::query()->find($item->getAttribute('screening_seat_id'));
-                    if ($screeningSeat === null) {
-                        continue;
-                    }
-                    $screeningSeat->forceFill(['status' => ScreeningSeatStatus::Sold, 'held_until' => null, 'hold_token' => null, 'sold_at' => now()->utc()])->save();
-                    if (str_starts_with((string) $item->getAttribute('ticket_code'), 'HOLD-')) {
-                        $item->setAttribute('ticket_code', strtoupper('TKT-'.Str::random(20)));
-                    }
-                    $item->setAttribute('qr_token_hash', hash('sha256', (string) $item->getAttribute('ticket_code')));
-                    $item->save();
-                }
-                OutboxMessage::query()->create([
-                    'aggregate_type' => Booking::class, 'aggregate_id' => $payment->getAttribute('payable_id'),
-                    'event_type' => 'booking.payment_succeeded', 'payload' => ['booking_id' => $payment->getAttribute('payable_id'), 'payment_id' => $payment->id],
-                ]);
             }
             $payment->save();
 

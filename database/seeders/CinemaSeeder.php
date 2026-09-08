@@ -67,7 +67,12 @@ class CinemaSeeder extends Seeder
             ['name' => 'Caramel Popcorn', 'sku' => 'POP-CARAMEL', 'price_minor_units' => 65000, 'stock' => 100],
             ['name' => 'Large Combo', 'sku' => 'COMBO-LARGE', 'price_minor_units' => 120000, 'stock' => 50],
             ['name' => 'Mineral Water', 'sku' => 'WATER-500', 'price_minor_units' => 25000, 'stock' => 200],
-        ])->map(fn (array $attributes): Concession => Concession::query()->updateOrCreate(['sku' => $attributes['sku']], $attributes + ['currency' => 'VND', 'is_active' => true]));
+        ])->map(function (array $attributes): Concession {
+            return Concession::query()->updateOrCreate(
+                ['sku' => $attributes['sku']],
+                $attributes + ['currency' => 'VND', 'is_active' => true],
+            );
+        });
 
         $this->seedDemoOrders($screenings->first(), $concessions);
     }

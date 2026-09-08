@@ -44,13 +44,13 @@ class PublishOutboxMessage implements ShouldQueue
             'booking.payment_succeeded' => Mail::to($booking->user)->send(new PaymentSucceededMail($booking)),
             default => null,
         };
-        $message->forceFill(['published_at' => now()->utc()])->save();
+        $message->forceFill(['published_at' => now()->utc(), 'claimed_at' => null])->save();
     }
 
     public function failed(Throwable $exception): void
     {
         OutboxMessage::query()->whereKey($this->outboxMessageId)->update([
-            'failed_at' => now()->utc(), 'last_error' => mb_substr($exception->getMessage(), 0, 65535),
+            'failed_at' => now()->utc(), 'claimed_at' => null, 'last_error' => mb_substr($exception->getMessage(), 0, 65535),
         ]);
     }
 }

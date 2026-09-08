@@ -3,6 +3,7 @@ import { initAdminShell } from './modules/admin-shell.js';
 import { initLanguageMenus } from './modules/language-menus.js';
 import { initUserSelection } from './modules/user-selection.js';
 import { initUserShell } from './modules/user-shell.js';
+import { initSeatPickers } from './modules/seat-picker.js';
 
 initTheme();
 initPasswordControls();
@@ -12,3 +13,4 @@ initUserShell();
 initModals();
 initUserSelection();
 initToasts();
+initSeatPickers();

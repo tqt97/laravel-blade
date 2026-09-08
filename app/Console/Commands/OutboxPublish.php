@@ -17,12 +17,34 @@ class OutboxPublish extends Command
      */
     public function handle(): int
     {
-        $messages = OutboxMessage::query()->whereNull('published_at')->whereNull('failed_at')
-            ->where('available_at', '<=', now())->oldest()->limit((int) $this->option('limit'))->get();
+        $claimBefore = now()->subHour();
+        $messages = OutboxMessage::query()
+            ->whereNull('published_at')
+            ->whereNull('failed_at')
+            ->where('available_at', '<=', now())
+            ->where(function ($query) use ($claimBefore): void {
+                $query->whereNull('claimed_at')->orWhere('claimed_at', '<=', $claimBefore);
+            })
+            ->oldest()
+            ->limit((int) $this->option('limit'))
+            ->get();
+        $claimedCount = 0;
         foreach ($messages as $message) {
-            PublishOutboxMessage::dispatch($message->id);
+            $claimed = OutboxMessage::query()
+                ->whereKey($message->id)
+                ->whereNull('published_at')
+                ->whereNull('failed_at')
+                ->where(function ($query) use ($claimBefore): void {
+                    $query->whereNull('claimed_at')->orWhere('claimed_at', '<=', $claimBefore);
+                })
+                ->update(['claimed_at' => now()->utc()]);
+
+            if ($claimed === 1) {
+                PublishOutboxMessage::dispatch($message->id);
+                $claimedCount++;
+            }
         }
-        $this->info("Dispatched {$messages->count()} outbox message(s).");
+        $this->info("Dispatched {$claimedCount} outbox message(s).");
 
         return self::SUCCESS;
     }

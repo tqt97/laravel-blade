@@ -3,15 +3,14 @@
 namespace App\Actions\Booking;
 
 use App\Enums\Booking\BookingStatus;
-use App\Enums\Cinema\ScreeningSeatStatus;
-use App\Enums\Cinema\TicketStatus;
 use App\Models\Cinema\Booking;
-use App\Models\Cinema\ScreeningSeat;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 
 final class ExpireBooking
 {
+    public function __construct(private readonly ReleaseBookingResources $resourceReleaser) {}
+
     public function execute(Booking $booking): bool
     {
         return DB::transaction(function () use ($booking): bool {
@@ -27,15 +26,8 @@ final class ExpireBooking
 
             $booking->transitionTo(BookingStatus::Expired);
             $booking->save();
-            $items = $booking->items()->with('screeningSeat')->lockForUpdate()->get();
-            foreach ($items as $item) {
-                $seat = ScreeningSeat::query()->find($item->getAttribute('screening_seat_id'));
-                if ($seat !== null && $seat->getAttribute('status') === ScreeningSeatStatus::Held) {
-                    $seat->forceFill(['status' => ScreeningSeatStatus::Available, 'hold_token' => null, 'held_until' => null])->save();
-                }
-                $item->setAttribute('status', TicketStatus::Cancelled);
-                $item->save();
-            }
+
+            $this->resourceReleaser->execute($booking);
 
             return true;
         }, 3);

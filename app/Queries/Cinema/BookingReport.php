@@ -2,6 +2,7 @@
 
 namespace App\Queries\Cinema;
 
+use App\Models\Cinema\Booking;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 
@@ -19,7 +20,14 @@ final class BookingReport
             'tickets' => (clone $tickets)->whereIn('booking_items.status', ['issued', 'checked_in'])->count(),
             'checked_in' => (clone $tickets)->where('booking_items.status', 'checked_in')->count(),
             'revenue_minor_units' => (int) (clone $base)->whereIn('status', ['confirmed', 'completed'])->sum('total_minor_units'),
-            'refunded_minor_units' => (int) DB::table('payments')->join('bookings', 'bookings.id', '=', 'payments.booking_id')->where('payments.status', 'refunded')->whereBetween('bookings.created_at', [$from, $to])->sum('payments.amount_minor_units'),
+            'refunded_minor_units' => (int) DB::table('payments')
+                ->join('bookings', function ($join): void {
+                    $join->on('bookings.id', '=', 'payments.payable_id')
+                        ->where('payments.payable_type', '=', Booking::class);
+                })
+                ->where('payments.status', 'refunded')
+                ->whereBetween('bookings.created_at', [$from, $to])
+                ->sum('payments.amount_minor_units'),
         ];
     }
 }

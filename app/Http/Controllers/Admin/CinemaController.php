@@ -4,9 +4,11 @@ namespace App\Http\Controllers\Admin;
 
 use App\Actions\Cinema\CreateScreening;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\SaveConcessionRequest;
 use App\Http\Requests\Admin\StoreMovieRequest;
 use App\Http\Requests\Admin\StoreScreeningRequest;
 use App\Http\Requests\Admin\StoreScreeningRoomRequest;
+use App\Models\Cinema\Concession;
 use App\Models\Cinema\Movie;
 use App\Models\Cinema\Screening;
 use App\Models\Cinema\ScreeningRoom;
@@ -19,6 +21,36 @@ class CinemaController extends Controller
     public function index(): View
     {
         return view('admin.cinema.index', ['movies' => Movie::query()->latest()->get(), 'rooms' => ScreeningRoom::query()->withCount('seats')->latest()->get(), 'screenings' => Screening::query()->with(['movie:id,title', 'room:id,name'])->latest('starts_at')->paginate(15)]);
+    }
+
+    public function concessions(): View
+    {
+        return view('admin.cinema.concessions', [
+            'concessions' => Concession::query()->latest()->paginate(20),
+        ]);
+    }
+
+    public function storeConcession(SaveConcessionRequest $request): RedirectResponse
+    {
+        Concession::query()->create($this->concessionAttributes($request->validated()));
+
+        return back()->with('status', 'cinema.admin.concession_created');
+    }
+
+    public function updateConcession(SaveConcessionRequest $request, Concession $concession): RedirectResponse
+    {
+        $concession->update($this->concessionAttributes($request->validated()));
+
+        return back()->with('status', 'cinema.admin.concession_updated');
+    }
+
+    /** @param array<string, mixed> $validated */
+    private function concessionAttributes(array $validated): array
+    {
+        $validated['currency'] = strtoupper((string) $validated['currency']);
+        $validated['is_active'] = (bool) ($validated['is_active'] ?? false);
+
+        return $validated;
     }
 
     public function storeMovie(StoreMovieRequest $request): RedirectResponse

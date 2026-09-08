@@ -3,9 +3,11 @@
 namespace App\Http\Controllers\Cinema;
 
 use App\Actions\Booking\HoldSeats;
+use App\Enums\Booking\BookingStatus;
 use App\Enums\Cinema\ScreeningStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\User\HoldSeatsRequest;
+use App\Models\Cinema\Booking;
 use App\Models\Cinema\Movie;
 use App\Models\Cinema\Screening;
 use App\Models\Cinema\ScreeningSeat;
@@ -19,10 +21,16 @@ use Illuminate\View\View;
 
 final class PublicCinemaController extends Controller
 {
-    public function index(): View
+    public function index(Request $request): View
     {
         $movies = Movie::query()
             ->where('is_active', true)
+            ->when($request->filled('search'), function ($query) use ($request): void {
+                $search = '%'.$request->string('search')->trim().'%';
+                $query->where(function ($query) use ($search): void {
+                    $query->where('title', 'like', $search)->orWhere('synopsis', 'like', $search);
+                });
+            })
             ->whereHas('screenings', fn ($query) => $query->where('status', ScreeningStatus::Scheduled)->where('starts_at', '>', now()->utc()))
             ->with(['screenings' => fn ($query) => $query->where('status', ScreeningStatus::Scheduled)->where('starts_at', '>', now()->utc())->orderBy('starts_at')->limit(3)])
             ->orderByDesc('release_date')->paginate(12);
@@ -44,15 +52,33 @@ final class PublicCinemaController extends Controller
         return view('cinema.movies.show', compact('movie', 'screeningSummaries'));
     }
 
-    public function screening(Screening $screening): View
+    public function screening(Request $request, Screening $screening): View
     {
         $status = ScreeningStatus::tryFrom((string) $screening->getRawOriginal('status'));
         $startsAt = CarbonImmutable::parse((string) $screening->getRawOriginal('starts_at'));
         abort_unless($status === ScreeningStatus::Scheduled && $startsAt->isFuture(), 404);
         $screening->load(['movie', 'room', 'screeningSeats.seat']);
         $seatSummary = $this->seatSummary($screening);
+        $activeHold = null;
+        $activeHoldSeatIds = [];
+        if ($request->user() !== null) {
+            $activeHold = Booking::query()
+                ->where('user_id', $request->user()->id)
+                ->where('screening_id', $screening->id)
+                ->whereIn('status', [BookingStatus::Held->value, BookingStatus::PendingPayment->value])
+                ->where('expires_at', '>', now()->utc())
+                ->latest('id')
+                ->first();
+            $activeHoldSeatIds = $activeHold?->items()
+                ->with('screeningSeat')
+                ->get()
+                ->pluck('screeningSeat.seat_id')
+                ->filter()
+                ->map(fn ($seatId): int => (int) $seatId)
+                ->all() ?? [];
+        }
 
-        return view('cinema.screenings.show', compact('screening', 'seatSummary'));
+        return view('cinema.screenings.show', compact('screening', 'seatSummary', 'activeHold', 'activeHoldSeatIds'));
     }
 
     public function hold(HoldSeatsRequest $request, Screening $screening, HoldSeats $holdSeats): RedirectResponse
@@ -97,7 +123,7 @@ final class PublicCinemaController extends Controller
             throw ValidationException::withMessages(['seat_ids' => $exception->getMessage()]);
         }
 
-        return to_route('user.bookings.show', $booking)->with('status', 'booking.messages.created');
+        return to_route('user.bookings.checkout', $booking);
     }
 
     /** @return array{available:int, total:int} */

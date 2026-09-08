@@ -118,6 +118,9 @@
                         <x-admin.nav-item :label="__('cinema.admin.title')" href="{{ route('admin.cinema.index') }}" :active="request()->routeIs('admin.cinema.*')">
                             <x-slot:icon><svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m4 5 16 0M4 19l16 0M6 5v14M18 5v14M9 8h6M9 16h6" /></svg></x-slot:icon>
                         </x-admin.nav-item>
+                        <x-admin.nav-item :label="__('cinema.admin.concessions_title')" href="{{ route('admin.cinema.concessions.index') }}" :active="request()->routeIs('admin.cinema.concessions.*')">
+                            <x-slot:icon><svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 5h16v14H4z" /><path d="M8 9h8M8 13h5" /></svg></x-slot:icon>
+                        </x-admin.nav-item>
                         <x-admin.nav-item :label="__('booking.admin.bookings_title')" href="{{ route('admin.bookings.index') }}" :active="request()->routeIs('admin.bookings.*')">
                             <x-slot:icon><svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M16 3v4M8 3v4M3 10h18" /></svg></x-slot:icon>
                         </x-admin.nav-item>

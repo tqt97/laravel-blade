@@ -1,5 +1,6 @@
 <?php
 
+use Illuminate\Foundation\DevCommands;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -10,3 +11,5 @@ Artisan::command('inspire', function () {
 
 Schedule::command('booking:expire-holds')->everyMinute()->withoutOverlapping()->onOneServer();
 Schedule::command('app:outbox-publish')->everyMinute()->withoutOverlapping()->onOneServer();
+
+DevCommands::artisan('schedule:work', 'scheduler');

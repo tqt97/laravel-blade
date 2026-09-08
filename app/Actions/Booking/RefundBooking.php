@@ -21,45 +21,68 @@ final class RefundBooking
     public function execute(Booking $booking): Payment
     {
         $payment = Payment::query()->where('payable_type', Booking::class)->where('payable_id', $booking->getKey())->firstOrFail();
-        if (PaymentStatus::from((string) $payment->getRawOriginal('status')) === PaymentStatus::Refunded) {
+
+        $paymentStatus = PaymentStatus::from((string) $payment->getRawOriginal('status'));
+        $resourcesAlreadyReleased = $paymentStatus === PaymentStatus::RequiresRefund;
+
+        if ($paymentStatus === PaymentStatus::Refunded) {
             return $payment;
         }
-        if (PaymentStatus::from((string) $payment->getRawOriginal('status')) !== PaymentStatus::Succeeded) {
+
+        if (! in_array($paymentStatus, [PaymentStatus::Succeeded, PaymentStatus::RequiresRefund], true)) {
             throw new RuntimeException('Only successful payments can be refunded.');
         }
+
         if ($booking->items()->where('status', TicketStatus::CheckedIn)->exists()) {
             throw new RuntimeException('A checked-in ticket cannot be refunded.');
         }
+
         $result = $this->gateway->refund($payment);
+
         if ($result->status !== 'refunded') {
             throw new RuntimeException($result->failureMessage ?? 'Refund failed.');
         }
 
-        return DB::transaction(function () use ($payment, $result): Payment {
+        return DB::transaction(function () use ($payment, $result, $resourcesAlreadyReleased): Payment {
             $payment = Payment::query()->whereKey($payment->id)->lockForUpdate()->firstOrFail();
+
             if (PaymentStatus::from((string) $payment->getRawOriginal('status')) === PaymentStatus::Refunded) {
                 return $payment;
             }
+
             $payment->setAttribute('status', PaymentStatus::Refunded);
             $payment->setAttribute('refunded_at', now()->utc());
             $payment->setAttribute('metadata', $result->metadata);
             $payment->save();
+
             $booking = Booking::query()->whereKey($payment->getAttribute('payable_id'))->lockForUpdate()->firstOrFail();
+
             foreach ($booking->items()->lockForUpdate()->get() as $item) {
-                $seat = ScreeningSeat::query()->whereKey($item->getAttribute('screening_seat_id'))->lockForUpdate()->first();
+                $seat = ScreeningSeat::query()
+                    ->whereKey($item->getAttribute('screening_seat_id'))
+                    ->lockForUpdate()
+                    ->first();
+
                 if ($seat !== null && $seat->getAttribute('status') === ScreeningSeatStatus::Sold) {
-                    $seat->forceFill(['status' => ScreeningSeatStatus::Available, 'sold_at' => null])->save();
+                    $seat->forceFill([
+                        'status' => ScreeningSeatStatus::Available,
+                        'sold_at' => null,
+                    ])->save();
                 }
                 $item->setAttribute('status', TicketStatus::Refunded);
                 $item->save();
             }
-            foreach ($booking->concessions()->lockForUpdate()->get() as $line) {
-                $concession = Concession::query()->find($line->getAttribute('concession_id'));
-                if ($concession !== null && $concession->getAttribute('stock') !== null) {
-                    $concession->increment('stock', (int) $line->getAttribute('quantity'));
+            if (! $resourcesAlreadyReleased) {
+                foreach ($booking->concessions()->lockForUpdate()->get() as $line) {
+                    $concession = Concession::query()->find($line->getAttribute('concession_id'));
+
+                    if ($concession !== null && $concession->getAttribute('stock') !== null) {
+                        $concession->increment('stock', (int) $line->getAttribute('quantity'));
+                    }
                 }
             }
             $bookingStatus = BookingStatus::from((string) $booking->getRawOriginal('status'));
+
             if ($bookingStatus->canTransitionTo(BookingStatus::Cancelled)) {
                 $booking->transitionTo(BookingStatus::Cancelled);
                 $booking->setAttribute('cancellation_reason', 'Payment refunded');

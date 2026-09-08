@@ -22,6 +22,6 @@ class StoreScreeningRequest extends FormRequest
      */
     public function rules(): array
     {
-        return ['movie_id' => ['required', 'integer', 'exists:movies,id'], 'screening_room_id' => ['required', 'integer', 'exists:screening_rooms,id'], 'starts_at' => ['required', 'date', 'after:now'], 'ends_at' => ['required', 'date', 'after:starts_at'], 'base_price_minor_units' => ['required', 'integer', 'min:0'], 'currency' => ['required', 'string', 'size:3']];
+        return ['movie_id' => ['required', 'integer', 'exists:movies,id'], 'screening_room_id' => ['required', 'integer', 'exists:screening_rooms,id'], 'starts_at' => ['required', 'date', 'after:now'], 'ends_at' => ['required', 'date', 'after:starts_at'], 'base_price_minor_units' => ['required', 'integer', 'min:1'], 'currency' => ['required', 'string', 'size:3']];
     }
 }

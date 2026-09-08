@@ -12,9 +12,8 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('bookings', function (Blueprint $table): void {
-            $table->foreignId('resource_id')->nullable()->change();
-            $table->dateTime('start_at')->nullable()->change();
-            $table->dateTime('end_at')->nullable()->change();
+            $table->index(['user_id', 'screening_id', 'status', 'expires_at'], 'bookings_active_hold_lookup_index');
+            $table->index('created_at', 'bookings_created_at_index');
         });
     }
 
@@ -24,9 +23,8 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('bookings', function (Blueprint $table): void {
-            $table->foreignId('resource_id')->nullable(false)->change();
-            $table->dateTime('start_at')->nullable(false)->change();
-            $table->dateTime('end_at')->nullable(false)->change();
+            $table->dropIndex('bookings_active_hold_lookup_index');
+            $table->dropIndex('bookings_created_at_index');
         });
     }
 };

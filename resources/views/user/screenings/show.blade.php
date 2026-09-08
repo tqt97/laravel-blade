@@ -1,5 +1,5 @@
 <x-layouts.user :title="$screening->movie->title">
-    <div class="mx-auto max-w-5xl space-y-8" data-seat-picker>
+    <div class="mx-auto max-w-5xl space-y-8">
         <div class="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
             <div>
                 <a href="{{ route('user.screenings.index') }}" class="text-sm font-semibold text-primary hover:underline">← {{ __('cinema.screenings.title') }}</a>
@@ -9,10 +9,20 @@
         </div>
         <x-auth.feedback />
         @error('seat_ids')<p class="rounded-xl bg-destructive/10 p-4 text-sm text-destructive">{{ $message }}</p>@enderror
-        <form method="POST" action="{{ route('user.screenings.hold', $screening) }}" class="space-y-6">
+        @if ($activeHold)
+            <div class="flex flex-col justify-between gap-4 rounded-2xl border border-primary/30 bg-primary-soft p-4 text-sm text-accent-foreground sm:flex-row sm:items-center">
+                <p><span class="font-semibold">{{ __('cinema.public.active_hold', ['count' => $activeHold->items->count()]) }}</span> {{ __('booking.bookings.hold_hint', ['minutes' => config('booking.hold_minutes')]) }}</p>
+                <x-admin.button :href="route('user.bookings.checkout', $activeHold)" icon="arrow-right" compact>{{ __('cinema.public.pay_now') }}</x-admin.button>
+            </div>
+        @endif
+        <form method="POST" action="{{ route('user.screenings.hold', $screening) }}" class="space-y-6"
+            data-seat-picker data-seat-confirm-title="{{ __('cinema.public.confirm_seats_title') }}"
+            data-seat-confirm-description="{{ __('cinema.public.confirm_seats_description') }}"
+            data-seat-confirm-label="{{ __('cinema.public.confirm_seats') }}"
+            data-seat-confirm-cancel="{{ __('ui.actions.cancel') }}">
             @csrf
             <input type="hidden" name="idempotency_key" value="{{ old('idempotency_key', (string) Str::uuid()) }}">
-            <input type="hidden" name="seat_ids[]" value="" data-seat-input>
+            <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-start">
             <section class="rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-8">
                 <div class="mx-auto mb-8 max-w-md rounded-full bg-muted py-2 text-center text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">{{ __('cinema.seats.screen') }}</div>
                 <div class="mx-auto grid max-w-2xl gap-3">
@@ -22,10 +32,18 @@
                             <div class="grid flex-1 gap-2" style="grid-template-columns: repeat({{ min(12, max(1, $seats->count())) }}, minmax(0, 1fr));">
                                 @foreach ($seats as $screeningSeat)
                                     @php($available = $screeningSeat->status === \App\Enums\Cinema\ScreeningSeatStatus::Available)
-                                    <button type="button" data-seat-id="{{ $screeningSeat->seat_id }}" @disabled(! $available)
-                                        class="aspect-square rounded-lg border text-xs font-bold transition {{ $available ? 'border-border bg-background hover:border-primary hover:bg-primary/10' : 'cursor-not-allowed border-border bg-muted text-muted-foreground line-through' }}"
+                                    @php($isOwnHold = in_array((int) $screeningSeat->seat_id, $activeHoldSeatIds, true))
+                                    <button type="button" data-seat-id="{{ $screeningSeat->seat_id }}" data-seat-label="{{ $screeningSeat->seat->row_label }}{{ $screeningSeat->seat->seat_number }}" data-seat-price="{{ $screeningSeat->price_minor_units }}" aria-pressed="false" @disabled(! $available)
+                                        class="relative aspect-square rounded-lg border text-xs font-bold transition duration-200 {{ $isOwnHold ? 'cursor-not-allowed border-primary/40 bg-primary-soft text-primary' : ($available ? 'border-border bg-background hover:border-primary hover:bg-primary/10' : 'cursor-not-allowed border-border bg-muted text-muted-foreground line-through') }}"
                                         title="{{ $screeningSeat->seat->row_label }}{{ $screeningSeat->seat->seat_number }} · {{ strtoupper($screeningSeat->seat->seat_type->value) }}">
                                         {{ $screeningSeat->seat->seat_number }}
+                                        @if ($isOwnHold)
+                                            <span class="pointer-events-none absolute right-1 top-1 text-[10px] leading-none text-primary" aria-hidden="true">✓</span>
+                                        @elseif ($available)
+                                            <span data-seat-selected-indicator class="pointer-events-none absolute right-1 top-1 hidden text-[10px] leading-none text-primary-foreground" aria-hidden="true">✓</span>
+                                        @else
+                                            <span class="pointer-events-none absolute right-1 top-1 text-[10px] leading-none" aria-hidden="true">×</span>
+                                        @endif
                                     </button>
                                 @endforeach
                             </div>
@@ -33,20 +51,29 @@
                     @endforeach
                 </div>
                 <div class="mt-8 flex flex-wrap justify-center gap-4 text-xs text-muted-foreground">
-                    <span>● {{ __('cinema.seats.available') }}</span><span class="text-muted-foreground/50">● {{ __('cinema.seats.unavailable') }}</span><span class="text-primary">● {{ __('cinema.seats.selected') }}</span>
+                    <span class="inline-flex items-center gap-1.5"><i class="size-3 rounded border border-border bg-background"></i>{{ __('cinema.seats.available') }}</span><span class="inline-flex items-center gap-1.5"><i class="size-3 rounded border border-primary/40 bg-primary-soft"></i>{{ __('cinema.seats.held_by_you') }}</span><span class="inline-flex items-center gap-1.5"><i class="grid size-3 place-items-center rounded bg-muted text-[10px] leading-none text-muted-foreground">×</i>{{ __('cinema.seats.unavailable') }}</span><span class="inline-flex items-center gap-1.5"><i class="size-3 rounded bg-primary ring-2 ring-primary/20"></i>{{ __('cinema.seats.selected') }}</span>
                 </div>
             </section>
+            <aside data-seat-summary data-currency="{{ $screening->currency }}" class="h-fit rounded-2xl border border-primary/20 bg-primary-soft/40 p-5 shadow-sm lg:sticky lg:top-24">
+                <div class="flex items-start justify-between gap-3">
+                    <div>
+                        <p class="text-xs font-semibold uppercase tracking-[0.16em] text-primary">{{ __('cinema.seats.summary') }}</p>
+                        <h2 class="mt-1 text-lg font-semibold">{{ __('cinema.seats.selected_summary') }}</h2>
+                    </div>
+                    <span class="grid size-9 place-items-center rounded-full bg-primary text-sm font-bold text-primary-foreground" data-seat-summary-count>0</span>
+                </div>
+                <div data-seat-summary-empty class="mt-6 rounded-xl border border-dashed border-primary/30 bg-card/70 p-4 text-center text-sm text-muted-foreground">{{ __('cinema.seats.summary_empty') }}</div>
+                <div data-seat-summary-seats class="mt-4 hidden max-h-52 space-y-2 overflow-y-auto"></div>
+                <div class="mt-5 flex items-end justify-between border-t border-primary/20 pt-4">
+                    <span class="text-sm text-muted-foreground">{{ __('cinema.seats.total') }}</span>
+                    <strong data-seat-summary-total class="text-xl text-primary">0 {{ $screening->currency }}</strong>
+                </div>
+            </aside>
+            </div>
             <section class="flex flex-col items-center justify-between gap-4 rounded-2xl border border-border bg-card p-5 shadow-sm sm:flex-row sm:p-6">
                 <p class="text-sm text-muted-foreground"><span data-seat-count>0</span> {{ __('cinema.seats.selected_count') }}</p>
                 <x-admin.button type="submit" icon="save" data-seat-submit disabled>{{ __('cinema.seats.hold') }}</x-admin.button>
             </section>
         </form>
     </div>
-    <script>
-        document.querySelectorAll('[data-seat-picker]').forEach((picker) => {
-            const form = picker.querySelector('form'), buttons = picker.querySelectorAll('[data-seat-id]'), count = picker.querySelector('[data-seat-count]'), submit = picker.querySelector('[data-seat-submit]');
-            const sync = () => { picker.querySelectorAll('[data-seat-input]').forEach((input) => input.remove()); const selected = [...buttons].filter((button) => button.dataset.selected === 'true'); selected.forEach((button) => { const input = document.createElement('input'); input.type = 'hidden'; input.name = 'seat_ids[]'; input.value = button.dataset.seatId; form.append(input); }); count.textContent = selected.length; submit.disabled = selected.length === 0; };
-            buttons.forEach((button) => button.addEventListener('click', () => { button.dataset.selected = button.dataset.selected !== 'true' ? 'true' : 'false'; button.classList.toggle('border-primary', button.dataset.selected === 'true'); button.classList.toggle('bg-primary/10', button.dataset.selected === 'true'); sync(); }));
-        });
-    </script>
 </x-layouts.user>
