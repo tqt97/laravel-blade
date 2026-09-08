@@ -3,12 +3,11 @@
 namespace App\Http\Controllers\User;
 
 use App\Actions\Booking\HoldSeats;
-use App\Enums\Booking\BookingStatus;
 use App\Enums\Cinema\ScreeningStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\User\HoldSeatsRequest;
-use App\Models\Cinema\Booking;
 use App\Models\Cinema\Screening;
+use App\Queries\Cinema\ScreeningBookingContextQuery;
 use App\Support\Booking\SeatHoldConflict;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
@@ -25,25 +24,13 @@ final class ScreeningController extends Controller
         return view('user.screenings.index', compact('screenings'));
     }
 
-    public function show(Screening $screening): View
+    public function show(Screening $screening, ScreeningBookingContextQuery $bookingContext): View
     {
         $startsAt = $screening->getRawOriginal('starts_at');
         abort_unless($screening->getAttribute('status') === ScreeningStatus::Scheduled && $startsAt !== null && CarbonImmutable::parse((string) $startsAt, 'UTC')->isFuture(), 404);
         $screening->load(['movie', 'room', 'screeningSeats.seat']);
-        $activeHold = Booking::query()
-            ->where('user_id', request()->user()->id)
-            ->where('screening_id', $screening->id)
-            ->whereIn('status', [BookingStatus::Held->value, BookingStatus::PendingPayment->value])
-            ->where('expires_at', '>', now()->utc())
-            ->latest('id')
-            ->first();
-        $activeHoldSeatIds = $activeHold?->items()
-            ->with('screeningSeat')
-            ->get()
-            ->pluck('screeningSeat.seat_id')
-            ->filter()
-            ->map(fn ($seatId): int => (int) $seatId)
-            ->all() ?? [];
+        $activeHold = $bookingContext->activeHold(request()->user(), $screening);
+        $activeHoldSeatIds = $bookingContext->seatIds($activeHold);
 
         return view('user.screenings.show', compact('screening', 'activeHold', 'activeHoldSeatIds'));
     }

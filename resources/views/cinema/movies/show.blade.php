@@ -4,7 +4,7 @@
             {{ __('cinema.public.movies') }}</a>
         <div class="mt-8 grid gap-8 md:grid-cols-[220px_1fr]">
             <div>@if ($movie->poster_path)<img src="{{ asset('storage/' . $movie->poster_path) }}"
-            alt="{{ $movie->title }}" class="aspect-[2/3] w-full rounded-2xl object-cover">@else<div
+            alt="{{ $movie->title }}" width="440" height="660" fetchpriority="high" decoding="async" class="aspect-[2/3] w-full rounded-2xl object-cover">@else<div
                     class="flex aspect-[2/3] items-center justify-center rounded-2xl bg-muted text-5xl">🎬</div>@endif
             </div>
             <div>
@@ -26,7 +26,7 @@
                     <p class="font-semibold">
                         {{ $screening->starts_at->timezone($screening->room->timezone)->format('D, d/m · H:i') }}</p>
                     <p class="mt-2 text-sm text-muted-foreground">{{ $screening->room->name }} ·
-                        {{ $screening->base_price_minor_units }} {{ $screening->currency }}</p>
+                        {{ \App\Support\Money\Money::fromMinorUnits((int) $screening->base_price_minor_units, strtoupper((string) $screening->currency))->format() }}</p>
                     <p
                         class="mt-3 text-sm font-medium {{ $summary['available'] > 0 ? 'text-success-foreground' : 'text-destructive' }}">
                         {{ __('cinema.public.seats_available', $summary) }}</p><span

@@ -3,10 +3,11 @@
 namespace App\Support\Payment;
 
 use App\Contracts\PaymentGateway;
+use App\Contracts\PaymentStatusRetriever;
 use App\Models\Payments\Payment;
 use Illuminate\Support\Facades\Http;
 
-final class StripePaymentGateway implements PaymentGateway
+final class StripePaymentGateway implements PaymentGateway, PaymentStatusRetriever
 {
     public function charge(Payment $payment): PaymentResult
     {
@@ -23,8 +24,15 @@ final class StripePaymentGateway implements PaymentGateway
             return new PaymentResult('failed', failureMessage: (string) ($response->json('error.message') ?? 'Stripe payment failed.'));
         }
 
+        $status = match ($response->json('status')) {
+            'succeeded' => 'succeeded',
+            'requires_action', 'requires_confirmation' => 'requires_action',
+            'processing' => 'processing',
+            default => 'failed',
+        };
+
         return new PaymentResult(
-            $response->json('status') === 'succeeded' ? 'succeeded' : 'pending',
+            $status,
             $response->json('id'),
             $response->json(),
         );
@@ -39,5 +47,25 @@ final class StripePaymentGateway implements PaymentGateway
         return $response->successful()
             ? new PaymentResult('refunded', $payment->provider_payment_id, $response->json())
             : new PaymentResult('failed', failureMessage: (string) ($response->json('error.message') ?? 'Stripe refund failed.'));
+    }
+
+    public function retrieve(string $providerPaymentId): ProviderPaymentStatus
+    {
+        $response = Http::withBasicAuth((string) config('services.stripe.secret'), '')
+            ->timeout(10)
+            ->get('https://api.stripe.com/v1/payment_intents/'.urlencode($providerPaymentId));
+        if ($response->failed()) {
+            return new ProviderPaymentStatus('unknown', $providerPaymentId, failureMessage: (string) ($response->json('error.message') ?? 'Stripe payment status unavailable.'));
+        }
+
+        $status = match ($response->json('status')) {
+            'succeeded' => 'succeeded',
+            'requires_action', 'requires_confirmation' => 'requires_action',
+            'processing' => 'processing',
+            'canceled' => 'canceled',
+            default => 'failed',
+        };
+
+        return new ProviderPaymentStatus($status, $providerPaymentId, $response->json());
     }
 }

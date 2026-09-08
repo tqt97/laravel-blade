@@ -4,11 +4,12 @@
 
 use App\Http\Controllers\Cinema\PublicCinemaController;
 use App\Http\Controllers\User\BookingController;
+use App\Http\Controllers\User\DashboardController;
 use App\Http\Controllers\User\ScreeningController;
 use App\Http\Controllers\User\TicketController;
 use Illuminate\Support\Facades\Route;
 
-Route::view('/dashboard', 'user.dashboard')->name('dashboard');
+Route::get('/dashboard', DashboardController::class)->name('dashboard');
 Route::get('/screenings', fn () => to_route('cinema.movies.index'))->name('screenings.index');
 Route::get('/cinema/hold/resume', [PublicCinemaController::class, 'resumeHold'])->name('cinema.hold.resume');
 Route::get('/screenings/{screening}', [ScreeningController::class, 'show'])->name('screenings.show');
@@ -18,6 +19,9 @@ Route::get('/bookings', [BookingController::class, 'index'])->name('bookings.ind
 Route::get('/bookings/{booking}', [BookingController::class, 'show'])->name('bookings.show');
 Route::get('/bookings/{booking}/checkout', [BookingController::class, 'checkout'])->name('bookings.checkout');
 Route::get('/bookings/{booking}/success', [BookingController::class, 'success'])->name('bookings.success');
+Route::get('/bookings/{booking}/payment-action', [BookingController::class, 'paymentAction'])->name('bookings.payment-action');
+Route::get('/bookings/{booking}/payment-status', [BookingController::class, 'paymentStatus'])->name('bookings.payment-status');
+Route::get('/bookings/{booking}/combo-availability', [BookingController::class, 'comboAvailability'])->middleware('throttle:availability')->name('bookings.combo-availability');
 Route::get('/bookings/{booking}/combos', [BookingController::class, 'combos'])->name('bookings.combos');
 Route::post('/bookings/{booking}/combos', [BookingController::class, 'addCombos'])->middleware('throttle:booking-mutations')->name('bookings.combos.store');
 Route::post('/bookings/{booking}/pay', [BookingController::class, 'pay'])->middleware('throttle:booking-mutations')->name('bookings.pay');

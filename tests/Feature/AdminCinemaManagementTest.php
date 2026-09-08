@@ -42,6 +42,7 @@ it('lets administrators manage concessions used during checkout', function (): v
         'price_minor_units' => 80000,
         'currency' => 'VND',
         'stock' => 15,
+        'stock_reason' => 'Cycle count correction',
         'is_active' => 1,
     ])->assertRedirect();
 

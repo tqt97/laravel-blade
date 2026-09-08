@@ -6,16 +6,24 @@ use App\Mail\BookingCreatedMail;
 use App\Mail\PaymentSucceededMail;
 use App\Models\Cinema\Booking;
 use App\Models\Infrastructure\OutboxMessage;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Mail;
 use Throwable;
 
-class PublishOutboxMessage implements ShouldQueue
+class PublishOutboxMessage implements ShouldBeUnique, ShouldQueue
 {
     use Queueable;
 
     public int $tries = 3;
+
+    public int $uniqueFor = 3600;
+
+    public function uniqueId(): string
+    {
+        return (string) $this->outboxMessageId;
+    }
 
     /**
      * Create a new job instance.

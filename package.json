@@ -6,6 +6,7 @@
         "build": "vite build",
         "dev": "vite",
         "lint": "eslint resources/js",
+        "test:frontend": "node --test tests/frontend/*.test.js",
         "check": "npm run lint && npm run build"
     },
     "devDependencies": {

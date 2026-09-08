@@ -56,6 +56,7 @@
             <main class="p-5 sm:p-8">{{ $slot }}</main>
         </div>
     </div>
+    @stack('scripts')
 </body>
 
 </html>

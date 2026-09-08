@@ -23,6 +23,7 @@ Route::get('/', function () {
 Route::get('/movies', [PublicCinemaController::class, 'index'])->name('cinema.movies.index');
 Route::get('/movies/{movie:slug}', [PublicCinemaController::class, 'movie'])->name('cinema.movies.show');
 Route::get('/showtimes/{screening}', [PublicCinemaController::class, 'screening'])->name('cinema.screenings.show');
+Route::get('/showtimes/{screening}/availability', [PublicCinemaController::class, 'availability'])->middleware('throttle:availability')->name('cinema.screenings.availability');
 Route::post('/showtimes/{screening}/hold', [PublicCinemaController::class, 'hold'])->middleware('throttle:booking-mutations')->name('cinema.screenings.hold');
 Route::get('/ticket-verify/{ticket}', function (string $ticket) {
     $ticket = BookingItem::query()

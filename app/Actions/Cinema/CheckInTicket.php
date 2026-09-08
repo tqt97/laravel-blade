@@ -6,22 +6,29 @@ use App\Enums\Booking\BookingStatus;
 use App\Enums\Cinema\TicketStatus;
 use App\Models\Cinema\BookingItem;
 use App\Models\Cinema\Screening;
+use App\Support\Booking\Exceptions\BookingOperationFailed;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
-use RuntimeException;
 
 final class CheckInTicket
 {
     public function execute(string $ticketCode, int $staffId): BookingItem
     {
         return DB::transaction(function () use ($ticketCode, $staffId): BookingItem {
-            $item = BookingItem::query()->where('ticket_code', $ticketCode)->lockForUpdate()->firstOrFail();
-            if ($item->getAttribute('status') !== TicketStatus::Issued) {
-                throw new RuntimeException('This ticket is not valid for check-in.');
+            $item = BookingItem::query()->where('ticket_code', $ticketCode)->first();
+            if ($item === null) {
+                throw new BookingOperationFailed(__('booking.messages.ticket_not_found'));
             }
-            $booking = $item->booking()->firstOrFail();
+            $booking = $item->booking()->lockForUpdate()->firstOrFail();
+            $item = BookingItem::query()->whereKey($item->getKey())->lockForUpdate()->firstOrFail();
+            if ($item->getAttribute('status') !== TicketStatus::Issued) {
+                throw new BookingOperationFailed(__('booking.messages.ticket_invalid_check_in'));
+            }
             if ($booking->getAttribute('status') !== BookingStatus::Confirmed) {
-                throw new RuntimeException('The booking is not confirmed.');
+                throw new BookingOperationFailed(__('booking.messages.booking_not_confirmed'));
+            }
+            if ($booking->payment?->refundAttempts()->whereIn('status', ['processing', 'unknown'])->exists()) {
+                throw new BookingOperationFailed(__('booking.messages.refund_in_progress'));
             }
             $screening = Screening::query()->find($booking->getAttribute('screening_id'));
             $startsAt = $screening !== null && $screening->getRawOriginal('starts_at') !== null
@@ -31,7 +38,7 @@ final class CheckInTicket
                 ? CarbonImmutable::parse((string) $screening->getRawOriginal('ends_at'), 'UTC')
                 : null;
             if ($startsAt === null || $endsAt === null || now()->utc()->lessThan($startsAt->subMinutes((int) config('booking.check_in_open_minutes'))) || now()->utc()->greaterThan($endsAt)) {
-                throw new RuntimeException('Check-in is not open for this screening.');
+                throw new BookingOperationFailed(__('booking.messages.check_in_closed'));
             }
             $item->setAttribute('status', TicketStatus::CheckedIn);
             $item->setAttribute('checked_in_at', now()->utc());

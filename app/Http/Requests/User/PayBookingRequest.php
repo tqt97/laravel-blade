@@ -22,6 +22,10 @@ class PayBookingRequest extends FormRequest
      */
     public function rules(): array
     {
-        return ['payment_method_id' => ['nullable', 'string', 'max:255']];
+        return [
+            'payment_method_id' => ['nullable', 'string', 'max:255'],
+            'quantities' => ['nullable', 'array'],
+            'quantities.*' => ['nullable', 'integer', 'min:0', 'max:20'],
+        ];
     }
 }

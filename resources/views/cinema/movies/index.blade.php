@@ -23,7 +23,7 @@
                         <a href="{{ route('cinema.movies.show', $movie) }}">
                             @if ($movie->poster_path)
                                 <img src="{{ asset('storage/' . $movie->poster_path) }}" alt="{{ $movie->title }}"
-                            class="aspect-[2/3] w-full object-cover">@else<div
+                            width="440" height="660" loading="lazy" decoding="async" class="aspect-[2/3] w-full object-cover">@else<div
                                     class="flex aspect-[2/3] items-center justify-center bg-muted text-5xl">🎬</div>
                                 @endif
                         </a>

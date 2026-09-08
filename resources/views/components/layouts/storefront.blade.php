@@ -30,6 +30,7 @@
         </div>
     </header>
     <main>{{ $slot }}</main>
+    @stack('scripts')
     <footer class="mt-16 border-t border-border bg-card">
         <div class="mx-auto max-w-7xl px-5 py-8 text-sm text-muted-foreground sm:px-8">
             {{ config('app.name', 'Cinema') }} · {{ __('cinema.public.footer') }}</div>

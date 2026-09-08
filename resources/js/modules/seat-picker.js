@@ -1,3 +1,5 @@
+import { formatMoney } from './money.js';
+
 export const initSeatPickers = () => {
     document.querySelectorAll('[data-seat-picker]').forEach((picker) => {
         if (picker.dataset.seatPickerInitialized === 'true') {
@@ -15,8 +17,8 @@ export const initSeatPickers = () => {
         const summaryTotal = summary?.querySelector('[data-seat-summary-total]');
         const summaryEmpty = summary?.querySelector('[data-seat-summary-empty]');
         const summarySeats = summary?.querySelector('[data-seat-summary-seats]');
+        const suggest = picker.querySelector('[data-seat-suggest]');
         const currency = summary?.dataset.currency ?? '';
-        const locale = document.documentElement.lang === 'vi' ? 'vi-VN' : 'en-US';
 
         if (!form || !count || !submit) {
             return;
@@ -34,7 +36,7 @@ export const initSeatPickers = () => {
 
             if (summary) {
                 const total = selected.reduce((sum, button) => sum + Number(button.dataset.seatPrice ?? 0), 0);
-                const formattedTotal = new Intl.NumberFormat(locale).format(total) + ' ' + currency;
+                const formattedTotal = formatMoney(total, currency);
 
                 if (summaryCount) summaryCount.textContent = String(selected.length);
                 if (summaryTotal) summaryTotal.textContent = formattedTotal.trim();
@@ -50,7 +52,7 @@ export const initSeatPickers = () => {
                         label.textContent = button.dataset.seatLabel ?? button.getAttribute('title') ?? '';
                         const price = document.createElement('span');
                         price.className = 'text-xs text-muted-foreground';
-                        price.textContent = new Intl.NumberFormat(locale).format(Number(button.dataset.seatPrice ?? 0)) + ' ' + currency;
+                        price.textContent = formatMoney(Number(button.dataset.seatPrice ?? 0), currency);
                         item.append(label, price);
 
                         return item;
@@ -72,6 +74,41 @@ export const initSeatPickers = () => {
                 const indicator = button.querySelector('[data-seat-selected-indicator]');
                 indicator?.classList.toggle('hidden', !isSelected);
             });
+        };
+        const refreshAvailability = async (signal) => {
+            const url = picker.dataset.seatAvailabilityUrl;
+            if (!url || document.hidden) return;
+            try {
+                const response = await fetch(url, { headers: { Accept: 'application/json' }, cache: 'no-store', signal });
+                if (!response.ok) return;
+                const data = await response.json();
+                let changed = false;
+                buttons.forEach((button) => {
+                    const available = data.seats?.[button.dataset.seatId] === true;
+                    if (!available && button.dataset.selected === 'true') {
+                        button.dataset.selected = 'false';
+                        changed = true;
+                    }
+                    if (!button.disabled || button.dataset.selected !== 'true') {
+                        button.disabled = !available;
+                        button.classList.toggle('cursor-not-allowed', !available);
+                        button.classList.toggle('line-through', !available);
+                    }
+                });
+                if (changed) {
+                    sync();
+                    const notice = document.createElement('p');
+                    notice.className = 'rounded-xl bg-warning-soft p-4 text-sm text-warning-foreground';
+                    notice.setAttribute('role', 'alert');
+                    notice.textContent = picker.dataset.seatConflictLabel ?? '';
+                    picker.before(notice);
+                    window.setTimeout(() => notice.remove(), 6000);
+                }
+            } catch (error) {
+                if (error.name !== 'AbortError') {
+                    picker.querySelector('[data-availability-status]')?.classList.remove('hidden');
+                }
+            }
         };
         const openConfirmation = () => {
             const selected = buttons.filter((button) => button.dataset.selected === 'true');
@@ -145,6 +182,20 @@ export const initSeatPickers = () => {
             const onKeydown = (event) => {
                 if (event.key === 'Escape') {
                     closeConfirmation();
+                    return;
+                }
+                if (event.key === 'Tab') {
+                    const focusable = [...modal.querySelectorAll('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled])')];
+                    if (focusable.length === 0) return;
+                    const first = focusable[0];
+                    const last = focusable[focusable.length - 1];
+                    if (event.shiftKey && document.activeElement === first) {
+                        event.preventDefault();
+                        last.focus();
+                    } else if (!event.shiftKey && document.activeElement === last) {
+                        event.preventDefault();
+                        first.focus();
+                    }
                 }
             };
 
@@ -179,6 +230,35 @@ export const initSeatPickers = () => {
             sync();
         }));
 
+        suggest?.addEventListener('click', () => {
+            const selectedCount = Math.max(1, buttons.filter((button) => button.dataset.selected === 'true').length);
+            const rows = [...new Set(buttons.map((button) => button.closest('.flex.items-center') ?? button.parentElement))];
+            const row = rows.find((candidate) => [...candidate.querySelectorAll('[data-seat-id]')].filter((button) => !button.disabled).length >= selectedCount);
+            const candidates = row ? [...row.querySelectorAll('[data-seat-id]')].filter((button) => !button.disabled) : buttons.filter((button) => !button.disabled);
+            buttons.forEach((button) => { button.dataset.selected = 'false'; });
+            candidates.slice(0, selectedCount).forEach((button) => { button.dataset.selected = 'true'; });
+            sync();
+        });
+
+        let availabilityTimer;
+        let availabilityController;
+        const refresh = async () => {
+            availabilityController?.abort();
+            availabilityController = new AbortController();
+            await refreshAvailability(availabilityController.signal);
+            if (!document.hidden) {
+                availabilityTimer = window.setTimeout(refresh, 10000);
+            }
+        };
+        document.addEventListener('visibilitychange', () => {
+            window.clearTimeout(availabilityTimer);
+            if (!document.hidden) void refresh();
+        });
+        window.addEventListener('pagehide', () => {
+            window.clearTimeout(availabilityTimer);
+            availabilityController?.abort();
+        }, { once: true });
         sync();
+        void refresh();
     });
 };

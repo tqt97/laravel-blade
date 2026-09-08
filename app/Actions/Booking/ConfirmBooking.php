@@ -32,7 +32,7 @@ final class ConfirmBooking
             }
 
             if (! $status->canTransitionTo(BookingStatus::Confirmed)) {
-                throw new InvalidBookingTransition('The booking cannot be confirmed from its current state.');
+                throw new InvalidBookingTransition(__('booking.messages.invalid_transition'));
             }
 
             $booking->transitionTo(BookingStatus::Confirmed);

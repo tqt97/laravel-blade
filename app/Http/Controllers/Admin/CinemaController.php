@@ -9,18 +9,25 @@ use App\Http\Requests\Admin\StoreMovieRequest;
 use App\Http\Requests\Admin\StoreScreeningRequest;
 use App\Http\Requests\Admin\StoreScreeningRoomRequest;
 use App\Models\Cinema\Concession;
+use App\Models\Cinema\ConcessionInventoryMovement;
+use App\Models\Cinema\ConcessionStockAdjustmentAudit;
 use App\Models\Cinema\Movie;
 use App\Models\Cinema\Screening;
 use App\Models\Cinema\ScreeningRoom;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 class CinemaController extends Controller
 {
     public function index(): View
     {
-        return view('admin.cinema.index', ['movies' => Movie::query()->latest()->get(), 'rooms' => ScreeningRoom::query()->withCount('seats')->latest()->get(), 'screenings' => Screening::query()->with(['movie:id,title', 'room:id,name'])->latest('starts_at')->paginate(15)]);
+        return view('admin.cinema.index', [
+            'movies' => Movie::query()->select(['id', 'title'])->latest()->paginate(20, pageName: 'movies_page'),
+            'rooms' => ScreeningRoom::query()->select(['id', 'name'])->withCount('seats')->latest()->paginate(20, pageName: 'rooms_page'),
+            'screenings' => Screening::query()->with(['movie:id,title', 'room:id,name'])->latest('starts_at')->paginate(15),
+        ]);
     }
 
     public function concessions(): View
@@ -32,14 +39,34 @@ class CinemaController extends Controller
 
     public function storeConcession(SaveConcessionRequest $request): RedirectResponse
     {
-        Concession::query()->create($this->concessionAttributes($request->validated()));
+        $data = $request->validated();
+        DB::transaction(function () use ($data, $request): void {
+            $concession = Concession::query()->create($this->concessionAttributes($data));
+            if ($concession->stock !== null) {
+                ConcessionInventoryMovement::query()->create(['concession_id' => $concession->getKey(), 'actor_id' => $request->user()->id, 'type' => 'initial', 'quantity_delta' => (int) $concession->stock, 'stock_before' => null, 'stock_after' => (int) $concession->stock, 'reference' => 'concession-'.$concession->getKey()]);
+            }
+        }, 3);
 
         return back()->with('status', 'cinema.admin.concession_created');
     }
 
     public function updateConcession(SaveConcessionRequest $request, Concession $concession): RedirectResponse
     {
-        $concession->update($this->concessionAttributes($request->validated()));
+        $data = $request->validated();
+        DB::transaction(function () use ($concession, $data): void {
+            $locked = Concession::query()->whereKey($concession->getKey())->lockForUpdate()->firstOrFail();
+            $stockBefore = $locked->stock;
+            $newStock = array_key_exists('stock', $data) ? ($data['stock'] === null ? null : (int) $data['stock']) : $stockBefore;
+            $stockDelta = ($newStock ?? 0) - ($stockBefore ?? 0);
+            if ($stockDelta !== 0 && blank($data['stock_reason'] ?? null)) {
+                throw ValidationException::withMessages(['stock_reason' => __('cinema.admin.concession_stock_reason_required')]);
+            }
+            $locked->update($this->concessionAttributes($data));
+            if ($stockDelta !== 0) {
+                ConcessionStockAdjustmentAudit::query()->create(['concession_id' => $locked->getKey(), 'actor_id' => request()->user()->id, 'quantity_delta' => $stockDelta, 'stock_before' => $stockBefore, 'stock_after' => $newStock, 'reason' => $data['stock_reason']]);
+                ConcessionInventoryMovement::query()->create(['concession_id' => $locked->getKey(), 'actor_id' => request()->user()->id, 'type' => 'adjustment', 'quantity_delta' => $stockDelta, 'stock_before' => $stockBefore, 'stock_after' => $newStock, 'reference' => 'admin-adjustment-'.$locked->getKey(), 'metadata' => ['reason' => $data['stock_reason']]]);
+            }
+        }, 3);
 
         return back()->with('status', 'cinema.admin.concession_updated');
     }
@@ -47,7 +74,9 @@ class CinemaController extends Controller
     /** @param array<string, mixed> $validated */
     private function concessionAttributes(array $validated): array
     {
+        unset($validated['stock_reason']);
         $validated['currency'] = strtoupper((string) $validated['currency']);
+        $validated['image_url'] = filled($validated['image_url'] ?? null) ? $validated['image_url'] : null;
         $validated['is_active'] = (bool) ($validated['is_active'] ?? false);
 
         return $validated;

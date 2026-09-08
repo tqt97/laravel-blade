@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['name', 'sku', 'price_minor_units', 'currency', 'stock', 'is_active'])]
+#[Fillable(['name', 'image_url', 'sku', 'price_minor_units', 'currency', 'stock', 'is_active'])]
 class Concession extends Model
 {
     use HasFactory;
@@ -22,6 +22,16 @@ class Concession extends Model
     public function bookingConcessions(): HasMany
     {
         return $this->hasMany(BookingConcession::class);
+    }
+
+    public function inventoryMovements(): HasMany
+    {
+        return $this->hasMany(ConcessionInventoryMovement::class);
+    }
+
+    public function stockAdjustmentAudits(): HasMany
+    {
+        return $this->hasMany(ConcessionStockAdjustmentAudit::class);
     }
 
     protected function casts(): array

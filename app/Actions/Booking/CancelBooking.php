@@ -23,7 +23,7 @@ final class CancelBooking
             }
 
             if ($status === BookingStatus::Confirmed) {
-                throw new InvalidBookingTransition('A paid booking must be refunded before it can be cancelled.');
+                throw new InvalidBookingTransition(__('booking.messages.paid_booking_refund_first'));
             }
 
             $booking->transitionTo(BookingStatus::Cancelled);

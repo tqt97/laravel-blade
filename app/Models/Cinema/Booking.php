@@ -91,7 +91,7 @@ class Booking extends Model
     {
         $current = BookingStatus::tryFrom((string) $this->getRawOriginal('status'));
         if ($current === null || ! $current->canTransitionTo($target)) {
-            throw new InvalidBookingTransition('The booking cannot transition to the requested state.');
+            throw new InvalidBookingTransition(__('booking.messages.invalid_transition'));
         }
         $this->setAttribute('status', $target);
     }

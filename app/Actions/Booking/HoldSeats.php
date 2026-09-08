@@ -23,7 +23,7 @@ final class HoldSeats
         $seatIds = array_values(array_unique(array_map(static fn (int|string $id): int => (int) $id, $seatIds)));
         sort($seatIds);
         if ($seatIds === []) {
-            throw new SeatHoldConflict('Select at least one seat.');
+            throw new SeatHoldConflict(__('booking.messages.select_seat'));
         }
 
         return DB::transaction(function () use ($user, $screening, $seatIds, $idempotencyKey): Booking {
@@ -32,7 +32,7 @@ final class HoldSeats
             $existing = Booking::query()->where('user_id', $user->id)->where('idempotency_key', $idempotencyKey)->first();
             if ($existing !== null) {
                 if ($existing->getAttribute('idempotency_hash') !== $hash) {
-                    throw new SeatHoldConflict('The idempotency key was already used for another seat selection.');
+                    throw new SeatHoldConflict(__('booking.messages.idempotency_key_reused'));
                 }
 
                 return $existing;
@@ -40,19 +40,19 @@ final class HoldSeats
 
             $screening = Screening::query()->whereKey($screening->id)->lockForUpdate()->firstOrFail();
             if ($screening->getAttribute('status') !== ScreeningStatus::Scheduled) {
-                throw new SeatHoldConflict('This screening is not available for booking.');
+                throw new SeatHoldConflict(__('booking.messages.screening_not_bookable'));
             }
             $screeningStart = $screening->getRawOriginal('starts_at');
             $startsAt = $screeningStart !== null ? CarbonImmutable::parse((string) $screeningStart, 'UTC') : null;
             $minimumLeadAt = now()->utc()->addMinutes((int) config('booking.minimum_lead_minutes'));
             $maximumBookingAt = now()->utc()->addDays((int) config('booking.maximum_horizon_days'));
             if ($startsAt === null || $startsAt->lessThanOrEqualTo($minimumLeadAt) || $startsAt->greaterThan($maximumBookingAt)) {
-                throw new SeatHoldConflict('This screening is outside the booking window.');
+                throw new SeatHoldConflict(__('booking.messages.screening_outside_window'));
             }
 
             $rows = ScreeningSeat::query()->where('screening_id', $screening->id)->whereIn('seat_id', $seatIds)->orderBy('seat_id')->lockForUpdate()->get();
             if ($rows->count() !== count($seatIds)) {
-                throw new SeatHoldConflict('One or more selected seats do not belong to this screening.');
+                throw new SeatHoldConflict(__('booking.messages.seats_not_in_screening'));
             }
             $now = now()->utc();
             foreach ($rows as $row) {

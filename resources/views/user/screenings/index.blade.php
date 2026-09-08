@@ -11,7 +11,7 @@
                 @foreach ($screenings as $screening)
                     <article class="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
                         @if ($screening->movie?->poster_path)
-                            <img src="{{ asset('storage/'.$screening->movie->poster_path) }}" alt="{{ $screening->movie->title }}" class="aspect-[2/3] w-full object-cover">
+                            <img src="{{ asset('storage/'.$screening->movie->poster_path) }}" alt="{{ $screening->movie->title }}" width="440" height="660" loading="lazy" decoding="async" class="aspect-[2/3] w-full object-cover">
                         @else
                             <div class="flex aspect-[2/3] items-center justify-center bg-muted text-4xl">🎬</div>
                         @endif

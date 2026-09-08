@@ -7,6 +7,7 @@ use App\Actions\Booking\RefundBooking;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\User\CancelBookingRequest;
 use App\Models\Cinema\Booking;
+use App\Support\Booking\Exceptions\BookingOperationFailed;
 use App\Support\Booking\Exceptions\InvalidBookingTransition;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Validation\ValidationException;
@@ -39,7 +40,11 @@ class BookingController extends Controller
 
     public function refund(Booking $booking, RefundBooking $refundBooking): RedirectResponse
     {
-        $refundBooking->execute($booking);
+        try {
+            $refundBooking->execute($booking);
+        } catch (BookingOperationFailed $exception) {
+            throw ValidationException::withMessages(['booking' => $exception->getMessage()]);
+        }
 
         return back()->with('status', 'booking.messages.refunded');
     }

@@ -78,7 +78,7 @@ it('preserves a guest seat selection through login before creating the hold', fu
     $response = $this->actingAs($user)->get(route('user.cinema.hold.resume'));
     $booking = $user->bookings()->where('screening_id', $screening->id)->firstOrFail();
 
-    $response->assertRedirect(route('user.bookings.checkout', $booking));
+    $response->assertRedirect(route('user.screenings.show', $screening));
 });
 
 it('sends a held booking through checkout and then to the ticket success page after payment', function (): void {
@@ -98,14 +98,47 @@ it('sends a held booking through checkout and then to the ticket success page af
         ->assertOk()
         ->assertSee('You are holding 1 seat(s) for this screening.');
     $this->actingAs($user)->get(route('user.bookings.checkout', $booking))->assertOk();
-    Concession::query()->create(['name' => 'Large Popcorn', 'sku' => 'FLOW-POPCORN', 'price_minor_units' => 75000, 'currency' => 'VND', 'stock' => 10, 'is_active' => true]);
+    $concession = Concession::query()->create(['name' => 'Large Popcorn', 'sku' => 'FLOW-POPCORN', 'price_minor_units' => 75000, 'currency' => 'VND', 'stock' => 10, 'is_active' => true]);
     $this->actingAs($user)->get(route('user.bookings.combos', $booking))->assertOk()->assertSee('Large Popcorn');
+    $this->actingAs($user)->get(route('user.bookings.checkout', $booking))->assertOk()->assertSee('Large Popcorn')->assertSee('data-combo-increase');
 
-    $paymentResponse = $this->actingAs($user)->post(route('user.bookings.pay', $booking));
+    $paymentResponse = $this->actingAs($user)->post(route('user.bookings.pay', $booking), ['quantities' => [$concession->id => 2]]);
 
     $paymentResponse->assertRedirect(route('user.bookings.success', $booking));
-    expect($booking->refresh()->status)->toBe(BookingStatus::Confirmed);
-    $this->actingAs($user)->get(route('user.bookings.success', $booking))->assertOk()->assertSee('TKT-');
+    expect($booking->refresh()->status)->toBe(BookingStatus::Confirmed)
+        ->and($booking->concessions()->firstOrFail()->quantity)->toBe(2)
+        ->and($concession->refresh()->stock)->toBe(8);
+    $this->actingAs($user)->get(route('user.bookings.success', $booking))
+        ->assertOk()
+        ->assertSee('TKT-')
+        ->assertSee('Large Popcorn')
+        ->assertSee('250,000 VND');
+    $this->actingAs($user)->get(route('user.bookings.show', $booking))
+        ->assertOk()
+        ->assertSee('Large Popcorn')
+        ->assertSee('250,000 VND');
+});
+
+it('rechecks combo stock atomically when paying and exposes live availability', function (): void {
+    $room = ScreeningRoom::factory()->create();
+    $seat = Seat::factory()->for($room, 'room')->create();
+    $screening = app(CreateScreening::class)->execute(Movie::factory()->create(), $room, now()->addDay()->toDateTimeString(), now()->addDay()->addHours(2)->toDateTimeString(), 100000);
+    $user = User::factory()->create();
+    $booking = app(HoldSeats::class)->execute($user, $screening, [$seat->id], 'combo-payment-stock');
+    $concession = Concession::query()->create(['name' => 'Limited Combo', 'sku' => 'COMBO-LIMITED', 'price_minor_units' => 50000, 'currency' => 'VND', 'stock' => 0, 'is_active' => true]);
+
+    $this->actingAs($user)->get(route('user.bookings.combo-availability', $booking))
+        ->assertOk()
+        ->assertHeader('Cache-Control', 'no-store, private')
+        ->assertJsonPath("concessions.{$concession->id}.stock", 0)
+        ->assertJsonPath("concessions.{$concession->id}.max", 0);
+
+    $this->actingAs($user)->post(route('user.bookings.pay', $booking), ['quantities' => [$concession->id => 1]])
+        ->assertSessionHasErrors('quantities');
+
+    expect($booking->refresh()->status)->toBe(BookingStatus::Held)
+        ->and($booking->payment)->toBeNull()
+        ->and($concession->refresh()->stock)->toBe(0);
 });
 
 it('converts held seats into sold tickets after payment', function (): void {
@@ -126,7 +159,7 @@ it('finalizes successful Stripe webhooks idempotently', function (): void {
     $screening = app(CreateScreening::class)->execute(Movie::factory()->create(), $room, now()->addDay()->toDateTimeString(), now()->addDay()->addHours(2)->toDateTimeString(), 100000);
     $booking = app(HoldSeats::class)->execute(User::factory()->create(), $screening, [$seat->id], 'stripe-webhook-1');
     $payment = $booking->payment()->create(['provider' => 'stripe', 'provider_payment_id' => 'pi_webhook_1', 'status' => PaymentStatus::Pending, 'amount_minor_units' => $booking->amount_minor_units, 'currency' => 'VND']);
-    $payload = ['id' => 'evt_webhook_1', 'type' => 'payment_intent.succeeded', 'data' => ['object' => ['id' => $payment->provider_payment_id]]];
+    $payload = ['id' => 'evt_webhook_1', 'type' => 'payment_intent.succeeded', 'data' => ['object' => ['id' => $payment->provider_payment_id, 'amount_received' => $payment->amount_minor_units, 'currency' => 'vnd', 'metadata' => ['payable_id' => (string) $booking->id]]]];
     $body = json_encode($payload, JSON_THROW_ON_ERROR);
     $timestamp = time();
     $signature = 't='.$timestamp.',v1='.hash_hmac('sha256', $timestamp.'.'.$body, 'whsec_test');

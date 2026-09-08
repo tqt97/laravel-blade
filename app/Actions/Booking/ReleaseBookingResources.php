@@ -6,6 +6,7 @@ use App\Enums\Cinema\ScreeningSeatStatus;
 use App\Enums\Cinema\TicketStatus;
 use App\Models\Cinema\Booking;
 use App\Models\Cinema\Concession;
+use App\Models\Cinema\ConcessionInventoryMovement;
 use App\Models\Cinema\ScreeningSeat;
 
 final class ReleaseBookingResources
@@ -43,7 +44,17 @@ final class ReleaseBookingResources
                 ->first();
 
             if ($concession !== null && $concession->getAttribute('stock') !== null) {
+                $stockBefore = (int) $concession->stock;
                 $concession->increment('stock', (int) $line->getAttribute('quantity'));
+                ConcessionInventoryMovement::query()->create([
+                    'concession_id' => $concession->getKey(),
+                    'booking_id' => $booking->getKey(),
+                    'type' => 'release',
+                    'quantity_delta' => (int) $line->getAttribute('quantity'),
+                    'stock_before' => $stockBefore,
+                    'stock_after' => $stockBefore + (int) $line->getAttribute('quantity'),
+                    'reference' => 'booking-'.$booking->getKey(),
+                ]);
             }
         }
     }
