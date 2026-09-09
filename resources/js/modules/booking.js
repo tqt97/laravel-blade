@@ -65,7 +65,7 @@ export const initComboTotals = () => {
             let selectedCount = 0;
             const amount = [...form.querySelectorAll('[data-combo-price]')].reduce((sum, input) => {
                 let quantity = Math.max(0, Number(input.value ?? 0));
-                const max = Number(input.max ?? 20);
+                const max = Number(input.max ?? 0);
                 if (quantity > max) {
                     quantity = max;
                     input.value = String(max);
@@ -96,7 +96,7 @@ export const initComboTotals = () => {
                 const current = Number(input.value ?? 0);
                 const step = button.hasAttribute('data-combo-increase') ? 1 : -1;
                 const minimum = Number(input.min ?? 0);
-                const maximum = Number(input.max ?? 20);
+                const maximum = Number(input.max ?? 0);
                 input.value = String(Math.min(maximum, Math.max(minimum, current + step)));
                 input.dispatchEvent(new Event('input', { bubbles: true }));
             });
@@ -121,7 +121,7 @@ export const initComboTotals = () => {
                     const card = input.closest('[data-combo-card]');
                     const soldOut = card?.querySelector('[data-combo-sold-out]');
                     const selected = Number(input.value ?? 0);
-                    const maximum = Number(availability.max ?? 20);
+                    const maximum = Number(availability.max ?? 0);
                     input.max = String(Math.max(selected, maximum));
                     const unavailable = Number(availability.stock) === 0 && selected === 0;
                     input.disabled = unavailable;

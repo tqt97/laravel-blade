@@ -2,14 +2,12 @@
 
 namespace App\Http\Controllers\User;
 
-use App\Actions\Booking\HoldSeats;
-use App\Enums\Cinema\ScreeningStatus;
+use App\Actions\Movie\Booking\EditBookingSelection;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\User\HoldSeatsRequest;
-use App\Models\Cinema\Screening;
-use App\Queries\Cinema\ScreeningBookingContextQuery;
+use App\Models\Movie\Screening;
+use App\Support\Booking\Exceptions\BookingOperationFailed;
 use App\Support\Booking\SeatHoldConflict;
-use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
@@ -18,29 +16,27 @@ final class ScreeningController extends Controller
 {
     public function index(): View
     {
-        $screenings = Screening::query()->where('status', 'scheduled')->where('starts_at', '>', now()->utc())
-            ->with(['movie:id,title,slug,duration_minutes,poster_path', 'room:id,name,code'])->orderBy('starts_at')->paginate(18);
+        $screenings = Screening::query()->bookable()
+            ->with(['movie:id,title,slug,duration_minutes,poster_path', 'room:id,name,code'])->orderBy('starts_at')->paginate((int) config('booking.listing.screenings_per_page'));
 
         return view('user.screenings.index', compact('screenings'));
     }
 
-    public function show(Screening $screening, ScreeningBookingContextQuery $bookingContext): View
+    public function show(Screening $screening): RedirectResponse
     {
-        $startsAt = $screening->getRawOriginal('starts_at');
-        abort_unless($screening->getAttribute('status') === ScreeningStatus::Scheduled && $startsAt !== null && CarbonImmutable::parse((string) $startsAt, 'UTC')->isFuture(), 404);
-        $screening->load(['movie', 'room', 'screeningSeats.seat']);
-        $activeHold = $bookingContext->activeHold(request()->user(), $screening);
-        $activeHoldSeatIds = $bookingContext->seatIds($activeHold);
+        $screening->load('movie');
 
-        return view('user.screenings.show', compact('screening', 'activeHold', 'activeHoldSeatIds'));
+        return to_route('cinema.screenings.show', [$screening->movie, $screening]);
     }
 
-    public function hold(HoldSeatsRequest $request, Screening $screening, HoldSeats $holdSeats): RedirectResponse
+    public function hold(HoldSeatsRequest $request, Screening $screening, EditBookingSelection $editBookingSelection): RedirectResponse
     {
         try {
-            $booking = $holdSeats->execute($request->user(), $screening, $request->validated('seat_ids'), $request->validated('idempotency_key'));
+            $booking = $editBookingSelection->execute($request->user(), $screening, $request->validated('seat_ids'), $request->validated('idempotency_key'), $request->validated('quantities', []));
         } catch (SeatHoldConflict $exception) {
             throw ValidationException::withMessages(['seat_ids' => $exception->getMessage()]);
+        } catch (BookingOperationFailed $exception) {
+            throw ValidationException::withMessages(['quantities' => $exception->getMessage()]);
         }
 
         return to_route('user.bookings.checkout', $booking);

@@ -19,14 +19,16 @@ class ReconcilePayments extends Command
     public function handle(): int
     {
         $payments = Payment::query()
-            ->whereIn('status', [PaymentStatus::Processing->value, PaymentStatus::Pending->value, PaymentStatus::RequiresAction->value])
+            ->whereIn('status', [PaymentStatus::Processing, PaymentStatus::Pending, PaymentStatus::RequiresAction])
             ->whereNotNull('provider_payment_id')
             ->oldest('updated_at')
             ->limit((int) $this->option('limit'))
             ->pluck('id');
+
         foreach ($payments as $paymentId) {
             ReconcilePayment::dispatch((int) $paymentId);
         }
+
         $this->info("Dispatched {$payments->count()} payment reconciliation job(s).");
 
         return self::SUCCESS;

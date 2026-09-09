@@ -20,10 +20,13 @@ class AlertStuckPayments extends Command
     public function handle(): int
     {
         $cutoff = CarbonImmutable::now()->subMinutes((int) config('booking.payment.processing_timeout_minutes', 15));
-        $count = Payment::query()->where('status', PaymentStatus::Processing->value)->where('processing_started_at', '<=', $cutoff)->count();
+
+        $count = Payment::query()->where('status', PaymentStatus::Processing)->where('processing_started_at', '<=', $cutoff)->count();
+
         if ($count > 0) {
             Log::warning('payments.stuck', ['count' => $count, 'cutoff' => $cutoff->toIso8601String()]);
         }
+
         $this->info("Found {$count} stuck payment(s).");
 
         return self::SUCCESS;

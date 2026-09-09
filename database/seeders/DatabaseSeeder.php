@@ -34,7 +34,7 @@ class DatabaseSeeder extends Seeder
             'password' => Hash::make('12341234'),
         ]);
 
-        $targetUsers = 10000;
+        $targetUsers = 10;
         $existingUsers = User::query()->regularUsers()->count();
         $remainingUsers = max(0, $targetUsers - $existingUsers);
 
@@ -42,6 +42,6 @@ class DatabaseSeeder extends Seeder
             User::factory()->count($remainingUsers)->create();
         }
 
-        $this->call(CinemaSeeder::class);
+        $this->call(MovieSeeder::class);
     }
 }

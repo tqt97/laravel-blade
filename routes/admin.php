@@ -1,10 +1,10 @@
 <?php
 
 use App\Http\Controllers\Admin\BookingController;
-use App\Http\Controllers\Admin\CinemaController;
+use App\Http\Controllers\Admin\MovieController;
 use App\Http\Controllers\Admin\TicketController;
 use App\Http\Controllers\Admin\UserController;
-use App\Queries\Cinema\BookingReport;
+use App\Queries\Movie\BookingReport;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Route;
 
@@ -19,13 +19,15 @@ Route::get('/reports', function (BookingReport $report) {
 
     return view('admin.reports.index', compact('summary'));
 })->name('reports.index');
-Route::get('/cinema', [CinemaController::class, 'index'])->name('cinema.index');
-Route::get('/cinema/concessions', [CinemaController::class, 'concessions'])->name('cinema.concessions.index');
-Route::post('/cinema/movies', [CinemaController::class, 'storeMovie'])->name('cinema.movies.store');
-Route::post('/cinema/rooms', [CinemaController::class, 'storeRoom'])->name('cinema.rooms.store');
-Route::post('/cinema/screenings', [CinemaController::class, 'storeScreening'])->name('cinema.screenings.store');
-Route::post('/cinema/concessions', [CinemaController::class, 'storeConcession'])->name('cinema.concessions.store');
-Route::patch('/cinema/concessions/{concession}', [CinemaController::class, 'updateConcession'])->name('cinema.concessions.update');
+Route::get('/cinema', [MovieController::class, 'index'])->name('cinema.index');
+Route::get('/cinema/concessions', [MovieController::class, 'concessions'])->name('cinema.concessions.index');
+Route::get('/cinema/coupons', [MovieController::class, 'coupons'])->name('cinema.coupons.index');
+Route::post('/cinema/movies', [MovieController::class, 'storeMovie'])->name('cinema.movies.store');
+Route::post('/cinema/rooms', [MovieController::class, 'storeRoom'])->name('cinema.rooms.store');
+Route::post('/cinema/screenings', [MovieController::class, 'storeScreening'])->name('cinema.screenings.store');
+Route::post('/cinema/concessions', [MovieController::class, 'storeConcession'])->name('cinema.concessions.store');
+Route::post('/cinema/coupons', [MovieController::class, 'storeCoupon'])->name('cinema.coupons.store');
+Route::patch('/cinema/concessions/{concession}', [MovieController::class, 'updateConcession'])->name('cinema.concessions.update');
 Route::patch('/bookings/{booking}/cancel', [BookingController::class, 'cancel'])->middleware('throttle:booking-mutations')->name('bookings.cancel');
 Route::post('/bookings/{booking}/refund', [BookingController::class, 'refund'])->middleware('throttle:booking-mutations')->name('bookings.refund');
 Route::post('/tickets/check-in', TicketController::class)->middleware('throttle:booking-mutations')->name('tickets.check-in');

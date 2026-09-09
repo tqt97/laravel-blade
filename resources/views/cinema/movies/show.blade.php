@@ -21,7 +21,7 @@
             <h2 class="text-2xl font-semibold">{{ __('cinema.public.select_showtime') }}</h2>
             <div class="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 @forelse ($movie->screenings as $screening)@php($summary = $screeningSummaries[$screening->id])<a
-                    href="{{ route('cinema.screenings.show', $screening) }}"
+                    href="{{ route('cinema.screenings.show', [$movie, $screening]) }}"
                     class="rounded-2xl border border-border bg-card p-5 transition hover:border-primary hover:shadow-md">
                     <p class="font-semibold">
                         {{ $screening->starts_at->timezone($screening->room->timezone)->format('D, d/m · H:i') }}</p>

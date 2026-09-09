@@ -18,6 +18,7 @@ class OutboxPublish extends Command
     public function handle(): int
     {
         $claimBefore = now()->subHour();
+
         $messages = OutboxMessage::query()
             ->whereNull('published_at')
             ->whereNull('failed_at')
@@ -28,7 +29,9 @@ class OutboxPublish extends Command
             ->oldest()
             ->limit((int) $this->option('limit'))
             ->get();
+
         $claimedCount = 0;
+
         foreach ($messages as $message) {
             $claimed = OutboxMessage::query()
                 ->whereKey($message->id)
@@ -44,6 +47,7 @@ class OutboxPublish extends Command
                 $claimedCount++;
             }
         }
+
         $this->info("Dispatched {$claimedCount} outbox message(s).");
 
         return self::SUCCESS;

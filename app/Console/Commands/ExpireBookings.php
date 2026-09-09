@@ -2,9 +2,8 @@
 
 namespace App\Console\Commands;
 
-use App\Actions\Booking\ExpireBooking;
-use App\Enums\Booking\BookingStatus;
-use App\Models\Cinema\Booking;
+use App\Actions\Movie\Booking\ExpireBooking;
+use App\Models\Movie\Booking;
 use Illuminate\Console\Command;
 
 class ExpireBookings extends Command
@@ -26,8 +25,7 @@ class ExpireBookings extends Command
         $count = 0;
 
         Booking::query()
-            ->whereIn('status', [BookingStatus::Held->value, BookingStatus::PendingPayment->value])
-            ->where('expires_at', '<=', now()->utc())
+            ->expiredHold()
             ->orderBy('id')
             ->chunkById($chunkSize, function ($bookings) use ($expireBooking, &$count): void {
                 foreach ($bookings as $booking) {

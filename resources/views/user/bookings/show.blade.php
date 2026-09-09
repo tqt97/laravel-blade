@@ -32,9 +32,9 @@
                     <dd class="mt-1 text-sm">
                         {{ $booking->screening?->ends_at?->timezone($booking->screening?->room?->timezone ?? config('app.timezone'))->format('d/m/Y H:i') ?? '—' }}</dd>
                 </div>
-            </dl>@if ($booking->status->value === 'held')
+            </dl>@if ($booking->status === \App\Enums\Movie\Booking\BookingStatus::Held)
                 <p class="rounded-xl bg-warning-soft p-4 text-sm text-warning-foreground">
-            {{ __('booking.bookings.hold_hint', ['minutes' => config('booking.hold_minutes')]) }}</p>@endif
+            {{ __('booking.bookings.hold_hint', ['minutes' => config('booking.limits.hold_minutes')]) }}</p>@endif
             <div class="border-t border-border pt-6">
                 <h3 class="text-sm font-semibold">{{ __('booking.bookings.schedule') }}</h3>
                 <div class="mt-3 grid gap-3 rounded-xl bg-muted p-4 text-sm sm:grid-cols-3">
@@ -55,16 +55,16 @@
             @if ($booking->concessions->isNotEmpty())
                 <div class="border-t border-border pt-6"><h3 class="text-sm font-semibold">{{ __('booking.success.combos') }}</h3><div class="mt-3 space-y-2">@foreach ($booking->concessions as $line)<div class="flex items-center justify-between gap-4 rounded-lg bg-muted p-3 text-sm"><span><span class="font-semibold">{{ $line->concession?->name ?? '—' }}</span><span class="ml-2 text-muted-foreground">× {{ $line->quantity }}</span></span><span class="font-semibold">{{ \App\Support\Money\Money::fromMinorUnits((int) $line->total_minor_units, $currency)->format() }}</span></div>@endforeach</div></div>
             @endif
-            @if (in_array($booking->status->value, ['confirmed', 'completed'], true) && $booking->items->isNotEmpty())
+            @if (in_array($booking->status, [\App\Enums\Movie\Booking\BookingStatus::Confirmed, \App\Enums\Movie\Booking\BookingStatus::Completed], true) && $booking->items->isNotEmpty())
                 <div class="border-t border-border pt-6"><h3 class="text-sm font-semibold">{{ __('cinema.tickets.title') }}</h3><div class="mt-3 grid gap-2 sm:grid-cols-2">@foreach ($booking->items as $item)<a href="{{ route('user.tickets.show', $item) }}" class="rounded-lg bg-muted p-3 text-sm hover:bg-accent"><span class="font-semibold">{{ $item->screeningSeat?->seat?->row_label }}{{ $item->screeningSeat?->seat?->seat_number }}</span><span class="ml-2 text-muted-foreground">{{ $item->ticket_code }}</span></a>@endforeach</div></div>
             @endif
             <div class="flex flex-col gap-3 border-t border-border pt-6 sm:flex-row sm:justify-end">
-                @if (in_array($booking->status->value, ['held', 'pending_payment'], true))
+                @if (in_array($booking->status, [\App\Enums\Movie\Booking\BookingStatus::Held, \App\Enums\Movie\Booking\BookingStatus::PendingPayment], true))
                     <x-admin.button :href="route('user.bookings.checkout', $booking)" icon="arrow-right">
                         {{ __('booking.bookings.pay') }}
                     </x-admin.button>
                 @endif
-                @if (in_array($booking->status->value, ['held', 'pending_payment'], true) && auth()->user()->can('cancel', $booking))
+                @if (in_array($booking->status, [\App\Enums\Movie\Booking\BookingStatus::Held, \App\Enums\Movie\Booking\BookingStatus::PendingPayment], true) && auth()->user()->can('cancel', $booking))
                     <button type="button" data-modal-open="cancel-booking-modal" data-modal-action="{{ route('user.bookings.cancel', $booking) }}" data-modal-method="PATCH" class="ui-action inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-destructive px-3.5 py-2 text-sm font-semibold text-destructive-foreground shadow-sm transition hover:brightness-95">{{ __('booking.bookings.cancel') }}</button>
                 @endif
             </div>

@@ -2,19 +2,21 @@
 
 namespace App\Http\Controllers\User;
 
-use App\Actions\Booking\CancelBooking;
-use App\Actions\Booking\ExpireBooking;
-use App\Actions\Booking\PayBooking;
-use App\Actions\Cinema\AddConcessions;
-use App\Enums\Booking\BookingStatus;
+use App\Actions\Movie\Booking\ApplyCoupon;
+use App\Actions\Movie\Booking\CancelBooking;
+use App\Actions\Movie\Booking\ExpireBooking;
+use App\Actions\Movie\Booking\PayBooking;
+use App\Actions\Movie\Concessions\AddConcessions;
+use App\Enums\Movie\Booking\BookingStatus;
 use App\Enums\Payment\PaymentStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\User\AddConcessionsRequest;
+use App\Http\Requests\User\ApplyCouponRequest;
 use App\Http\Requests\User\CancelBookingRequest;
 use App\Http\Requests\User\PayBookingRequest;
-use App\Models\Cinema\Booking;
-use App\Models\Cinema\Concession;
-use App\Queries\Cinema\UserBookingsQuery;
+use App\Models\Movie\Booking;
+use App\Models\Movie\Concession;
+use App\Queries\Movie\UserBookingsQuery;
 use App\Support\Booking\Exceptions\BookingExpired;
 use App\Support\Booking\Exceptions\BookingOperationFailed;
 use App\Support\Booking\Exceptions\InvalidBookingTransition;
@@ -39,23 +41,25 @@ final class BookingController extends Controller
         return view('user.bookings.show', compact('booking'));
     }
 
-    public function checkout(Booking $booking, ExpireBooking $expireBooking): View|RedirectResponse
+    public function checkout(Booking $booking, ExpireBooking $expireBooking): View
     {
         $this->authorize('view', $booking);
         abort_unless(in_array((string) $booking->getRawOriginal('status'), [BookingStatus::Held->value, BookingStatus::PendingPayment->value], true), 404);
         $expiresAt = $booking->getRawOriginal('expires_at');
         if ($expiresAt !== null && CarbonImmutable::parse((string) $expiresAt, 'UTC')->isPast()) {
+            $booking->load(['screening.movie', 'screening.room']);
             $expireBooking->execute($booking);
+            $canRebook = $booking->screening?->isBookable() === true;
 
-            return to_route('user.bookings.show', $booking)->withErrors(['booking' => __('booking.messages.expired')]);
+            return view('user.bookings.expired', compact('booking', 'canRebook'));
         }
         $booking->load(['screening.movie', 'screening.room', 'items.screeningSeat.seat', 'concessions.concession']);
         $concessions = Concession::query()
-            ->where('is_active', true)
-            ->where('currency', strtoupper((string) ($booking->pricing_currency ?? $booking->currency)))
+            ->active()
+            ->forCurrency((string) ($booking->pricing_currency ?? $booking->currency))
             ->select(['id', 'name', 'image_url', 'price_minor_units', 'currency', 'stock'])
             ->orderBy('name')
-            ->limit(60)
+            ->limit((int) config('booking.listing.concessions_per_page'))
             ->get();
 
         return view('user.bookings.checkout', compact('booking', 'concessions'));
@@ -75,7 +79,7 @@ final class BookingController extends Controller
         $this->authorize('confirm', $booking);
         $payment = $booking->payment;
         abort_unless($payment !== null, 404);
-        abort_unless(in_array((string) $payment->getRawOriginal('status'), [PaymentStatus::RequiresAction->value, PaymentStatus::Pending->value, PaymentStatus::Processing->value], true), 404);
+        abort_unless(in_array((string) $payment->getRawOriginal('status'), [PaymentStatus::RequiresAction->value, PaymentStatus::Pending->value, PaymentStatus::Processing->value, PaymentStatus::Unknown->value], true), 404);
         $metadata = $payment->getAttribute('metadata');
 
         return view('user.bookings.payment-action', [
@@ -96,14 +100,14 @@ final class BookingController extends Controller
 
     public function comboAvailability(Booking $booking): JsonResponse
     {
-        $this->authorize('confirm', $booking);
+        $this->authorize('changeCombos', $booking);
         abort_unless($booking->getRawOriginal('status') === BookingStatus::Held->value, 404);
 
         $selectedQuantities = $booking->concessions()->pluck('quantity', 'concession_id');
         $currency = strtoupper((string) ($booking->pricing_currency ?? $booking->currency));
         $availability = Concession::query()
-            ->where('is_active', true)
-            ->where('currency', $currency)
+            ->active()
+            ->forCurrency($currency)
             ->select(['id', 'stock'])
             ->get(['id', 'stock'])
             ->mapWithKeys(function (Concession $concession) use ($selectedQuantities): array {
@@ -113,7 +117,7 @@ final class BookingController extends Controller
                 return [(string) $concession->getKey() => [
                     'stock' => $stock,
                     'selected' => $selected,
-                    'max' => $stock === null ? 20 : min(20, $selected + (int) $stock),
+                    'max' => $stock === null ? (int) config('booking.limits.max_combo_quantity') : min((int) config('booking.limits.max_combo_quantity'), $selected + (int) $stock),
                 ]];
             });
 
@@ -129,19 +133,31 @@ final class BookingController extends Controller
         abort_unless($booking->getRawOriginal('status') === BookingStatus::Held->value, 404);
         $booking->load(['screening.movie', 'screening.room', 'items.screeningSeat.seat', 'concessions.concession']);
         $concessions = Concession::query()
-            ->where('is_active', true)
-            ->where('currency', strtoupper((string) ($booking->pricing_currency ?? $booking->currency)))
+            ->active()
+            ->forCurrency((string) ($booking->pricing_currency ?? $booking->currency))
             ->select(['id', 'name', 'image_url', 'price_minor_units', 'currency', 'stock'])
             ->orderBy('name')
-            ->limit(60)
+            ->limit((int) config('booking.listing.concessions_per_page'))
             ->get();
 
         return view('user.bookings.combos', compact('booking', 'concessions'));
     }
 
+    public function applyCoupon(ApplyCouponRequest $request, Booking $booking, ApplyCoupon $applyCoupon): RedirectResponse
+    {
+        $this->authorize('pay', $booking);
+        try {
+            $applyCoupon->execute($booking, $request->validated('code'));
+        } catch (BookingOperationFailed $exception) {
+            throw ValidationException::withMessages(['code' => $exception->getMessage()]);
+        }
+
+        return to_route('user.bookings.checkout', $booking)->with('status', 'booking.messages.coupon_applied');
+    }
+
     public function addCombos(AddConcessionsRequest $request, Booking $booking, AddConcessions $addConcessions): RedirectResponse
     {
-        $this->authorize('confirm', $booking);
+        $this->authorize('changeCombos', $booking);
         try {
             $addConcessions->execute($booking, $request->validated('quantities', []));
         } catch (BookingOperationFailed $exception) {
@@ -170,7 +186,7 @@ final class BookingController extends Controller
 
     public function pay(PayBookingRequest $request, Booking $booking, PayBooking $payBooking, ExpireBooking $expireBooking): RedirectResponse
     {
-        $this->authorize('confirm', $booking);
+        $this->authorize('pay', $booking);
 
         try {
             $payment = $payBooking->execute(
@@ -187,7 +203,7 @@ final class BookingController extends Controller
         }
 
         $paymentStatus = (string) $payment->getRawOriginal('status');
-        if ($paymentStatus === PaymentStatus::RequiresAction->value || in_array($paymentStatus, [PaymentStatus::Pending->value, PaymentStatus::Processing->value], true)) {
+        if ($paymentStatus === PaymentStatus::RequiresAction->value || in_array($paymentStatus, [PaymentStatus::Pending->value, PaymentStatus::Processing->value, PaymentStatus::Unknown->value], true)) {
             return to_route('user.bookings.payment-action', $booking);
         }
         if ($paymentStatus !== PaymentStatus::Succeeded->value) {

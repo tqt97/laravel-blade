@@ -20,6 +20,7 @@
                 <x-ui.language-switcher />
                 <x-ui.theme-toggle />
                 @auth
+                    <x-ui.notification-bell />
                     <x-admin.button href="{{ route('user.dashboard') }}" icon="eye" iconOnly
                         title="{{ __('cinema.public.my_account') }}" compact />
                 @else

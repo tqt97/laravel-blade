@@ -2,6 +2,7 @@
 
 namespace App\Models\Payments;
 
+use App\Enums\Payment\PaymentAttemptStatus;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -16,6 +17,12 @@ class PaymentAttempt extends Model
 
     protected function casts(): array
     {
-        return ['amount_minor_units' => 'integer', 'metadata' => 'array', 'started_at' => 'immutable_datetime', 'completed_at' => 'immutable_datetime'];
+        return [
+            'status' => PaymentAttemptStatus::class,
+            'amount_minor_units' => 'integer',
+            'metadata' => 'array',
+            'started_at' => 'immutable_datetime',
+            'completed_at' => 'immutable_datetime',
+        ];
     }
 }

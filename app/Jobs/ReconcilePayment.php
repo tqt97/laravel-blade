@@ -2,8 +2,9 @@
 
 namespace App\Jobs;
 
-use App\Actions\Booking\FinalizeSuccessfulPayment;
+use App\Actions\Movie\Booking\FinalizeSuccessfulPayment;
 use App\Contracts\PaymentStatusRetriever;
+use App\Enums\Payment\PaymentAttemptStatus;
 use App\Enums\Payment\PaymentStatus;
 use App\Models\Payments\Payment;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -49,6 +50,13 @@ class ReconcilePayment implements ShouldQueue
                 'processing_started_at' => $status === PaymentStatus::Succeeded || $status === PaymentStatus::Failed ? null : $locked->processing_started_at,
                 'paid_at' => $status === PaymentStatus::Succeeded ? now()->utc() : $locked->paid_at,
             ])->save();
+            $locked->syncLatestAttempt(match ($status) {
+                PaymentStatus::Succeeded => PaymentAttemptStatus::Succeeded,
+                PaymentStatus::RequiresAction => PaymentAttemptStatus::RequiresAction,
+                PaymentStatus::Pending => PaymentAttemptStatus::Processing,
+                PaymentStatus::Failed => PaymentAttemptStatus::Failed,
+                default => PaymentAttemptStatus::Unknown,
+            }, $providerStatus->providerPaymentId, $providerStatus->failureMessage);
 
             return $locked->refresh();
         }, 3);

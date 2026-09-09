@@ -3,6 +3,7 @@ import { initAdminShell } from './modules/admin-shell.js';
 import { initLanguageMenus } from './modules/language-menus.js';
 import { initUserSelection } from './modules/user-selection.js';
 import { initUserShell } from './modules/user-shell.js';
+import { initNotificationBells } from './modules/notification-bell.js';
 
 initTheme();
 initPasswordControls();
@@ -12,6 +13,7 @@ initUserShell();
 initModals();
 initUserSelection();
 initToasts();
+initNotificationBells();
 if (document.querySelector('[data-seat-picker]')) {
     import('./modules/seat-picker.js').then(({ initSeatPickers }) => initSeatPickers());
 }

@@ -25,7 +25,7 @@ class PayBookingRequest extends FormRequest
         return [
             'payment_method_id' => ['nullable', 'string', 'max:255'],
             'quantities' => ['nullable', 'array'],
-            'quantities.*' => ['nullable', 'integer', 'min:0', 'max:20'],
+            'quantities.*' => ['nullable', 'integer', 'min:0', 'max:'.config('booking.limits.max_combo_quantity')],
         ];
     }
 }

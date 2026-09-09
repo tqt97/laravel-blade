@@ -14,6 +14,10 @@ class LoginResponse implements LoginResponseContract
      */
     public function toResponse(mixed $request): RedirectResponse
     {
+        if (! $request->user()->is_admin && $request->session()->has('cinema.pending_hold')) {
+            return redirect()->route('user.cinema.hold.resume');
+        }
+
         $route = $request->user()->is_admin ? 'admin.dashboard' : 'user.dashboard';
 
         $intendedPath = parse_url((string) $request->session()->get('url.intended', ''), PHP_URL_PATH);

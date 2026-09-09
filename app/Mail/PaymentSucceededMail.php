@@ -2,7 +2,7 @@
 
 namespace App\Mail;
 
-use App\Models\Cinema\Booking;
+use App\Models\Movie\Booking;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Mail\Mailable;

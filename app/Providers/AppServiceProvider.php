@@ -4,9 +4,9 @@ namespace App\Providers;
 
 use App\Contracts\PaymentGateway;
 use App\Contracts\PaymentStatusRetriever;
-use App\Models\Cinema\Booking;
+use App\Models\Movie\Booking;
 use App\Models\User;
-use App\Policies\BookingPolicy;
+use App\Policies\Movie\BookingPolicy;
 use App\Support\Payment\FakePaymentGateway;
 use App\Support\Payment\StripePaymentGateway;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -30,9 +30,9 @@ class AppServiceProvider extends ServiceProvider
             ? new StripePaymentGateway
             : new FakePaymentGateway);
         $this->app->bind(PaymentStatusRetriever::class, function (): PaymentStatusRetriever {
-            $gateway = app(PaymentGateway::class);
-
-            return $gateway instanceof PaymentStatusRetriever ? $gateway : new FakePaymentGateway;
+            return filled(config('services.stripe.secret'))
+                ? new StripePaymentGateway
+                : new FakePaymentGateway;
         });
     }
 

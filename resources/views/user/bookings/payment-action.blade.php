@@ -11,10 +11,10 @@
         <section class="rounded-2xl border border-border bg-card p-6 shadow-sm sm:p-8">
             <div class="mx-auto grid size-14 place-items-center rounded-full bg-warning-soft text-warning-foreground">!</div>
             <h1 class="mt-5 text-center text-2xl font-semibold tracking-tight">
-                {{ $payment->getRawOriginal('status') === 'requires_action' ? __('booking.checkout.payment_action_title') : __('booking.checkout.payment_pending_title') }}
+                {{ $payment->status === \App\Enums\Payment\PaymentStatus::Unknown ? __('booking.checkout.payment_unknown_title') : ($payment->status === \App\Enums\Payment\PaymentStatus::RequiresAction ? __('booking.checkout.payment_action_title') : __('booking.checkout.payment_pending_title')) }}
             </h1>
             <p class="mt-3 text-center text-sm leading-6 text-muted-foreground">
-                {{ $payment->getRawOriginal('status') === 'requires_action' ? __('booking.checkout.payment_action_description') : __('booking.checkout.payment_pending_description') }}
+                {{ $payment->status === \App\Enums\Payment\PaymentStatus::Unknown ? __('booking.checkout.payment_unknown_description') : ($payment->status === \App\Enums\Payment\PaymentStatus::RequiresAction ? __('booking.checkout.payment_action_description') : __('booking.checkout.payment_pending_description')) }}
             </p>
             @if ($clientSecret)
                 <button type="button" data-stripe-confirm aria-busy="false" class="mt-6 inline-flex w-full items-center justify-center rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90">

@@ -2,6 +2,7 @@
 
 namespace App\Models\Payments;
 
+use App\Enums\Payment\RefundAttemptStatus;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -16,6 +17,11 @@ class RefundAttempt extends Model
 
     protected function casts(): array
     {
-        return ['metadata' => 'array', 'started_at' => 'immutable_datetime', 'completed_at' => 'immutable_datetime'];
+        return [
+            'status' => RefundAttemptStatus::class,
+            'metadata' => 'array',
+            'started_at' => 'immutable_datetime',
+            'completed_at' => 'immutable_datetime',
+        ];
     }
 }

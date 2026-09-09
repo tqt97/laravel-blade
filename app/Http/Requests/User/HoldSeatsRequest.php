@@ -22,6 +22,12 @@ class HoldSeatsRequest extends FormRequest
      */
     public function rules(): array
     {
-        return ['seat_ids' => ['required', 'array', 'min:1', 'max:10'], 'seat_ids.*' => ['required', 'integer', 'distinct'], 'idempotency_key' => ['required', 'string', 'max:128']];
+        return [
+            'seat_ids' => ['required', 'array', 'min:1', 'max:'.config('booking.limits.max_seats')],
+            'seat_ids.*' => ['required', 'integer', 'distinct'],
+            'idempotency_key' => ['required', 'string', 'max:128'],
+            'quantities' => ['nullable', 'array'],
+            'quantities.*' => ['nullable', 'integer', 'min:0', 'max:'.config('booking.limits.max_combo_quantity')],
+        ];
     }
 }

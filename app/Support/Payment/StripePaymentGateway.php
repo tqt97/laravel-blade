@@ -16,8 +16,10 @@ final class StripePaymentGateway implements PaymentGateway, PaymentStatusRetriev
         if (is_array($metadata) && filled($metadata['payment_method_id'] ?? null)) {
             $parameters['payment_method'] = $metadata['payment_method_id'];
         }
+        $attemptKey = $payment->attempts()->latest('id')->value('attempt_key')
+            ?: 'booking-payment-'.$payment->id;
         $response = Http::asForm()->withBasicAuth((string) config('services.stripe.secret'), '')
-            ->timeout(10)->withHeaders(['Idempotency-Key' => 'booking-payment-'.$payment->id])
+            ->timeout(10)->withHeaders(['Idempotency-Key' => (string) $attemptKey])
             ->post('https://api.stripe.com/v1/payment_intents', $parameters);
 
         if ($response->failed()) {

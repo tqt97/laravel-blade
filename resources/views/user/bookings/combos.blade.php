@@ -12,7 +12,7 @@
             @csrf
             @forelse ($concessions as $concession)
                 @php($selectedQuantity = (int) ($booking->concessions->firstWhere('concession_id', $concession->id)?->quantity ?? 0))
-                @php($maxQuantity = $concession->stock === null ? 20 : min(20, $selectedQuantity + $concession->stock))
+                @php($maxQuantity = $concession->stock === null ? (int) config('booking.limits.max_combo_quantity') : min((int) config('booking.limits.max_combo_quantity'), $selectedQuantity + $concession->stock))
                 <label class="flex items-center gap-4 rounded-xl border border-border bg-background p-4 transition has-[:focus-visible]:border-primary has-[:focus-visible]:ring-4 has-[:focus-visible]:ring-primary/10">
                     @if ($concession->image_url)
                         <img src="{{ $concession->image_url }}" alt="{{ $concession->name }}" class="size-20 shrink-0 rounded-xl object-cover" loading="lazy">

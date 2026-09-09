@@ -11,8 +11,8 @@
             <label for="booking-status" class="text-sm font-semibold">{{ __('booking.bookings.status') }}</label>
             <select id="booking-status" name="status" onchange="this.form.submit()" class="rounded-xl border border-border bg-card px-3 py-2 text-sm">
                 <option value="">{{ __('booking.bookings.all_statuses') }}</option>
-                @foreach (['held', 'pending_payment', 'confirmed', 'completed', 'cancelled', 'expired', 'no_show'] as $status)
-                    <option value="{{ $status }}" @selected(request('status') === $status)>{{ __('booking.status.'.$status) }}</option>
+                @foreach (\App\Enums\Movie\Booking\BookingStatus::cases() as $status)
+                    <option value="{{ $status->value }}" @selected(request('status') === $status->value)>{{ __('booking.status.'.$status->value) }}</option>
                 @endforeach
             </select>
         </form>
@@ -61,9 +61,9 @@
                                     </td>
                                     @php
                                         $statusClasses = match ($booking->status->value) {
-                                            'held', 'pending_payment' => 'border border-warning/30 bg-warning-soft text-warning-foreground',
-                                            'confirmed', 'completed' => 'border border-success/30 bg-success-soft text-success-foreground',
-                                            'cancelled', 'expired', 'no_show' => 'border border-destructive/30 bg-destructive/10 text-destructive',
+                                            \App\Enums\Movie\Booking\BookingStatus::Held->value, \App\Enums\Movie\Booking\BookingStatus::PendingPayment->value => 'border border-warning/30 bg-warning-soft text-warning-foreground',
+                                            \App\Enums\Movie\Booking\BookingStatus::Confirmed->value, \App\Enums\Movie\Booking\BookingStatus::Completed->value => 'border border-success/30 bg-success-soft text-success-foreground',
+                                            \App\Enums\Movie\Booking\BookingStatus::Cancelled->value, \App\Enums\Movie\Booking\BookingStatus::Expired->value, \App\Enums\Movie\Booking\BookingStatus::NoShow->value => 'border border-destructive/30 bg-destructive/10 text-destructive',
                                             default => 'border border-border bg-muted text-muted-foreground',
                                         };
                                     @endphp

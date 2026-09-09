@@ -1,394 +1,468 @@
-Mình đã review toàn bộ luồng booking: chọn ghế → hold → combo → thanh toán → webhook → ticket/QR → check-in → expire/refund.
+Đã review chuyên sâu toàn bộ flow booking hiện tại. Kết luận: nền tảng hiện khá tốt về transaction, idempotency, lock seat, inventory và payment reconciliation, nhưng vẫn còn một số lỗi nghiệp vụ thực tế cần ưu tiên sửa.
 
-Kết quả kiểm tra:
+Đã kiểm tra:
 
-- Full test: 49 passed, 1 skipped, 1 warning.
-- PHPStan: còn 5 lỗi.
-- Có một số lỗi nghiệp vụ nghiêm trọng chưa được test bao phủ.
-- Chưa thay đổi code trong lần review này.
+- Route public/user/admin.
+- Hold seat, edit seat, combo inventory.
+- Payment, webhook, refund, expiry.
+- Guest → login → resume.
+- Screening bookable window.
+- Policy/security.
+- UI seat picker, combo picker, checkout.
+- Database indexes.
+- Feature test, frontend test, PHPStan.
 
-## Các lỗi nghiêm trọng
+Kết quả kiểm thử hiện tại: 68 test pass, 1 skipped, 292 assertions. Tuy nhiên PHPStan đang fail 11 lỗi.
 
-### 1. Webhook Stripe không hoàn tất ticket giống luồng thanh toán thường
+## Lỗi cần ưu tiên sửa
 
-Tại [StripeWebhookController.php:41](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Http/Controllers/Webhooks/StripeWebhookController.php:41>), webhook chỉ:
+### P1 — Cấu hình combo chưa dùng một nguồn duy nhất
 
-- đổi payment sang succeeded;
-- đổi booking sang confirmed;
-- đổi ghế sang sold;
-- tạo `qr_token_hash`.
+Hai request vẫn hard-code `max:20`:
 
-Nhưng không:
+- [AddConcessionsRequest.php:18](/Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Http/Requests/User/AddConcessionsRequest.php:18)
+- [PayBookingRequest.php:28](/Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Http/Requests/User/PayBookingRequest.php:28)
 
-- đổi `HOLD-*` thành `TKT-*`;
-- đổi ticket status sang `issued`;
-- lock booking item và screening seat;
-- kiểm tra booking còn hạn hay đã expired.
-
-Hậu quả:
-
-- Stripe thanh toán thành công qua webhook có thể vẫn tạo vé mã `HOLD-*`;
-- ticket có thể được hiển thị dù booking đã hết hạn;
-- trạng thái giữa thanh toán đồng bộ và webhook không nhất quán.
-
-Nên gom logic hoàn tất booking vào một action dùng chung, ví dụ `FinalizeSuccessfulPayment`, để cả `PayBooking` và Stripe webhook cùng sử dụng.
-
-### 2. Race condition giữa thanh toán và expire hold
-
-Tại [PayBooking.php:70](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Actions/Booking/PayBooking.php:70>), gọi payment gateway bên ngoài transaction.
-
-Kịch bản lỗi:
-
-1. Booking còn `pending_payment`.
-2. Stripe charge thành công nhưng request xử lý chậm.
-3. Scheduler chạy `booking:expire-holds`.
-4. Booking bị chuyển sang `expired`, ghế được trả lại.
-5. Payment response quay lại.
-6. `PayBooking` vẫn bán ghế và phát hành ticket.
-
-Hiện tại `applyResult()` vẫn xử lý item tại dòng 96 dù booking có thể đã `expired` hoặc `cancelled`.
-
-Đây là lỗi có thể dẫn đến:
-
-- booking expired nhưng payment succeeded;
-- ghế bị bán lại cho user khác;
-- ticket tồn tại nhưng booking không hợp lệ.
-
-Cần kiểm tra trạng thái và `expires_at` ngay trước khi finalize. Nếu payment đã thành công sau khi hold hết hạn, cần có flow refund/compensation rõ ràng.
-
-### 3. Combo bị mất tồn kho khi booking hết hạn hoặc bị hủy
-
-`AddConcessions` giảm stock tại [AddConcessions.php:44-45](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Actions/Cinema/AddConcessions.php:44>).
-
-Nhưng:
-
-- [ExpireBooking.php](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Actions/Booking/ExpireBooking.php>) không hoàn lại stock;
-- [CancelBooking.php](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Actions/Booking/CancelBooking.php>) cũng không hoàn lại stock.
-
-Kết quả: user giữ combo rồi để booking hết hạn thì tồn kho bị giảm vĩnh viễn.
-
-Nên tạo một action giải phóng booking resources, bao gồm:
-
-- ghế;
-- combo stock;
-- booking items;
-- trạng thái booking.
-
-Dùng chung cho expire và cancel.
-
-### 4. Có thể thêm combo sau khi payment đã tạo, gây sai số tiền thanh toán
-
-`AddConcessions` cho phép cả `held` và `pending_payment` tại [AddConcessions.php:21](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Actions/Cinema/AddConcessions.php:21>).
-
-Nhưng khi payment đã tồn tại:
-
-- booking total được tăng;
-- payment amount không được cập nhật.
-
-Ví dụ:
-
-- booking ban đầu: 100.000;
-- payment record: 100.000;
-- user thêm combo 50.000;
-- booking total: 150.000;
-- Stripe vẫn charge payment amount 100.000.
-
-Nên chọn một trong hai hướng:
-
-- không cho thêm combo sau khi payment đã ở `pending`;
-- hoặc hủy/recreate payment intent và đồng bộ lại amount.
-
-Hướng đầu tiên an toàn và đơn giản hơn.
-
-### 5. Route combo hiện tại sẽ lỗi runtime vì thiếu view
-
-Controller có route:
+Trong khi config đã có:
 
 ```php
-return view('user.bookings.combos', ...);
+config('booking.limits.max_combo_quantity')
 ```
 
-ở [BookingController.php:61](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Http/Controllers/User/BookingController.php:61>), nhưng file:
+Hệ quả: thay đổi `.env` không đồng bộ giữa frontend và backend. Ví dụ config cho phép 30 combo nhưng request vẫn chặn ở 20.
+
+Nên thay toàn bộ bằng:
+
+```php
+'max:'.config('booking.limits.max_combo_quantity')
+```
+
+### P1 — API availability thiếu `held_until`
+
+Tại [PublicCinemaController.php:136](/Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Http/Controllers/Cinema/PublicCinemaController.php:136), query chỉ lấy:
+
+```php
+get(['seat_id', 'status'])
+```
+
+Nhưng `isAvailableForSelection()` cần `held_until`:
+
+- [ScreeningSeat.php:40](/Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Models/Cinema/ScreeningSeat.php:40)
+
+Hệ quả:
+
+1. Hold của người khác đã hết hạn.
+2. Scheduler chưa chạy.
+3. API availability vẫn không có `held_until`.
+4. Ghế bị đánh dấu unavailable dù thực tế đã có thể chọn.
+5. Seat picker không tự enable ghế đó.
+
+Cần lấy thêm:
+
+```php
+->get(['seat_id', 'status', 'held_until'])
+```
+
+Đây là lỗi ảnh hưởng trực tiếp đến trải nghiệm chọn ghế.
+
+### P1 — Payment provider timeout có thể tạo booking bị kẹt
+
+Trong [PayBooking.php:107-116](/Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Actions/Booking/PayBooking.php:107), nếu payment gateway ném exception:
+
+- Payment vẫn ở trạng thái `processing`.
+- Attempt chuyển thành `unknown`.
+- Có thể không có `provider_payment_id`.
+- Booking vẫn giữ seat.
+- `payments:reconcile` chỉ xử lý payment có `provider_payment_id`.
+
+Kết quả: booking có thể kẹt ở `pending_payment`, user không retry được vì PayBooking coi payment đang processing là không cần charge lại.
+
+Cần có cơ chế:
+
+- timeout payment không có `provider_payment_id`;
+- đánh dấu `failed` hoặc `unknown_timeout`;
+- cho phép retry an toàn;
+- hoặc tạo reconciliation theo `payment_attempt`, không phụ thuộc hoàn toàn vào provider ID.
+
+### P1 — Edit booking ở trạng thái `pending_payment` chưa nhất quán
+
+Trong [ScreeningController.php:55](/Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Http/Controllers/User/ScreeningController.php:55), chỉ xử lý đổi ghế khi booking ở trạng thái `held`:
+
+```php
+if ($activeHold?->getRawOriginal('status') === 'held' ...)
+```
+
+Nhưng `activeHold()` lại lấy cả:
+
+```php
+held, pending_payment
+```
+
+Hệ quả nếu booking đang `pending_payment`:
+
+- User đổi ghế.
+- Booking cũ không bị cancel.
+- Request dùng lại idempotency key cũ.
+- `HoldSeats` có thể báo `idempotency_key_reused`.
+
+Nên quyết định rõ nghiệp vụ:
+
+- Hoặc cấm edit khi payment đang processing và hiển thị trạng thái rõ ràng.
+- Hoặc cho phép edit nhưng phải cancel payment intent cũ, release resources và tạo payment attempt mới.
+
+Không nên để UI cho phép thao tác nhưng backend xử lý không nhất quán.
+
+### P1 — Checkout/dashboard có thể hiển thị booking đã hết hạn
+
+Dashboard lấy booking `pending_payment` chỉ dựa vào thời gian suất chiếu:
+
+- [DashboardController.php:17-22](/Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Http/Controllers/User/DashboardController.php:17)
+
+Không kiểm tra:
+
+```php
+expires_at > now()
+```
+
+Hệ quả booking đã hết hạn nhưng scheduler chưa chạy vẫn xuất hiện như booking sắp tới.
+
+Nên thêm điều kiện:
+
+```php
+->where(function ($query): void {
+    $query
+        ->where('status', BookingStatus::Confirmed->value)
+        ->orWhere(function ($query): void {
+            $query
+                ->where('status', BookingStatus::PendingPayment->value)
+                ->where('expires_at', '>', now()->utc());
+        });
+})
+```
+
+## Lỗi nghiệp vụ/rủi ro mức trung bình
+
+### M2 — Public và user seat page đang có hai logic availability khác nhau
+
+Public page dùng:
+
+```php
+$screeningSeat->isAvailableForSelection()
+```
+
+Nhưng user page dùng:
+
+```php
+$screeningSeat->status === Available
+```
+
+Tại:
+
+- [PublicCinemaController.php:81](/Users/tuquoctuan/Code/Tuantq/laravel-blade/resources/views/cinema/screenings/show.blade.php:81)
+- [user/screenings/show.blade.php:49](/Users/tuquoctuan/Code/Tuantq/laravel-blade/resources/views/user/screenings/show.blade.php:49)
+
+Hệ quả khi hold hết hạn nhưng database chưa được scheduler release:
+
+- Public có thể xem ghế available.
+- User page lại xem unavailable.
+- Hai UI cho cùng một suất chiếu hiển thị khác nhau.
+
+Nên dùng chung một method:
+
+```php
+$available = $screeningSeat->isAvailableForSelection() || $isOwnHold;
+```
+
+### M2 — Public resume với screening bị xóa có thể gây 500
+
+Tại [PublicCinemaController.php:148](/Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Http/Controllers/Cinema/PublicCinemaController.php:148):
+
+```php
+$screening = Screening::query()->findOrFail(...)
+```
+
+Nếu suất chiếu bị xóa hoặc dữ liệu session cũ tồn tại lâu, user sẽ nhận lỗi 500 thay vì quay về danh sách phim.
+
+Nên xử lý:
+
+```php
+$screening = Screening::query()->find(...);
+
+if ($screening === null) {
+    return to_route('cinema.movies.index')
+        ->withErrors(['booking' => __('booking.messages.screening_unavailable')]);
+}
+```
+
+### M2 — AddConcessions có thể nhận action trực tiếp ngoài FormRequest
+
+Action đã kiểm tra quota tổng và stock khá tốt:
+
+- [AddConcessions.php:44-57](/Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Actions/Cinema/AddConcessions.php:44)
+
+Tuy nhiên giới hạn số lượng âm, số lượng quá lớn và dữ liệu sai chỉ được đảm bảo ở request layer. Nếu action được gọi từ command/job/controller khác, validation có thể bị bỏ qua.
+
+Nên normalize và validate thêm ở action:
+
+- quantity phải là integer;
+- quantity >= 0;
+- quantity không vượt `max_combo_quantity`;
+- tổng combo không vượt `ticket_count × max_combos_per_ticket`.
+
+### M2 — Combo availability chưa trả quota tổng theo số vé
+
+Endpoint:
+
+- [BookingController.php:99-125](/Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Http/Controllers/User/BookingController.php:99)
+
+Đang trả `max` theo từng concession và stock, nhưng không trả:
+
+```php
+ticket_count * max_combos_per_ticket
+```
+
+Frontend phải tự tính quota tổng theo thứ tự DOM. Điều này dễ gây lệch giữa:
+
+- combo availability API;
+- seat picker;
+- AddConcessions;
+- PayBooking.
+
+API nên trả thêm:
+
+```json
+{
+  "ticket_count": 2,
+  "max_total_combos": 6,
+  "selected_total_combos": 3,
+  "remaining_total_combos": 3
+}
+```
+
+### M2 — Có hai public booking flow
+
+Hiện tồn tại đồng thời:
 
 ```text
-resources/views/user/bookings/combos.blade.php
+/movies/{movie}/showtimes/{screening}
+/user/screenings/{screening}
 ```
 
-không tồn tại.
+Điều này làm tăng khả năng:
 
-Truy cập `/user/bookings/{booking}/combos` sẽ lỗi `View [user.bookings.combos] not found`.
+- UI khác nhau giữa hai flow;
+- logic active hold khác nhau;
+- bug chỉ xảy ra trên một route;
+- khó tracking analytics;
+- khó duy trì tài liệu.
 
-### 6. User cancel booking paid có thể gây fatal error
-
-[BookingController.php:78](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Http/Controllers/User/BookingController.php:78>) bắt `InvalidBookingTransition`, nhưng controller không import class:
-
-```php
-App\Support\Booking\Exceptions\InvalidBookingTransition
-```
-
-PHP sẽ tìm:
-
-```php
-App\Http\Controllers\User\InvalidBookingTransition
-```
-
-PHPStan đã phát hiện lỗi này. Khi user cố cancel booking đã thanh toán, exception có thể dẫn đến lỗi 500 thay vì thông báo validation hợp lệ.
-
-## Lỗi nghiệp vụ và UX
-
-### 7. Checkout hết hạn có thể trả về 500
-
-[BookingController.php:36-42](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Http/Controllers/User/BookingController.php:36>) chỉ kiểm tra status là `held` hoặc `pending_payment`, không kiểm tra `expires_at`.
-
-Scheduler chưa chắc đã chạy đúng thời điểm, nên user có thể mở checkout sau khi hold hết hạn. Khi bấm thanh toán, `PayBooking` ném `RuntimeException` tại [PayBooking.php:41-42](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Actions/Booking/PayBooking.php:41>) nhưng controller không bắt exception.
-
-Nên:
-
-- kiểm tra expiry ngay khi mở checkout;
-- hoặc catch domain exception và redirect với message “Booking đã hết hạn”.
-
-### 8. `minimum_lead_minutes` đang không được áp dụng
-
-Config có:
-
-```php
-minimum_lead_minutes
-```
-
-nhưng `HoldSeats` chỉ kiểm tra screening đã bắt đầu hay chưa.
-
-Hiện tại user có thể giữ ghế sát giờ chiếu, thậm chí trước giờ chiếu vài phút, trái với config kỳ vọng.
-
-Cần áp dụng:
+Nên chọn public nested route làm canonical:
 
 ```text
-starts_at >= now + minimum_lead_minutes
+/movies/{movie-slug}/showtimes/{id}
 ```
 
-### 9. Màn hình user screening cho phép truy cập suất chiếu quá khứ
+Route `/user/screenings/{screening}` nên redirect về public URL hoặc loại bỏ sau khi migrate.
 
-`ScreeningController@show()` chỉ kiểm tra status `scheduled`, chưa kiểm tra `starts_at` trong tương lai.
+## Payment và refund
 
-Luồng hold sau đó vẫn chặn, nhưng UI vẫn hiển thị trang chọn ghế cho suất đã qua. Nên dùng cùng điều kiện với public screening:
+### Điểm tốt
 
-- status scheduled;
-- starts_at > now.
+- Có idempotency key.
+- Có unique payment theo booking.
+- Có payment attempts.
+- Có webhook event deduplication.
+- Có xử lý payment thành công sau khi hold hết hạn.
+- Có trạng thái `requires_refund`.
+- Có transaction và row lock ở các điểm quan trọng.
+- Có release combo stock khi expire/cancel/refund.
 
-### 10. Payment pending đang bị hiển thị như payment failed
+### Rủi ro cần bổ sung
 
-`PayBooking` có thể trả về `PaymentStatus::Pending`, nhưng controller xử lý mọi trạng thái khác succeeded thành:
+1. Webhook đang tự parse Stripe signature. Nên cân nhắc dùng Stripe SDK chính thức khi tích hợp thật để giảm rủi ro sai format header.
+2. Webhook event có thể bị đánh dấu failed vĩnh viễn khi mismatch. Cần có admin/reconciliation workflow cho trường hợp dữ liệu provider được sửa hoặc local snapshot sai.
+3. Khi payment failed/canceled, booking vẫn giữ ghế đến khi hết hold. Đây có thể là chủ ý, nhưng UI cần cho user biết:
+   - có thể retry;
+   - hold còn bao lâu;
+   - payment đã fail hay đang pending.
+4. Refund provider timeout chuyển attempt thành `unknown`, nhưng cần job retry/reconciliation riêng cho refund unknown.
+
+## Kiến trúc
+
+Cấu trúc hiện tại tương đối tốt:
+
+```text
+Controller
+  → FormRequest
+  → Action
+  → Transaction
+  → Model / PaymentGateway
+```
+
+Các Action quan trọng đã được tách đúng:
+
+- `HoldSeats`
+- `AddConcessions`
+- `ExpireBooking`
+- `ReleaseBookingResources`
+- `PayBooking`
+- `FinalizeSuccessfulPayment`
+- `RefundBooking`
+
+Điểm cần cải thiện:
+
+- Controller vẫn có nhiều logic điều phối edit booking.
+- Availability calculation bị lặp ở Blade/controller/model.
+- Booking state và payment state chưa được đóng gói thành domain service/state machine rõ ràng.
+- `BookingStatus` đang có transition tốt nhưng chưa có invariant đầy đủ, ví dụ:
+  - `PendingPayment` phải luôn có payment processing;
+  - `Confirmed` phải có payment succeeded;
+  - booking expired/cancelled không được còn seat held;
+  - booking confirmed phải có ticket issued/checked-in.
+
+Nên có một lớp kiểm tra invariant hoặc domain service:
 
 ```php
-booking.messages.payment_failed
+BookingInvariant::assertPayable($booking);
+BookingInvariant::assertFinalizable($booking);
+BookingInvariant::assertResourcesConsistent($booking);
 ```
-
-Trong Stripe, payment có thể pending vì:
-
-- 3DS;
-- requires action;
-- webhook chưa về;
-- payment intent chưa hoàn tất.
-
-Nên phân biệt:
-
-- `failed`: cho retry;
-- `pending`: hiển thị “Đang chờ xác nhận thanh toán”;
-- `succeeded`: qua success page.
-
-## Stripe webhook cần cải thiện
-
-### 11. Webhook payment chưa tìm được payment sẽ bị trả 204 và có nguy cơ mất event
-
-Tại [StripeWebhookController.php:34-36](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Http/Controllers/Webhooks/StripeWebhookController.php:34>), nếu chưa tìm thấy payment thì return khỏi transaction, nhưng endpoint vẫn trả `204`.
-
-Nếu webhook đến trước khi `provider_payment_id` được lưu, Stripe có thể coi event đã xử lý thành công và không retry nữa.
-
-Nên:
-
-- trả lỗi 5xx khi payment chưa sẵn sàng để Stripe retry;
-- hoặc resolve payment bằng metadata `payable_id`;
-- chỉ đánh dấu webhook `processed_at` sau khi business operation hoàn tất.
-
-### 12. Stripe signature parser chưa xử lý nhiều chữ ký `v1`
-
-Stripe có thể gửi nhiều `v1` signature trong header khi rotate secret. Code hiện tại chỉ lấy chữ ký đầu tiên bằng regex.
-
-Nên parse toàn bộ signatures và accept nếu có ít nhất một signature hợp lệ.
-
-### 13. Webhook và synchronous payment có nguy cơ phát hành ticket hai lần
-
-Hai luồng đều có thể xử lý thành công:
-
-- request thanh toán trực tiếp;
-- webhook `payment_intent.succeeded`.
-
-Cần đảm bảo finalize payment idempotent tuyệt đối:
-
-- lock payment;
-- chỉ finalize khi trạng thái chưa succeeded;
-- không tạo outbox event lặp;
-- không đổi mã ticket nhiều lần.
-
-## Outbox và email
-
-### 14. Outbox publisher có thể dispatch trùng job
-
-[OutboxPublish.php:20-23](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Console/Commands/OutboxPublish.php:20>) đọc các message chưa `published_at`, sau đó dispatch job.
-
-Trong lúc job chưa hoàn thành, scheduler chạy lần tiếp theo có thể đọc lại cùng message và dispatch lần nữa.
-
-Hậu quả:
-
-- email booking có thể gửi trùng;
-- email payment thành công có thể gửi trùng.
-
-Nên thêm cơ chế claim message:
-
-- `claimed_at` / `processing_at`;
-- lock rows với `skip locked`;
-- hoặc unique job theo `outboxMessageId`.
-
-### 15. Outbox event không có cơ chế retry chủ động hợp lý
-
-Job có `$tries = 3`, nhưng sau khi fail sẽ ghi `failed_at`. Không thấy flow retry thủ công hoặc command retry failed outbox.
-
-Nên có:
-
-- admin retry failed messages;
-- backoff;
-- cảnh báo khi có `failed_at`;
-- metrics/log rõ ràng.
 
 ## Hiệu năng và database
 
-### 16. Query user bookings eager load dư dữ liệu
+### Đang làm tốt
 
-[UserBookingsQuery.php:15](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Queries/Cinema/UserBookingsQuery.php:15>) load:
+- Có index cho screening seat theo screening/status/held_until.
+- Có index lookup active hold.
+- Có index payment processing.
+- Có eager loading tương đối đầy đủ.
+- User booking có pagination.
+- Admin booking có pagination.
+- Concession listing có limit.
+- Có `withoutOverlapping()` và `onOneServer()` cho scheduler.
 
-```php
-items.screeningSeat.seat
-```
+### Cần tối ưu thêm
 
-Nhưng trang danh sách booking hiện tại không dùng danh sách ghế/item.
+1. `PublicCinemaController::movie()` load toàn bộ screening bookable của movie. Nếu movie có nhiều suất chiếu, nên giới hạn theo ngày hoặc paginate.
+2. `with(['screenings' => ... limit(3)])` cần kiểm tra kỹ behavior trên dữ liệu nhiều movie và database production.
+3. `BookingReport` dùng nhiều query tổng hợp độc lập; khi dữ liệu lớn nên dùng aggregate query hoặc reporting table.
+4. `ReleaseBookingResources` load toàn bộ items/concessions trong transaction. Với giới hạn 10 ghế hiện tại không nghiêm trọng, nhưng nên vẫn có invariant giới hạn.
+5. Có index tốt nhưng nên kiểm tra bằng `EXPLAIN` trên production-like dataset, đặc biệt:
+   - `screenings(movie_id, starts_at)`
+   - `screenings(status, starts_at)`
+   - `bookings(user_id, screening_id, status, expires_at)`
+   - `screening_seats(screening_id, status, held_until)`
 
-Điều này tạo thêm query và memory theo số booking. Nên bỏ relation này khỏi index, chỉ load ở booking detail.
+## UI/UX
 
-### 17. Thiếu composite index cho active hold lookup
+### Điểm tốt
 
-Hai controller thường query:
+- Seat picker có giới hạn ghế frontend.
+- Combo có quota theo số vé.
+- Có countdown hold.
+- Có modal xác nhận.
+- Có tổng tiền ghế/combo/total.
+- Có trạng thái seat owned hold.
+- Có polling availability.
+- Có thông báo expired booking riêng.
+- Checkout đã compact hơn và có hierarchy giá rõ ràng.
+- Có icon SVG cho action chính.
+- Có hỗ trợ responsive.
 
-```php
-user_id
-screening_id
-status
-expires_at
-```
+### Cần cải thiện
 
-Nhưng bảng `bookings` hiện chỉ có:
-
-- `user_id, created_at`;
-- `status, expires_at`.
-
-Nên thêm index phù hợp, ví dụ:
-
-```text
-(user_id, screening_id, status, expires_at)
-```
-
-### 18. Báo cáo theo `created_at` có thể full scan
-
-[BookingReport.php:14](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Queries/Cinema/BookingReport.php:14>) lọc `bookings.created_at`, nhưng migration chưa có index riêng cho `created_at`.
-
-Khi booking lớn, report tháng sẽ chậm. Nên thêm index:
-
-```text
-(created_at)
-```
-
-hoặc composite phù hợp với các report thực tế.
-
-### 19. Trang movie load toàn bộ ghế của tất cả suất chiếu
-
-[PublicCinemaController.php:43](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Http/Controllers/Cinema/PublicCinemaController.php:43>) eager load toàn bộ `screeningSeats` cho tất cả screening của movie chỉ để tính available/total.
-
-Khi movie có nhiều suất chiếu và phòng lớn, response sẽ phình lên đáng kể.
-
-Nên chuyển sang aggregate:
-
-- `withCount`;
-- query count available theo screening;
-- chỉ load chi tiết ghế ở trang chọn ghế.
-
-### 20. Expire booking có N+1 query theo từng ghế
-
-[ExpireBooking.php:31-43](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Actions/Booking/ExpireBooking.php:31>) query từng `ScreeningSeat` cho từng item.
-
-Hiện giới hạn 10 ghế/booking nên chưa nghiêm trọng, nhưng command expiry xử lý nhiều booking sẽ tạo nhiều query. Có thể tối ưu bằng:
-
-- lock toàn bộ seat IDs theo `whereIn`;
-- map theo ID;
-- bulk update các seat cần release.
+1. Khi seat availability refresh thất bại, UI chỉ hiển thị cảnh báo nhưng vẫn cho submit. Nên cân nhắc disable submit sau nhiều lần refresh thất bại hoặc yêu cầu refresh lại.
+2. Quota combo đang clamp theo thứ tự DOM. User có thể thấy combo sau bị giảm dù đang thao tác combo đó, gây khó hiểu.
+3. Nên hiển thị rõ:
+   - `Đã chọn 4/10 ghế`
+   - `Combo 5/12`
+   - `Còn được chọn 7 combo`
+4. Checkout đang có promo UI nhưng disabled và ghi “coming soon”. Nếu chưa hỗ trợ nghiệp vụ coupon, nên ẩn khỏi production hoặc hiển thị rõ “Tính năng sắp ra mắt”.
+5. Khi payment `processing`, user cần trạng thái rõ ràng thay vì chỉ redirect sang payment-action.
+6. Trạng thái `held`, `pending_payment`, `expired`, `requires_refund` nên có thông báo riêng, không dùng chung validation error.
 
 ## Test coverage còn thiếu
 
-Hiện test tốt ở các phần:
+Hiện test tốt ở feature-level nhưng còn thiếu các nhóm sau:
 
-- guest hold;
-- seat conflict;
-- idempotency cơ bản;
-- login resume hold;
-- checkout success;
-- expire hold;
-- check-in;
-- QR rendering;
-- report refund.
+### Race condition
 
-Nhưng chưa có test cho các nhánh quan trọng sau:
+- Hai user cùng hold một ghế.
+- Một user submit hold đúng lúc scheduler release.
+- Payment success đến đồng thời với `ExpireBooking`.
+- Refund đồng thời với check-in.
+- Hai webhook cùng event.
+- Hai request add combo cùng lúc.
 
-1. Stripe webhook success.
-2. Stripe webhook duplicate event.
-3. Stripe webhook đến trước khi payment record hoàn chỉnh.
-4. Payment pending.
-5. Payment failed rồi retry.
-6. Payment thành công nhưng hold đã expired.
-7. Combo stock được hoàn lại khi expire.
-8. Combo stock được hoàn lại khi cancel.
-9. Thêm combo sau khi payment đã tạo.
-10. Checkout sau khi hold hết hạn.
-11. User cancel booking đã thanh toán qua HTTP route.
-12. Route `/user/bookings/{booking}/combos`.
-13. IDOR với checkout/success/ticket.
-14. Không cho booking khi còn dưới `minimum_lead_minutes`.
-15. Ticket verify của booking expired/cancelled/refunded.
-16. Hai request payment đồng thời.
-17. Hai webhook Stripe đồng thời.
-18. Outbox dispatch không trùng.
+### Browser/UI
 
-## PHPStan hiện tại
+Chưa có browser test thực sự cho:
 
-PHPStan đang fail 5 lỗi:
+- Guest chọn ghế → login → resume.
+- Resume giữ đúng URL.
+- Seat cũ active.
+- Continue enabled ngay lập tức.
+- Edit giữ ghế cũ.
+- Edit đổi ghế.
+- Combo 3 combo/vé.
+- Combo vượt quota.
+- Countdown hết hạn.
+- Seat availability polling.
+- Mobile modal/checkout layout.
+- Keyboard focus trap trong modal.
 
-- undefined property `$activeHold->items` trong public screening;
-- undefined property `$activeHold->items` trong user screening;
-- view type tại `BookingController`;
-- thiếu class `InvalidBookingTransition` import;
-- lỗi liên quan view combo không tồn tại.
+### Payment recovery
 
-Lỗi thiếu import và thiếu view là lỗi runtime thực tế, không chỉ là vấn đề static analysis.
+- Gateway timeout không có provider ID.
+- Webhook đến sau timeout.
+- Payment success sau expiry.
+- Refund timeout.
+- Retry refund unknown.
+- Payment failed rồi retry với combo mới.
 
-## Thứ tự nên xử lý
+## PHPStan
 
-Ưu tiên cao nhất:
+PHPStan hiện fail 11 lỗi, nổi bật ở:
 
-1. Gom logic finalize payment dùng chung cho PayBooking và Stripe webhook.
-2. Chặn race payment-success sau khi hold expired.
-3. Hoàn stock combo khi cancel/expire.
-4. Không cho sửa combo sau khi payment đã bắt đầu.
-5. Sửa missing view và missing exception import.
-6. Xử lý checkout hết hạn không để 500.
-7. Bổ sung test cho Stripe, expiry race và combo.
-8. Sửa outbox duplicate dispatch.
-9. Thêm index và giảm eager loading dư.
-10. Áp dụng `minimum_lead_minutes`.
+- AddConcessions model type inference.
+- PublicCinema builder không nhận diện `bookable()`.
+- Undefined dynamic properties.
+- ScreeningBookingContextQuery return type.
+- Stripe metadata type.
+- Ticket/payment relationship typing.
 
-Tổng thể, phần seat locking và idempotency hiện tại có nền tảng tốt, nhưng payment/webhook/expiry đang có rủi ro dữ liệu không nhất quán. Đây là phần cần ưu tiên trước các cải thiện UI hoặc tối ưu nhỏ.
+Đây là dấu hiệu type safety chưa hoàn chỉnh. Nên xử lý trước khi mở rộng thêm nghiệp vụ, đặc biệt các lỗi liên quan đến payment và model relationship.
+
+## Đánh giá tổng quan
+
+| Hạng mục | Đánh giá |
+|---|---:|
+| Seat locking/concurrency | Tốt |
+| Idempotency | Tốt |
+| Combo inventory | Khá tốt |
+| Payment reliability | Khá, còn lỗi timeout |
+| Refund safety | Khá |
+| Booking state machine | Khá |
+| Route/domain boundary | Khá, còn duplicate flow |
+| UI/UX | Khá tốt |
+| Frontend/backend config consistency | Chưa đạt |
+| Test coverage | Tốt ở feature, thiếu browser/race |
+| Static analysis | Chưa đạt |
+| Production readiness | Cần xử lý P1 trước |
+
+## Thứ tự xử lý đề xuất
+
+1. Sửa `held_until` trong availability query.
+2. Đồng bộ toàn bộ hard-code `max:20` về config.
+3. Xử lý payment timeout không có provider ID.
+4. Quyết định rõ edit behavior với `pending_payment`.
+5. Đồng bộ availability logic public/user.
+6. Bổ sung `expires_at` vào dashboard pending booking.
+7. Xử lý resume khi screening không còn tồn tại.
+8. Bổ sung browser test cho guest resume/edit/payment.
+9. Bổ sung concurrency tests.
+10. Sửa toàn bộ 11 lỗi PHPStan.
+11. Chuẩn hóa một booking route canonical.
+12. Chạy `EXPLAIN` trên dữ liệu lớn và đo slow query thực tế.
+
+Tôi không thay đổi mã nguồn trong lượt review này. Worktree hiện vẫn giữ nguyên các thay đổi trước đó của project.

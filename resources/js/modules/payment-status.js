@@ -1,6 +1,7 @@
 const poll = (root) => {
     const statusUrl = root.dataset.statusUrl;
     let timer;
+    const terminalStatuses = new Set(['failed', 'refunded', 'requires_refund', 'canceled', 'unknown']);
 
     const check = async () => {
         try {
@@ -12,6 +13,9 @@ const poll = (root) => {
             const data = await response.json();
             if (data.redirect) {
                 window.location.assign(data.redirect);
+                return;
+            }
+            if (terminalStatuses.has(data.status)) {
                 return;
             }
             timer = window.setTimeout(check, 3000);

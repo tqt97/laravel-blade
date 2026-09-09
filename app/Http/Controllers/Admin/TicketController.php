@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
-use App\Actions\Cinema\CheckInTicket;
+use App\Actions\Movie\Ticketing\CheckInTicket;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\CheckInTicketRequest;
 use App\Support\Booking\Exceptions\BookingOperationFailed;

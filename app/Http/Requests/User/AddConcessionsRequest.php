@@ -15,6 +15,6 @@ class AddConcessionsRequest extends FormRequest
     /** @return array<string, ValidationRule|array<mixed>|string> */
     public function rules(): array
     {
-        return ['quantities' => ['nullable', 'array'], 'quantities.*' => ['nullable', 'integer', 'min:0', 'max:20']];
+        return ['quantities' => ['nullable', 'array'], 'quantities.*' => ['nullable', 'integer', 'min:0', 'max:'.config('booking.limits.max_combo_quantity')]];
     }
 }

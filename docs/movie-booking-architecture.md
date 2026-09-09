@@ -28,7 +28,7 @@ app/
 │   ├── Booking/                    # hold, pay, cancel, expire, refund
 │   └── Cinema/                     # schedule, combo, check-in
 ├── Queries/Cinema/                 # read/report queries
-├── Http/Controllers/Cinema/        # public read-only storefront
+├── Http/Controllers/Movie/        # public read-only storefront
 ├── Http/Controllers/User/          # authenticated customer actions
 └── Support/{Cinema,Payment,Booking}/
 ```
@@ -47,25 +47,68 @@ Resource cũ (`BookableResource`) và flow đặt period đã được loại kh
 
 ```mermaid
 classDiagram
-    User "1" --> "many" Booking
-    Movie "1" --> "many" Screening
-    ScreeningRoom "1" --> "many" Seat
-    ScreeningRoom "1" --> "many" Screening
-    Screening "1" --> "many" ScreeningSeat
-    Seat "1" --> "many" ScreeningSeat
-    Screening "1" --> "many" Booking
-    Booking "1" --> "many" BookingItem
+    User "1" --> "*" Booking
+    Movie "1" --> "*" Screening
+    ScreeningRoom "1" --> "*" Seat
+    ScreeningRoom "1" --> "*" Screening
+    Screening "1" --> "*" ScreeningSeat
+    Seat "1" --> "*" ScreeningSeat
+    Screening "1" --> "*" Booking
+    Booking "1" --> "*" BookingItem
     ScreeningSeat "1" --> "0..1" BookingItem
     Booking "1" --> "0..1" Payment
-    Booking "1" --> "many" BookingConcession
-    Concession "1" --> "many" BookingConcession
-    Booking "1" --> "many" BookingTransitionAudit
-    Movie { int id; string title; string slug; int duration_minutes; bool is_active }
-    Screening { int id; int movie_id; int screening_room_id; datetime starts_at; datetime ends_at; enum status; int base_price_minor_units }
-    Seat { int id; int screening_room_id; string row_label; int seat_number; enum seat_type; int price_minor_units }
-    ScreeningSeat { int id; int screening_id; int seat_id; enum status; uuid hold_token; datetime held_until; int price_minor_units }
-    Booking { int id; int user_id; int screening_id; enum status; int total_minor_units; string idempotency_key }
-    BookingItem { int id; int booking_id; int screening_seat_id; string ticket_code; enum status; string qr_token_hash }
+    Booking "1" --> "*" BookingConcession
+    Concession "1" --> "*" BookingConcession
+    Booking "1" --> "*" BookingTransitionAudit
+    class Movie {
+        int id
+        string title
+        string slug
+        int duration_minutes
+        bool is_active
+    }
+    class Screening {
+        int id
+        int movie_id
+        int screening_room_id
+        datetime starts_at
+        datetime ends_at
+        string status
+        int base_price_minor_units
+    }
+    class Seat {
+        int id
+        int screening_room_id
+        string row_label
+        int seat_number
+        string seat_type
+        int price_minor_units
+    }
+    class ScreeningSeat {
+        int id
+        int screening_id
+        int seat_id
+        string status
+        string hold_token
+        datetime held_until
+        int price_minor_units
+    }
+    class Booking {
+        int id
+        int user_id
+        int screening_id
+        string status
+        int total_minor_units
+        string idempotency_key
+    }
+    class BookingItem {
+        int id
+        int booking_id
+        int screening_seat_id
+        string ticket_code
+        string status
+        string qr_token_hash
+    }
 ```
 
 Một `Seat` là ghế vật lý trong phòng. `ScreeningSeat` là bản materialized của ghế cho từng suất, vì vậy mỗi suất có trạng thái và giá độc lập. Không kiểm tra availability bằng `Seat` hoặc cache; luôn khóa `ScreeningSeat`.
@@ -74,38 +117,41 @@ Một `Seat` là ghế vật lý trong phòng. `ScreeningSeat` là bản materia
 
 ```mermaid
 sequenceDiagram
-    actor Guest
-    participant Web as Public storefront
-    participant Auth as Auth
-    participant Hold as HoldSeats
-    participant DB as Database
-    participant Pay as PaymentGateway
-    participant Outbox as Outbox worker
+    participant Guest
+    participant Storefront
+    participant Auth
+    participant HoldSeats
+    participant Database
+    participant PaymentGateway
+    participant OutboxWorker
 
-    Guest->>Web: Browse movie/showtime/seat map
-    Guest->>Web: Submit selected seat IDs
-    Web->>Auth: Require login at hold boundary
-    Web->>Web: Store screening, seats and idempotency in session
-    Auth-->>Web: Redirect to authenticated resume endpoint
-    Auth->>Hold: Authenticated user + seat IDs + idempotency key
-    Hold->>DB: BEGIN; lock user, screening, seats ordered by seat_id
-    DB-->>Hold: available rows or conflict
-    Hold->>DB: Create held Booking + BookingItems
-    Hold->>DB: COMMIT
-    Guest->>Pay: Pay order
-    Pay->>DB: Charge with provider idempotency key
-    Pay->>DB: Lock order/seats; mark confirmed/sold; issue tickets
-    Pay->>Outbox: booking.paid / ticket.issued
-    Outbox-->>Guest: Email notification (at-least-once)
+    Guest->>Storefront: Browse movie and showtime
+    Guest->>Storefront: Select seats and combos
+    Guest->>Storefront: Submit the booking form
+    Storefront->>Auth: Require login at hold boundary
+    Storefront->>Storefront: Store pending hold in session
+    Auth-->>Storefront: Redirect to resume endpoint
+    Auth->>HoldSeats: User, seat IDs, combo quantities, idempotency key
+    HoldSeats->>Database: Begin transaction and lock inventory rows
+    Database-->>HoldSeats: Available rows or seat conflict
+    HoldSeats->>Database: Create held booking and booking items
+    HoldSeats->>Database: Commit transaction
+    Guest->>PaymentGateway: Pay booking
+    PaymentGateway->>Database: Charge with provider idempotency key
+    PaymentGateway->>Database: Confirm booking and issue tickets
+    PaymentGateway->>OutboxWorker: Publish booking paid event
+    OutboxWorker-->>Guest: Send email notification
 ```
 
 ### Hold và concurrency
 
-1. Request bắt buộc `seat_ids` và `idempotency_key`, giới hạn tối đa 10 ghế.
-2. Action khóa user để serialize retry cùng user, khóa screening, rồi khóa các seat theo thứ tự tăng dần để giảm deadlock.
-3. Hold hết hạn được giải phóng trong transaction khi có request hoặc bởi scheduler.
-4. Unique `(screening_id, seat_id)` bảo vệ inventory không nhân bản.
-5. Availability conflict trả lỗi nghiệp vụ; không retry vô hạn ở HTTP layer.
+1. Request bắt buộc `seat_ids` và `idempotency_key`, giới hạn theo `config('booking.limits.max_seats')`.
+2. Seat picker chặn ngay ở client khi selection đạt `config('booking.limits.max_seats')`; backend vẫn validate cùng config.
+3. Tổng quantity combo không được vượt `số ticket × config('booking.limits.max_combos_per_ticket')`; UI clamp theo quota còn lại, còn `AddConcessions` kiểm tra lại sau khi lock booking.
+4. Action khóa user để serialize retry cùng user, khóa screening, rồi khóa các seat theo thứ tự tăng dần để giảm deadlock.
+5. Hold hết hạn được giải phóng trong transaction khi có request hoặc bởi scheduler.
+6. Unique `(screening_id, seat_id)` bảo vệ inventory không nhân bản.
+7. Availability conflict trả lỗi nghiệp vụ; không retry vô hạn ở HTTP layer.
 
 SQLite chỉ phù hợp kiểm tra logic. Cần chạy multi-process integration test trên MySQL/PostgreSQL để xác nhận lock/deadlock behavior production.
 
@@ -142,8 +188,9 @@ Mọi transition phải đi qua domain action và `Booking::transitionTo()`. Con
 GET  /                         landing
 GET  /movies                   public movie catalog
 GET  /movies/{movie:slug}      movie detail + showtimes
-GET  /showtimes/{screening}   public seat map
-POST /showtimes/{id}/hold    public boundary; guest state lưu session
+GET  /movies/{movie:slug}/showtimes/{screening} public seat map
+GET  /movies/{movie:slug}/showtimes/{screening}/availability availability
+POST /movies/{movie:slug}/showtimes/{screening}/hold public boundary; guest state lưu session
 GET  /user/cinema/hold/resume authenticated resume sau login
 GET  /user/bookings            customer order history
 GET  /user/tickets/{ticket}    QR ticket
@@ -212,8 +259,9 @@ Không xóa room/seat đã được dùng bởi screening nếu foreign key rest
 GET    /                         landing
 GET    /movies                   public catalog
 GET    /movies/{movie:slug}      movie detail + showtime summary
-GET    /showtimes/{screening}   public seat map + available/total
-POST   /showtimes/{id}/hold     guest/auth hold boundary
+GET    /movies/{movie:slug}/showtimes/{screening} public seat map + available/total
+GET    /movies/{movie:slug}/showtimes/{screening}/availability availability polling
+POST   /movies/{movie:slug}/showtimes/{screening}/hold guest/auth hold boundary
 GET    /user/cinema/hold/resume authenticated resume từ session
 GET    /user/bookings            order history của user
 GET    /user/bookings/{booking}  order/ticket detail của owner
@@ -232,9 +280,213 @@ Controller chỉ làm HTTP orchestration: authorize, nhận validated input, g�
 
 Guest có thể xem và chọn ghế mà chưa login. Selection chỉ nằm trên browser cho đến khi submit. Server validate lại seat IDs, lưu `screening_id`, seat IDs và idempotency key vào session rồi redirect login. Endpoint resume dùng `session()->pull`, do đó dữ liệu chỉ được dùng một lần. Nếu login kéo dài, suất hết hạn hoặc ghế đã bị user khác giữ, hold trả conflict và user phải chọn lại; không giữ ghế trong lúc login.
 
+Luồng đã fix phải giữ cả ghế và combo, không chỉ combo. Payload tạm trong session có dạng:
+
+```php
+session()->put('cinema.pending_hold', [
+    'screening_id' => $screening->id,
+    'seat_ids' => $seatIds,
+    'idempotency_key' => $idempotencyKey,
+    'quantities' => $request->validated('quantities', []),
+]);
+```
+
+Sau khi login thành công, `LoginResponse` ưu tiên resume nếu có payload này. Vì vậy redirect không bị role/dashboard redirect ghi đè:
+
+```php
+if (! $request->user()->is_admin
+    && $request->session()->has('cinema.pending_hold')) {
+    return redirect()->route('user.cinema.hold.resume');
+}
+```
+
+`resumeHold` lấy payload một lần, load `screening.movie`, chạy lại `HoldSeats`, sau đó chạy `AddConcessions` với quantities đã lưu và đưa user về đúng URL public:
+
+```php
+$pendingHold = session()->pull('cinema.pending_hold');
+$screening->load('movie');
+
+$booking = $holdSeats->execute(
+    user: $request->user(),
+    screening: $screening,
+    seatIds: $pendingHold['seat_ids'],
+    idempotencyKey: $pendingHold['idempotency_key'],
+);
+
+$addConcessions->execute($booking, $pendingHold['quantities'] ?? []);
+
+return to_route('cinema.screenings.show', [
+    $screening->movie,
+    $screening,
+]);
+```
+
+Nếu resume thất bại vì ghế hết hoặc combo hết hàng, payload phải được ghi lại trước khi redirect về seat map để user không mất lựa chọn:
+
+```php
+session()->put('cinema.pending_hold', $pendingHold);
+
+return to_route('cinema.screenings.show', [
+    $screening->movie,
+    $screening,
+])->withErrors(['seat_ids' => $exception->getMessage()]);
+```
+
+### Review và chỉnh sửa ghế/combo trên showtime
+
+Seat map là nơi chọn ghế và combo. Checkout chỉ là bước review read-only, apply coupon khi coupon engine được bật và xác nhận thanh toán. Không có nút tăng/giảm combo ở checkout để tránh tạo một state thứ hai khác với state đã hold.
+
+Public URL phải chứa movie slug và screening để route model binding kiểm tra đúng quan hệ:
+
+```php
+Route::scopeBindings()->group(function (): void {
+    Route::get(
+        '/movies/{movie:slug}/showtimes/{screening}',
+        [PublicMovieController::class, 'show']
+    )->name('cinema.screenings.show');
+
+    Route::post(
+        '/movies/{movie:slug}/showtimes/{screening}/hold',
+        [PublicMovieController::class, 'hold']
+    )->name('cinema.screenings.hold');
+});
+```
+
+Khi render seat map, server phải render active hold trước khi JavaScript chạy. Đây là fallback quan trọng cho login/resume và cũng giúp tổng tiền không bị về 0 trong khoảng thời gian JS chưa hydrate:
+
+```blade
+@php($activeHoldSeatIds = $activeHold?->items
+    ?->pluck('screening_seat_id')
+    ->map(static fn ($id): int => (int) $id)
+    ->all() ?? [])
+@php($initialSeatCount = count($activeHoldSeatIds))
+@php($initialSeatTotal = (int) ($activeHold?->items
+    ?->sum('price_minor_units') ?? 0))
+@php($initialComboTotal = (int) ($activeHold?->concessions
+    ?->sum('total_minor_units') ?? 0))
+
+<button
+    data-seat-id="{{ $screeningSeat->id }}"
+    data-seat-selected="{{ in_array($screeningSeat->id, $activeHoldSeatIds, true) ? 'true' : 'false' }}"
+    data-seat-own-hold="{{ $isOwnHold ? 'true' : 'false' }}"
+>
+```
+
+Nút submit dùng binding của Blade component, không dùng directive `@disabled` trực tiếp trong component attribute:
+
+```blade
+<x-admin.button
+    type="submit"
+    :disabled="$initialSeatCount === 0"
+>
+    {{ __('booking.continue_to_booking') }}
+</x-admin.button>
+```
+
+JavaScript chỉ hydrate state từ DOM, không được reset state server-rendered về mảng rỗng. Ghế của chính booking hiện tại là available-for-edit, giữ `data-seat-selected="true"`, có màu active và không bị disable:
+
+```js
+buttons.forEach((button) => {
+    if (button.dataset.seatOwnHold === 'true') {
+        button.dataset.selected = 'true';
+        button.setAttribute('aria-pressed', 'true');
+    }
+});
+
+const isSelectable = (button) => (
+    button.dataset.seatOwnHold === 'true'
+    || button.dataset.seatAvailable === 'true'
+);
+```
+
+Summary được tính từ snapshot server và state hiện tại:
+
+```js
+const seatTotal = selectedSeats.reduce(
+    (total, seat) => total + Number(seat.dataset.priceMinorUnits ?? 0),
+    0,
+);
+const comboTotal = [...comboInputs].reduce(
+    (total, input) => total
+        + Number(input.dataset.priceMinorUnits ?? 0)
+        * Number(input.value ?? 0),
+    0,
+);
+const grandTotal = seatTotal + comboTotal;
+```
+
+Modal xác nhận hiển thị theo thứ tự: thông tin phim/suất chiếu/phòng, ghế đã chọn, combo, rồi ba dòng tiền `Tiền ghế`, `Tiền combo`, `Tổng tiền`. Ghế cùng giá được nhóm thành một dòng để modal ngắn hơn, còn tổng tiền dùng font đậm và màu semantic `primary` để dễ quét.
+
+### Quy tắc edit active hold
+
+Khi user bấm “Chỉnh sửa ghế & combo”, checkout chỉ cho phép quay lại public nested showtime route nếu booking còn `held`:
+
+```php
+route('cinema.screenings.show', [$booking->screening->movie, $booking->screening])
+```
+
+Tại endpoint hold, normalize và so sánh tập seat IDs với booking hold hiện tại:
+
+```text
+same seat set     -> reuse idempotency_key, giữ booking/hold, sync combo
+changed seat set  -> cancel old held booking, release resources,
+                     tạo idempotency_key mới và hold ghế mới
+```
+
+Combo cũ được hoàn tồn kho khi booking cũ bị hủy thông qua `ReleaseBookingResources`; combo mới chỉ được trừ sau đó bởi `AddConcessions` trong transaction. Vì vậy không thanh toán nhầm ghế cũ hoặc cộng dồn combo cũ và mới. Booking ở `pending_payment`/`confirmed` không được edit như `held`; phải đi qua nghiệp vụ cancel/refund tương ứng.
+
+Các tình huống cần giữ trong regression test:
+
+| Case | Kết quả đúng |
+| --- | --- |
+| Guest chọn ghế + combo rồi login | Resume đúng public URL, ghế active, combo giữ quantity, continue active, seat/combo total đúng |
+| Resume lỗi ghế/combo | Payload pending được put lại session, user không mất lựa chọn |
+| Edit không đổi ghế | Reuse booking/idempotency key, cập nhật combo hiện tại |
+| Edit đổi ghế | Hủy hold cũ, tạo hold mới, không giữ/thanh toán ghế cũ |
+| Edit đổi combo | Hoàn stock combo cũ rồi reserve combo mới |
+| Hold hết hạn | Không coi ghế hết hạn là booking hợp lệ; server revalidate và cho chọn lại |
+
 ### Hold hết hạn
 
 Hold mặc định 10 phút (`BOOKING_HOLD_MINUTES`). Scheduler `booking:expire-holds` chuyển booking sang expired và trả ghế. Đồng thời `HoldSeats` chủ động release row held đã quá hạn trong transaction mới. Vì vậy scheduler trễ không làm ghế bị khóa vĩnh viễn. UI dùng `ScreeningSeat::isAvailableForSelection()` để coi `held_until <= now` là available, nhưng write path vẫn lock và revalidate.
+
+Các màn hình movie catalog, movie detail, user showtime list, public seat map, availability và action `HoldSeats` dùng chung `Screening::isBookable()`. Rule gồm: status là `scheduled`, giờ bắt đầu còn sau `BOOKING_MINIMUM_LEAD_MINUTES` và nằm trong `BOOKING_MAXIMUM_HORIZON_DAYS`. Điều này ngăn UI quảng bá suất đã bắt đầu hoặc suất không còn đủ thời gian để đặt. Nếu nghiệp vụ cho phép đặt sát giờ chiếu, cấu hình `BOOKING_MINIMUM_LEAD_MINUTES=0`; không bỏ kiểm tra riêng lẻ ở controller.
+
+Nếu user mở trực tiếp link checkout sau khi `expires_at` đã qua, controller phải expire/release booking trước rồi trả về view riêng `user.bookings.expired`. Không render checkout hợp lệ với countdown hoặc nút thanh toán, vì trạng thái đó gây hiểu nhầm rằng ghế vẫn đang được giữ.
+
+```php
+if ($expiresAt !== null
+    && CarbonImmutable::parse((string) $expiresAt, 'UTC')->isPast()) {
+    $booking->load(['screening.movie', 'screening.room']);
+    $expireBooking->execute($booking);
+
+    $canRebook = $booking->screening?->isBookable() === true;
+
+    return view('user.bookings.expired', compact('booking', 'canRebook'));
+}
+```
+
+Màn hình expired chỉ hiển thị thông tin text cần thiết: trạng thái đã hết hạn, tên phim, phòng, ngày/giờ chiếu và giải thích ghế/combo đã được giải phóng. `canRebook` quyết định action:
+
+- `true`: hold hết hạn nhưng suất vẫn bookable, quay lại đúng nested public seat map.
+- `false`: suất đã bắt đầu, đã kết thúc, bị hủy hoặc không còn trong booking window, quay về danh sách phim vì suất đó không còn được quảng bá.
+
+Action dùng named route, không hard-code URL:
+
+```blade
+<x-admin.button
+    :href="$canRebook
+        ? route('cinema.screenings.show', [$booking->screening->movie, $booking->screening])
+        : route('cinema.movies.index')"
+    icon="arrow-right"
+>
+    {{ __($canRebook
+        ? 'booking.checkout.expired_action'
+        : 'booking.checkout.screening_expired_action') }}
+</x-admin.button>
+```
+
+Không redirect vào checkout lần nữa và không cho submit payment từ màn hình này. Regression test phải xác nhận cả hai nhánh: response `200`, view `user.bookings.expired`, hold được expire/release; suất còn hợp lệ có link nested showtime, suất đã bắt đầu có link movie list và không có link seat map cũ.
 
 ### Cancel/refund
 
@@ -281,6 +533,9 @@ Local mặc định SQLite, fake payment, database session/cache/queue và mail 
 ```dotenv
 DB_CONNECTION=mysql                 # hoặc pgsql
 BOOKING_HOLD_MINUTES=10
+BOOKING_MAX_SEATS=10
+BOOKING_MAX_COMBOS_PER_TICKET=3
+BOOKING_MAX_COMBO_QUANTITY=20
 BOOKING_MINIMUM_LEAD_MINUTES=15
 BOOKING_MAXIMUM_HORIZON_DAYS=90
 BOOKING_CANCELLATION_DEADLINE_MINUTES=0
@@ -294,6 +549,28 @@ CACHE_STORE=redis
 SESSION_DRIVER=redis
 ```
 
+Business limits chỉ khai báo một lần trong `config/booking.php` và có thể override bằng `.env`:
+
+```php
+'limits' => [
+    'hold_minutes' => (int) env('BOOKING_HOLD_MINUTES', 10),
+    'max_seats' => (int) env('BOOKING_MAX_SEATS', 10),
+    'max_combos_per_ticket' => (int) env('BOOKING_MAX_COMBOS_PER_TICKET', 3),
+    'max_combo_quantity' => (int) env('BOOKING_MAX_COMBO_QUANTITY', 20),
+],
+```
+
+Mapping bắt buộc:
+
+| Limit | Backend | Frontend |
+|---|---|---|
+| `max_seats` | `HoldSeatsRequest` | `data-seat-max` và seat picker |
+| `max_combos_per_ticket` | `AddConcessions` | `data-combos-per-seat` và quota tổng |
+| `max_combo_quantity` | `HoldSeatsRequest`/availability | input `max`, combo controls |
+| `hold_minutes` | `HoldSeats`/expiry actions | countdown và hold hint |
+
+Không hard-code limit trong controller, Blade hoặc JS. Khi đổi limit, chạy `php artisan config:clear`/`php artisan config:cache` tùy môi trường rồi chạy lại regression test.
+
 Release checklist:
 
 1. Migrate trên staging bằng cùng database engine với production.
@@ -306,7 +583,46 @@ Release checklist:
 
 ## 13. Testing và quality gates
 
-Feature tests hiện có trong `tests/Feature/CinemaBookingFeatureTest.php`: guest browse, auth resume, hold conflict, idempotency, expired hold, payment, combo stock, paid-cancel guard, ownership, QR và check-in. Admin flow nằm trong `AdminCinemaManagementTest.php`.
+Feature tests hiện có trong `tests/Feature/MovieBookingFeatureTest.php`: guest browse, auth resume, hold conflict, idempotency, expired hold, payment, combo stock, paid-cancel guard, ownership, QR và check-in. Admin flow nằm trong `AdminMovieManagementTest.php`.
+
+Regression quan trọng cho luồng lần này phải kiểm tra cả response HTML sau login, không chỉ kiểm tra database:
+
+```php
+$loginResponse = $this->post(route('login'), [
+    'email' => $user->email,
+    'password' => 'password',
+]);
+
+$loginResponse->assertRedirect(route('user.cinema.hold.resume'));
+
+$resumeResponse = $this->actingAs($user)
+    ->get(route('user.cinema.hold.resume'));
+
+$resumeResponse->assertRedirect(
+    route('cinema.screenings.show', [$movie, $screening])
+);
+
+$this->get(route('cinema.screenings.show', [$movie, $screening]))
+    ->assertSee('data-seat-selected="true"', false)
+    ->assertSee($concession->name)
+    ->assertSee('value="2"', false);
+```
+
+Ngoài UI contract, test phải assert inventory: giữ nguyên ghế không tạo booking thứ hai, đổi ghế làm booking cũ `cancelled`, ghế cũ available trở lại, combo cũ được hoàn stock và combo mới được reserve đúng quantity.
+
+Regression cho giới hạn combo cần chứng minh cả client và domain:
+
+```php
+expect(fn () => app(AddConcessions::class)->execute(
+    $booking,
+    [$concession->id => ($ticketCount * 3) + 1],
+))->toThrow(RuntimeException::class);
+
+expect($concession->refresh()->stock)->toBe($stockBefore)
+    ->and($booking->refresh()->concessions)->toHaveCount(0);
+```
+
+Khi thay đổi giới hạn kinh doanh, phải cập nhật đồng thời `data-seat-max`, thông báo EN/VI, guard trong `seat-picker.js`, validation/domain action và regression test; không chỉ sửa `max` trên input HTML.
 
 Trước production cần bổ sung:
 
@@ -324,6 +640,7 @@ php artisan test --compact
 vendor/bin/phpstan analyse --memory-limit=1G --debug --no-progress
 php artisan view:cache
 npm run lint
+npm run test:frontend
 npm run build
 ```
 
@@ -339,6 +656,7 @@ npm run build
 - Khi traffic lớn, có thể tách read model/report hoặc cache seat map có version/invalidation; tuyệt đối không cache quyết định availability.
 
 Mọi mở rộng phải giữ nguyên bốn điểm: lock inventory, snapshot tiền, idempotency và audit transition.
+
 # 15. Chi tiết implementation nâng cấp Booking/Cinema
 
 Tài liệu này mô tả logic đã triển khai cho backend, payment, tiền tệ, webhook, giao diện và kiểm thử. Các ví dụ bám theo code thật trong repository.
@@ -394,7 +712,7 @@ PaymentStatus hiện gồm:
 Ý nghĩa:
 
 | Status | Ý nghĩa |
-|---|---|
+| --- | --- |
 | pending | Chưa có kết quả cuối hoặc đang chờ provider |
 | processing | Một request đang giữ quyền gọi gateway |
 | requires_action | Cần user hoàn tất 3DS/SCA |
@@ -629,8 +947,8 @@ Không hiển thị raw provider exception nếu có thể chứa dữ liệu n�
 Endpoint:
 
     Route::get(
-        '/showtimes/{screening}/availability',
-        [PublicCinemaController::class, 'availability']
+        '/movies/{movie:slug}/showtimes/{screening}/availability',
+        [PublicMovieController::class, 'availability']
     )->name('cinema.screenings.availability');
 
 Response gồm seat id, trạng thái khả dụng, updated_at và Cache-Control no-store.
@@ -866,8 +1184,11 @@ Mỗi combo hiển thị ảnh `image_url`, fallback icon, giá, tồn kho và q
 
 ```php
 $maxQuantity = $concession->stock === null
-    ? 20
-    : min(20, $selectedQuantity + $concession->stock);
+    ? (int) config('booking.limits.max_combo_quantity')
+    : min(
+        (int) config('booking.limits.max_combo_quantity'),
+        $selectedQuantity + $concession->stock,
+    );
 ```
 
 `selectedQuantity + stock` là giới hạn hợp lý khi booking đã giữ một phần stock trước đó. Giá và stock vẫn phải validate lại ở `AddConcessions` trong transaction; giới hạn HTML chỉ là UX.
@@ -900,7 +1221,7 @@ Module `resources/js/modules/booking.js` clamp quantity trước khi tính:
 const current = Number(input.value ?? 0);
 const step = button.hasAttribute('data-combo-increase') ? 1 : -1;
 const minimum = Number(input.min ?? 0);
-const maximum = Number(input.max ?? 20);
+const maximum = Number(input.max ?? 0);
 
 input.value = String(Math.min(
     maximum,
@@ -1047,7 +1368,7 @@ Giới hạn: payment timeout không có `provider_payment_id` không thể tự
 
 `RefundBooking` dùng lock theo thứ tự payment → booking → booking items, tạo `refund_attempts` unique trước khi gọi provider và re-check `checked_in` sau khi provider trả kết quả. `CheckInTicket` khóa booking/item và từ chối khi refund đang `processing` hoặc `unknown`. Nhờ vậy check-in và refund không thể cùng xác nhận một quyền sử dụng.
 
-Giới hạn: nếu provider đã refund thành công nhưng transaction cập nhật nội bộ gặp lỗi hạ tầng, attempt phải được reconciliation/manual review theo provider refund id; không được retry refund tự động nếu chưa đối soát.
+Nếu provider đã refund thành công nhưng transaction cập nhật nội bộ gặp lỗi hạ tầng, `RefundAttempt::Succeeded` cùng provider refund id là bằng chứng để retry bỏ qua provider call và chạy lại local finalize. Seat, ticket, payment và từng dòng stock đều idempotent; retry chỉ bù phần chưa hoàn tất, không restore stock hai lần.
 
 ### 20.3 Currency và tiền tệ
 
@@ -1157,7 +1478,7 @@ if ($payment->refundAttempts()
 }
 ```
 
-Sau khi provider refund thành công, action phải mở transaction mới, khóa lại payment/booking và kiểm tra `checked_in` lần cuối trước khi đánh dấu ticket `refunded`. Nếu provider đã refund nhưng transaction nội bộ lỗi, attempt phải được manual reconciliation theo provider refund id; không retry refund tự động.
+Sau khi provider refund thành công, action mở transaction mới, khóa lại payment/booking và kiểm tra `checked_in` lần cuối trước khi đánh dấu ticket `refunded`. Nếu transaction local lỗi, retry dựa trên `RefundAttempt::Succeeded` và idempotency key theo payment/concession; chỉ khi attempt provider là `unknown` mới cần reconciliation thủ công trước khi retry provider.
 
 ### 21.3 Reconciliation và webhook lifecycle
 
@@ -1478,3 +1799,665 @@ DB::listen(function (QueryExecuted $query) use ($threshold): void {
 ```
 
 Production nên chuyển event này sang APM/metrics, sampling theo route và redact dữ liệu nhạy cảm nếu query có user input. Không bật verbose SQL logging vô hạn trên hệ thống traffic cao.
+
+## 23. Current implementation audit và traceability
+
+Phần này là inventory đối chiếu trực tiếp với code hiện tại. Khi thêm hoặc đổi nghiệp vụ, cập nhật section này cùng test tương ứng để dev/QA có thể lần từ UI vào database và job vận hành.
+
+### 23.1 Route map theo user journey
+
+| Journey | Route | Controller/Action | Kết quả |
+|---|---|---|---|
+| Browse catalog | `GET /movies` | `PublicMovieController@index` | Chỉ movie active có screening bookable |
+| Movie detail | `GET /movies/{movie:slug}` | `PublicMovieController@movie` | Showtimes tương lai, available/total seat counts |
+| Public seat map | `GET /movies/{movie:slug}/showtimes/{screening}` | `PublicMovieController@screening` | Seat map, active hold, combo và summary |
+| Availability | `GET .../availability` | `PublicMovieController@availability` | JSON no-store, polling gần realtime |
+| Guest/auth hold | `POST .../hold` | `PublicMovieController@hold` / `ScreeningController@hold` | Tạo/reuse/rewrite hold; guest lưu session |
+| Login resume | `GET /user/cinema/hold/resume` | `PublicMovieController@resumeHold` | Tạo lại hold rồi redirect public nested URL |
+| User showtimes | `GET /user/screenings` | `ScreeningController@index` | Danh sách screening bookable |
+| Checkout | `GET /user/bookings/{booking}/checkout` | `BookingController@checkout` | Review/payment hoặc expired screen |
+| Combo review | `GET .../combos` | `BookingController@combos` | Edit combo khi booking còn `held` |
+| Pay | `POST .../pay` | `BookingController@pay` → `PayBooking` | Claim payment, fake/Stripe, requires action |
+| Payment status | `GET .../payment-status` | `BookingController@paymentStatus` | Poll trạng thái payment |
+| Payment action | `GET .../payment-action` | `BookingController@paymentAction` | Xác thực thêm với provider |
+| Success/detail | `GET .../success`, `GET /user/bookings/{booking}` | `BookingController` | Snapshot ticket, combo, money |
+| Cancel/refund | `PATCH .../cancel`, `POST /admin/bookings/{booking}/refund` | `CancelBooking` / `RefundBooking` | Release inventory hoặc refund trước rồi release |
+| Ticket | `GET /user/tickets/{ticket}`, `GET /ticket-verify/{ticket}` | `TicketController` | Ticket detail/QR và signed verification |
+| Check-in | `POST /admin/tickets/check-in` | `CheckInTicket` | Validate window, issued status, one-time check-in |
+| Stripe webhook | `POST /webhooks/stripe` | `StripeWebhookController` | Signature, event dedupe, amount/currency check |
+
+Public nested routes dùng `scopeBindings()` và phải truyền cả `$movie`, `$screening`; không dùng lại route phẳng `/showtimes/{id}`.
+
+### 23.2 Booking domain và state transitions
+
+```php
+// app/Actions/Movie/Booking/HoldSeats.php
+$booking = $holdSeats->execute(
+    $user,
+    $screening,
+    $seatIds,
+    $idempotencyKey,
+);
+
+// app/Actions/Movie/Concessions/AddConcessions.php
+$booking = $addConcessions->execute(
+    $booking,
+    $quantitiesByConcession,
+);
+
+// app/Actions/Movie/Booking/PayBooking.php
+$payment = $payBooking->execute(
+    $booking,
+    $paymentMethodId,
+    $quantitiesByConcession,
+);
+```
+
+| State | Cho phép | Không cho phép |
+|---|---|---|
+| `held` | Edit seats/combo, checkout, cancel, expire | Confirm trực tiếp ngoài action |
+| `pending_payment` | Provider/webhook/reconcile tiếp tục | Đổi combo hoặc edit seat |
+| `confirmed` | Ticket, check-in theo window, refund flow | Cancel unpaid trực tiếp |
+| `completed` | History/report | Pay/edit/cancel như hold |
+| `cancelled`/`expired` | History/audit | Reuse để thanh toán hoặc giữ lại inventory |
+| `no_show` | Report/operations | Issue lại ticket |
+
+Mọi transition phải đi qua `Booking::transitionTo()` và action tương ứng. `ReleaseBookingResources` là điểm chung để trả `ScreeningSeat` và combo stock, tránh mỗi controller tự release khác nhau.
+
+### 23.3 Screening bookability rule
+
+`Screening::isBookable()` là business rule dùng chung cho query scope, public/user listing, seat map, availability và `HoldSeats`:
+
+```php
+public function isBookable(?CarbonImmutable $now = null): bool
+{
+    $now ??= CarbonImmutable::now('UTC');
+    $startsAt = $this->starts_at?->utc();
+
+    return $this->status === ScreeningStatus::Scheduled
+        && $startsAt?->isAfter($now->addMinutes(
+            (int) config('booking.minimum_lead_minutes')
+        ))
+        && $startsAt?->isBeforeOrEqualTo($now->addDays(
+            (int) config('booking.maximum_horizon_days')
+        ));
+}
+```
+
+Suất vẫn có thể tồn tại trong database nhưng không xuất hiện catalog nếu đã bắt đầu, nằm trong lead-time buffer, quá horizon hoặc không còn `scheduled`. Khi user mở checkout expired, `canRebook` quyết định: đúng suất nếu còn bookable, movie list nếu không còn bookable.
+
+### 23.4 Auth và guest resume
+
+Guest form lưu đủ dữ liệu, không chỉ seat IDs:
+
+```php
+session()->put('cinema.pending_hold', [
+    'screening_id' => $screening->id,
+    'seat_ids' => $seatIds,
+    'idempotency_key' => $idempotencyKey,
+    'quantities' => $quantities,
+]);
+```
+
+`LoginResponse` ưu tiên `user.cinema.hold.resume` khi có pending hold. Resume dùng `session()->pull()` để tránh replay; nếu conflict/stock failure thì put payload lại session trước khi redirect. Response public sau resume phải render active seat, combo quantity, totals và continue enabled từ server fallback.
+
+### 23.5 Price, combo và inventory
+
+- `ScreeningSeat.price_minor_units` snapshot giá vé theo suất.
+- `BookingItem.price_minor_units` snapshot giá tại thời điểm hold.
+- `BookingConcession.unit_price_minor_units` và `total_minor_units` snapshot combo.
+- `Money` dùng integer minor units và currency uppercase.
+- `AddConcessions` lock booking/concession, tính delta quantity, kiểm tra currency/stock, ghi `ConcessionInventoryMovement` và cập nhật booking totals trong transaction.
+- Tổng combo tối đa là `ticket_count × config('booking.limits.max_combos_per_ticket')`; mỗi line còn chịu `max_combo_quantity`.
+- Admin thay đổi stock bắt buộc reason và ghi `ConcessionStockAdjustmentAudit`.
+- Cancel/expire/refund trả stock đúng một lần; retry không được double release.
+
+### 23.6 Payment reliability và operations
+
+```bash
+php artisan booking:expire-holds --chunk=100
+php artisan payments:alert-stuck
+php artisan payments:reconcile --limit=100
+php artisan app:outbox-publish --limit=100
+php artisan audit:prune-user-management --days=365
+```
+
+| Component | Trách nhiệm |
+|---|---|
+| `PayBooking` | Lock booking, tránh charge lặp, tạo payment attempt/provider intent |
+| `StripeWebhookController` | Verify signature/timestamp, dedupe event, reject mismatch |
+| `ReconcilePayments` + `ReconcilePayment` | Đối chiếu pending/processing/requires_action với provider |
+| `AlertStuckPayments` | Log payment processing quá timeout |
+| `ExpireBookings` | Expire unpaid holds và release seat/combo |
+| `OutboxPublish` + `PublishOutboxMessage` | Dispatch side effects at-least-once sau commit |
+| `PruneUserManagementAudits` | Dọn audit theo retention |
+
+Payment timeout không được tự động kết luận success/failure nếu provider chưa xác nhận. Webhook/reconciliation mới là nguồn đồng bộ cuối cùng; các attempt và webhook event dùng khóa/idempotency để audit.
+
+### 23.7 Admin và authentication boundary
+
+- Admin cinema quản lý movie, room/seat materialization, screening và concession catalog.
+- Admin booking xem danh sách, cancel unpaid và refund paid booking.
+- Admin ticket check-in qua `CheckInTicketRequest` và action window/status validation.
+- Admin user management được mô tả chi tiết trong `docs/user-management.md`, gồm soft delete, restore, force delete, self-protection, last-admin protection, bulk transaction và audit.
+- Fortify xử lý login, register, password reset, profile/password update, email verification, 2FA/passkey; `LoginResponse` là điểm redirect đặc biệt cho booking resume.
+- Authorization nhiều lớp: middleware/role, Policy, Form Request và Action; không tin hidden input, disabled button hoặc redirect từ client.
+
+### 23.8 UI runtime và test coverage
+
+`resources/js/app.js` dynamic import theo hook:
+
+```js
+if (document.querySelector('[data-seat-picker]')) {
+    import('./modules/seat-picker.js').then(({ initSeatPickers }) => {
+        initSeatPickers();
+    });
+}
+```
+
+| UI | Contract |
+|---|---|
+| Seat picker | Active own hold, max seats, availability polling, suggest seats, combo quota, combined total |
+| Confirm modal | Movie/showtime/room, grouped seats, combos, seat/combo/total money, SVG icons, focus handling |
+| Checkout | Read-only review, countdown, coupon placeholder, payment/requires-action state |
+| Expired screen | No payment form; rebook showtime hoặc browse movies theo `canRebook` |
+| Ticket | Signed QR/verification, ticket status and check-in feedback |
+| Admin user table | Bulk selection, self-protection, modal accessibility and server authorization |
+
+Regression commands:
+
+```bash
+php artisan test --compact
+npm run test:frontend
+npm run lint
+npm run build
+vendor/bin/pint --dirty --format agent
+git diff --check
+```
+
+Các case booking bắt buộc trong `MovieBookingFeatureTest`: guest/auth resume, hold conflict, idempotency, edit seat, expired hold với hai nhánh rebook/movie-list, combo stock/limit, payment success/expiry, ownership, cancel/refund, QR và check-in. `BookingPaymentReliabilityTest` bao phủ pending/timeout/webhook mismatch/idempotency; admin và auth suites bao phủ authorization, Fortify và user lifecycle.
+
+### 23.9 Những phần hiện chưa phải tính năng hoàn chỉnh
+
+- Coupon UI tồn tại nhưng apply đang disabled; chưa có coupon engine, usage limit hoặc snapshot discount.
+- Browser/E2E runner chưa được cài; accessibility và mobile cần smoke test thủ công/CI browser.
+- Operating hours mới là config mặc định, chưa có holiday/exception entity.
+- Partial refund, voucher, multi-currency conversion và seat capacity aggregate chưa triển khai.
+- Outbox có retry nhưng production scale lớn nên bổ sung lease/dead-letter dashboard.
+
+Không được ghi các mục trên là “đã hỗ trợ” trong UI hoặc release note cho đến khi có backend contract, migration/action, test và docs tương ứng.
+# Review remediation log (2026-09-09)
+
+Phần này ghi lại các lỗi đã phát hiện trong review nghiệp vụ booking và cách hệ thống xử lý sau khi sửa. Đây là changelog kỹ thuật để trace giữa yêu cầu, mã nguồn và test hồi quy.
+
+## 1. Availability và thời gian hold
+
+Availability phải xét cả `status` và `held_until`. Chỉ lấy `status` sẽ khiến ghế đã hết hạn nhưng scheduler chưa chạy vẫn bị xem là unavailable.
+
+```php
+$screening->screeningSeats()
+    ->get(['seat_id', 'status', 'held_until'])
+    ->mapWithKeys(fn (ScreeningSeat $seat): array => [
+        (string) $seat->seat_id => $seat->isAvailableForSelection(),
+    ]);
+```
+
+Blade public và authenticated dùng cùng một rule:
+
+```php
+$available = $screeningSeat->isAvailableForSelection() || $isOwnHold;
+```
+
+`ScreeningSeat::isAvailableForSelection()` trả về `true` khi ghế available hoặc hold đã hết hạn. Hold của chính user vẫn được phép hiển thị active và edit.
+
+## 2. Single source cho các giới hạn booking
+
+Các giới hạn được định nghĩa tại `config/booking.php`:
+
+```php
+'limits' => [
+    'hold_minutes' => (int) env('BOOKING_HOLD_MINUTES', 10),
+    'max_seats' => (int) env('BOOKING_MAX_SEATS', 10),
+    'max_combos_per_ticket' => (int) env('BOOKING_MAX_COMBOS_PER_TICKET', 3),
+    'max_combo_quantity' => (int) env('BOOKING_MAX_COMBO_QUANTITY', 20),
+],
+```
+
+Request validation, action, Blade data attributes và JavaScript đều phải đọc cùng các key này. Không dùng literal như `max:20` trong FormRequest.
+
+Tổng combo được tính theo công thức:
+
+```php
+$maxComboCount = $booking->items()->count()
+    * (int) config('booking.limits.max_combos_per_ticket');
+```
+
+Mỗi combo line vẫn chịu `max_combo_quantity` và giới hạn tồn kho. Frontend chỉ giúp phản hồi sớm; backend lock booking và concession rồi kiểm tra lại.
+
+## 3. Payment timeout không có provider ID
+
+Nếu gateway timeout trước khi trả về provider payment ID, hệ thống không được charge lại mù vì provider có thể đã nhận giao dịch.
+
+Flow hiện tại:
+
+```php
+$attempt->forceFill([
+    'status' => 'unknown',
+    'failure_message' => 'Payment provider response was unknown.',
+])->save();
+
+$payment->forceFill([
+    'status' => PaymentStatus::Unknown,
+    'processing_started_at' => null,
+])->save();
+```
+
+Payment `unknown` không tự retry. Booking/seat vẫn được giữ đến thời điểm expiry; trạng thái cần được đối soát hoặc xử lý thủ công. Đây là lựa chọn an toàn để tránh double charge. Payment status page dừng polling khi nhận `unknown` và hiển thị hướng dẫn hỗ trợ.
+
+Các trạng thái payment quan trọng:
+
+```text
+pending → processing → succeeded
+                     ↘ failed
+                     ↘ requires_action
+                     ↘ unknown
+```
+
+`unknown` khác `failed`: failed có kết quả chắc chắn không thu tiền, còn unknown chưa thể kết luận.
+
+## 4. Quy tắc edit booking
+
+- `held`: được edit ghế và combo.
+- Giữ nguyên ghế: giữ booking/idempotency key, đồng bộ combo trong transaction.
+- Đổi ghế: cancel hold cũ, release seat/combo, tạo hold mới.
+- `pending_payment`: không được edit. User được đưa về checkout/payment-action để tránh thay đổi dữ liệu trong lúc payment provider đang xử lý.
+- `confirmed`: không edit; chỉ đi qua cancel/refund theo policy.
+
+Route GET cũ `/user/screenings/{screening}` được giữ để backward compatibility nhưng chuyển về public canonical URL:
+
+```text
+/movies/{movie-slug}/showtimes/{screening}
+```
+
+Mục tiêu là chỉ còn một UI seat picker, một availability contract và một đường analytics chính.
+
+## 5. Guest resume và dữ liệu cũ
+
+Guest selection được lưu trong session gồm:
+
+```php
+[
+    'screening_id' => $screening->id,
+    'seat_ids' => [...],
+    'idempotency_key' => '...',
+    'quantities' => [...],
+]
+```
+
+Sau login, `LoginResponse` chuyển tới `user.cinema.hold.resume`. Nếu screening không còn tồn tại, session được xử lý an toàn và user về danh sách phim với thông báo, không phát sinh 500.
+
+## 6. Dashboard và booking hết hạn
+
+`pending_payment` chỉ được hiển thị là upcoming khi `expires_at > now()`. Booking confirmed không phụ thuộc hold expiry vì đã hoàn tất thanh toán.
+
+```php
+->where(function ($query): void {
+    $query->where('status', 'confirmed')
+        ->orWhere(fn ($pending) => $pending
+            ->where('status', 'pending_payment')
+            ->where('expires_at', '>', now()->utc()));
+})
+```
+
+## 7. Test hồi quy và concurrency
+
+Các test cần duy trì:
+
+- expired held seat trả về available từ availability endpoint;
+- user thứ hai không thể acquire seat đã được user thứ nhất hold;
+- guest hold resume sau login giữ URL, seat và combo;
+- giữ nguyên ghế khi edit không tạo booking mới;
+- đổi ghế release hold cũ và không thanh toán nhầm ghế cũ;
+- combo không vượt `ticket_count × max_combos_per_ticket`;
+- payment timeout chỉ tạo một attempt và không charge lại;
+- payment success sau expiry chuyển sang `requires_refund`;
+- duplicate webhook không finalize hai lần;
+- pending payment không cho edit seat/combo;
+- expired pending booking không xuất hiện trên dashboard upcoming.
+
+Test feature có thể chứng minh transaction/HTTP contract. Real browser test cần chạy thêm trên browser automation với các bước click/redirect thực tế; không thay thế được concurrency test ở database layer.
+
+## 8. Query plan và slow query
+
+Kiểm tra query production-like bằng `EXPLAIN`/`EXPLAIN ANALYZE` cho các hot path:
+
+```sql
+EXPLAIN SELECT * FROM screenings
+WHERE status = 'scheduled'
+  AND starts_at > CURRENT_TIMESTAMP
+  AND starts_at <= CURRENT_TIMESTAMP + INTERVAL '90 days'
+ORDER BY starts_at;
+
+EXPLAIN SELECT * FROM screening_seats
+WHERE screening_id = ?
+  AND status = 'held'
+  AND held_until <= CURRENT_TIMESTAMP;
+
+EXPLAIN SELECT * FROM bookings
+WHERE user_id = ?
+  AND screening_id = ?
+  AND status IN ('held', 'pending_payment')
+  AND expires_at > CURRENT_TIMESTAMP
+ORDER BY id DESC;
+```
+
+Các index liên quan hiện có:
+
+- `screenings(movie_id, starts_at)`;
+- `screenings(screening_room_id, starts_at, ends_at)`;
+- `screening_seats(screening_id, status, held_until)`;
+- `bookings(user_id, screening_id, status, expires_at)`;
+- `bookings(status, expires_at)`;
+- `payments(status, processing_started_at)`.
+
+Trong local/test, query vượt `config('booking.observability.slow_query_ms')` được log với `connection`, duration và SQL đã bind. Khi production có dữ liệu lớn, phải đối chiếu log này với `EXPLAIN ANALYZE` trước khi thêm index mới.
+
+Đo trên database local MySQL 8.0.33 hiện tại với 100 lần lặp/query:
+
+```text
+screenings       0.827 ms/query
+screening_seats  0.414 ms/query
+bookings         0.437 ms/query
+```
+
+`EXPLAIN` cho thấy `screenings` đang dùng `screenings_status_index` và `Using filesort`; `bookings` đang dùng unique index theo `user_id` nhưng vẫn `Using filesort`. Dataset hiện chỉ có 18 screening rows nên chưa đủ để kết luận production cần index mới. Khi dữ liệu lớn, cần benchmark lại và cân nhắc index phủ cho pattern lọc/sắp xếp thực tế.
+
+Availability seat hiện dùng composite index `screening_id, status, held_until` theo đúng access pattern. Kết quả local chưa đại diện cho tải production.
+
+## 9. Quality gate
+
+Sau mỗi thay đổi booking cần chạy:
+
+```bash
+php artisan test --compact
+vendor/bin/phpstan analyse --no-progress --debug
+vendor/bin/pint --dirty --format agent
+npm run lint
+npm run test:frontend
+npm run build
+git diff --check
+```
+
+Không đánh dấu hoàn tất nếu PHPStan, test backend, frontend lint hoặc build còn fail.
+
+Browser automation không chạy được trong môi trường review này vì không có browser session khả dụng. Vì vậy guest resume/edit/payment đã được kiểm tra bằng HTTP feature tests và JavaScript unit-level tests; cần chạy manual/browser E2E trên môi trường có browser trước khi release.
+
+## 10. Enum, magic values và translation contract
+
+Các giá trị có ý nghĩa nghiệp vụ không được so sánh bằng literal rải rác trong application code:
+
+- Booking dùng `App\Enums\Movie\Booking\BookingStatus`.
+- Screening seat dùng `App\Enums\Movie\Seating\ScreeningSeatStatus`.
+- Screening dùng `App\Enums\Movie\Catalog\ScreeningStatus`.
+- Ticket dùng `App\Enums\Movie\Ticketing\TicketStatus`.
+- Payment và payment attempt dùng `App\Enums\Payment\PaymentStatus` và `PaymentAttemptStatus`.
+- Refund attempt dùng `App\Enums\Payment\RefundAttemptStatus`.
+- Concession inventory movement dùng `App\Enums\Movie\Concessions\InventoryMovementType`.
+- Outbox event dùng `App\Enums\Infrastructure\OutboxEventType`.
+
+Các model tương ứng có Eloquent cast về enum. Khi truy vấn raw database, dùng `Enum::value`; khi làm việc với model đã cast, so sánh trực tiếp enum. Chuỗi trạng thái từ Stripe/fake gateway là protocol boundary, phải được normalize trước khi lưu vào enum nội bộ và không được lan sang UI.
+
+Giới hạn booking (`hold_minutes`, số ghế tối đa, số combo tối đa) và policy danh sách cinema nằm trong `config/booking.php`, có biến môi trường và comment giải thích. Pagination/preview cho các màn hình booking cũng dùng `config('booking.listing.*')`; không thêm một literal giới hạn mới trong controller.
+
+Text hiển thị, aria-label và thông báo người dùng phải đi qua `lang/en` và `lang/vi`. Status label được truy cập theo `booking.status.<enum value>`, vì vậy khi thêm enum case phải bổ sung key dịch tương ứng ở cả hai locale. `unknown` đã được thêm cho payment status để không rơi vào key thiếu.
+
+## 11. Model scopes cho điều kiện nghiệp vụ dùng lại
+
+Các điều kiện nghiệp vụ dùng ở nhiều nơi được đặt trong model scope để tránh controller/query tự định nghĩa biến thể khác nhau:
+
+```php
+Booking::query()->activeHold();
+Booking::query()->expiredHold();
+Booking::query()->upcoming();
+Screening::query()->bookable();
+Screening::query()->scheduled()->overlapping($startsAt, $endsAt);
+ScreeningSeat::query()->availableForSelection();
+Concession::query()->active()->forCurrency($currency);
+Movie::query()->active();
+Seat::query()->active();
+```
+
+`Booking::activeHold()` luôn kiểm tra đồng thời trạng thái giữ chỗ và `expires_at`. `Booking::expiredHold()` dùng cho worker expire. `Booking::upcoming()` chỉ nhận booking confirmed hoặc pending payment còn hạn. `Screening::bookable()` dùng chung booking lead time và maximum horizon; `bookableStartsAfter()` và `bookableStartsUntil()` là boundary chung cho scope và `isBookable()`. `ScreeningSeat::availableForSelection()` xét cả `status` và `held_until`, nên ghế hold đã hết hạn được mở lại ngay cả khi scheduler chưa chạy. Các scope currency/active thống nhất filter concession/movie/seat trên các màn hình public, user và admin.
+
+Khi thêm điều kiện vào các scope trên, phải kiểm tra cả caller dùng relation và caller có `join`. Scope booking đã qualify tên bảng (`bookings.status`, `bookings.expires_at`) để không gây ambiguous column khi dashboard join `screenings`.
+
+## 12. Payment, inventory và delivery reliability remediation
+
+Các invariant production-critical được bảo vệ ở database/action layer:
+
+- `screening_seats.held_by_booking_id` ghi rõ booking sở hữu seat hold. Hold, finalize và release đều kiểm tra ownership; khi seat chuyển sang `sold`, ownership hold được xóa.
+- `concession_inventory_movements.idempotency_key` là unique. Release/refund stock dùng key ổn định theo booking/payment + concession, vì vậy retry không cộng stock hai lần.
+- `RefundBooking` nhận diện `RefundAttemptStatus::Succeeded`. Nếu provider đã refund nhưng transaction local bị rollback, lần retry bỏ qua provider call và finalize từng resource bằng idempotency key; trạng thái `requires_refund` không được dùng để bỏ qua việc hoàn stock.
+- `payments:recover-stuck` chạy mỗi phút. Payment ở `processing`, quá `processing_timeout_minutes` và chưa có provider ID được chuyển sang `unknown`; payment attempt processing tương ứng cũng chuyển sang `unknown`. Trạng thái này không tự charge lại.
+- Webhook, reconcile và synchronous charge đều đồng bộ payment attempt với payment transition. Mapping provider string chỉ tồn tại ở adapter boundary.
+- Outbox có `outbox_deliveries` unique theo message/channel. Delivery được claim bằng lease; delivery `sent` không gửi lại, còn delivery `sending` quá lease có thể được reclaim sau worker crash.
+
+Migration rollback phải chạy theo thứ tự migration ngược: xóa outbox deliveries trước các message liên quan, xóa inventory idempotency key, sau đó xóa seat ownership. Khi deploy production, migration add-column/index cần chạy trước code đọc/ghi column mới; chỉ xóa column sau khi toàn bộ worker cũ đã được drain.
+
+Các policy booking được tách rõ: `pay`, `editSelection`, `changeCombos` và `cancel`. Controller vẫn authorize server-side; việc ẩn/nút disable ở frontend chỉ là UX, không phải security boundary.
+
+## 13. Atomic edit và verification coverage
+
+`EditBookingSelection` là application boundary duy nhất cho việc user submit lại seat/combo từ public screening. Action khóa active hold trong transaction; giữ nguyên seat thì cập nhật combo trên booking hiện tại, đổi seat thì cancel/release hold cũ rồi tạo hold mới trong cùng transaction. Nếu seat mới conflict, transaction rollback và booking/seat/combo cũ vẫn còn nguyên.
+
+Các test reliability hiện bao phủ:
+
+- payment claim không charge lại khi pending/unknown;
+- recover payment processing không có provider ID;
+- payment attempt được đồng bộ khi provider trả pending;
+- refund retry không restore combo stock hai lần;
+- held seat ghi đúng owner booking và xóa owner khi sold;
+- edit seat thất bại không làm mất booking hiện tại;
+- outbox publisher claim một lần và delivery email không gửi lại khi job retry;
+- guest browse/hold, expired checkout, webhook idempotency, stock/seat concurrency và check-in.
+
+Browser E2E thực tế vẫn cần chạy trong môi trường có browser session. HTTP/feature test không thay thế hoàn toàn việc kiểm tra focus modal, multi-tab, redirect sau login, mobile viewport và race giữa các request trình duyệt.
+
+## 16. Notifications, booking reminder và coupon
+
+### 16.1 Thông báo sau đặt vé thành công
+
+Khi `FinalizeSuccessfulPayment` xác nhận booking, hệ thống tạo outbox event `booking.payment_succeeded`. `PublishOutboxMessage` gửi email xác nhận hiện có và tạo database notification `booking_confirmed` cho user. Outbox delivery có unique channel nên chạy lại job không tạo thông báo trùng.
+
+Database notification dùng bảng chuẩn `notifications`. User có thể:
+
+- xem 10 thông báo mới nhất;
+- xem số lượng chưa đọc;
+- đánh dấu từng thông báo đã đọc;
+- đánh dấu toàn bộ đã đọc.
+
+Các endpoint nằm dưới authenticated user route và luôn query qua `$request->user()->notifications()` để tránh IDOR.
+
+### 16.2 Chuông thông báo realtime
+
+`x-ui.notification-bell` được dùng ở user layout và storefront khi đã login. Frontend gọi notification endpoint ngay khi render và poll lại mỗi 15 giây. Đây là realtime polling, không yêu cầu thêm WebSocket/broadcast infrastructure; có thể nâng cấp sang broadcast sau mà không đổi database contract.
+
+Notification message được render bằng `textContent`, không inject raw HTML. API URL cho mark-as-read được tạo bằng named route và CSRF token gửi trong request PATCH.
+
+### 16.3 Reminder trước suất chiếu 2 giờ
+
+Scheduler chạy `booking:send-reminders` mỗi phút. Command claim các booking `Confirmed` có `starts_at` trong cửa sổ quanh `now + 2 hours`, khóa booking, kiểm tra lại trạng thái và `reminder_sent_at`, sau đó:
+
+1. ghi `reminder_sent_at`;
+2. tạo outbox event `booking.reminder_due`;
+3. outbox publisher gửi `BookingReminderMail`;
+4. tạo in-app notification `booking_reminder`.
+
+`reminder_sent_at` và row lock bảo đảm command chạy lặp hoặc nhiều scheduler instance không tạo reminder trùng. Booking phải được confirmed; hold/pending payment không nhận reminder.
+
+### 16.4 Coupon reservation
+
+Coupon gồm:
+
+- `code` unique;
+- `fixed` hoặc `percentage`;
+- giá trị giảm;
+- giới hạn giảm tối đa;
+- currency tùy chọn;
+- thời gian hiệu lực;
+- usage limit và used count.
+
+Khi user apply coupon ở checkout, `ApplyCoupon` khóa booking và coupon trong cùng transaction. Hệ thống tạo `coupon_reservations` unique theo booking/coupon và tăng `used_count`. Booking snapshot `coupon_code`, `coupon_id`, `discount_minor_units`, `total_minor_units`.
+
+Reservation được:
+
+- release và hoàn `used_count` khi hold bị cancel/expire;
+- chuyển `redeemed` khi payment finalize thành công;
+- giữ nguyên giá trị đã snapshot để giá coupon thay đổi sau đó không làm thay đổi booking.
+
+Khi combo thay đổi sau khi coupon đã apply, discount percentage được tính lại trên subtotal mới. Coupon không được thay đổi sau khi payment đã bắt đầu.
+
+Coupon mẫu cho môi trường seed là `MOVIE10`. Production cần có quy trình admin/ops tạo coupon với code, thời gian, currency và usage limit rõ ràng; không nên cho client tự tạo coupon.
+
+### 16.5 Test coverage mới
+
+Feature tests kiểm tra:
+
+- apply coupon percentage và cập nhật total;
+- release reservation khi booking bị cancel/expire;
+- tạo notification sau payment success;
+- scheduler reminder chỉ claim một lần;
+- outbox event reminder được tạo đúng;
+- quyền truy cập notification theo user.
+
+Frontend cần tiếp tục bổ sung browser/DOM tests cho mở chuông, badge unread, mark-read, polling failure và responsive notification panel.
+
+## 14. Cấu trúc module Movie
+
+Domain movie booking được group theo feature `Movie` bên trong các layer chính của `app/`. Đây là modular monolith: module sở hữu nghiệp vụ movie, còn Laravel HTTP/Queue/Mail/Infrastructure vẫn là các adapter bên ngoài.
+
+```text
+app/
+├── Actions/Movie/
+│   ├── Booking/                 # hold, edit, pay, expire, cancel, refund, finalize
+│   ├── Catalog/                 # tạo/quản lý movie screening
+│   ├── Concessions/             # thêm combo và inventory mutation
+│   └── Ticketing/               # check-in và quyền sử dụng ticket
+├── Enums/Movie/                 # trạng thái/loại dữ liệu thuần movie
+│   ├── Booking/
+│   ├── Catalog/
+│   ├── Concessions/
+│   ├── Seating/
+│   └── Ticketing/
+├── Models/Movie/                # movie, screening, seat, booking, combo và audit models
+├── Policies/Movie/              # authorization cho booking movie
+└── Queries/Movie/               # read model/query object của movie flow
+```
+
+Các lớp delivery vẫn ở vị trí chuẩn để dễ nhận biết boundary:
+
+```text
+app/Http/Controllers/Movie/       # public movie HTTP surface
+app/Http/Controllers/Admin/       # admin HTTP surface (MovieController, BookingController...)
+app/Http/Controllers/User/        # authenticated user HTTP surface
+app/Http/Requests/               # input validation theo HTTP surface
+app/Jobs/                        # asynchronous adapter
+app/Models/Payments/             # payment infrastructure dùng chung
+app/Models/Infrastructure/       # outbox infrastructure dùng chung
+app/Enums/                       # enum payment/infrastructure/admin dùng chung
+```
+
+Quy tắc tổ chức mới:
+
+- Use case mới thuộc movie phải bắt đầu ở `app/Actions/Movie/<Capability>`; không tạo action movie ở root `app/Actions`.
+- Enum thuần movie đặt trong `app/Enums/Movie/<Capability>`; enum payment, infrastructure và admin giữ ở `app/Enums` vì có phạm vi dùng chung.
+- Model có ownership của movie booking đặt tại `app/Models/Movie`; model payment/outbox dùng chung giữ ở layer riêng.
+- Query đọc lại nhiều nơi đặt tại `app/Queries/Movie`; controller không tự copy điều kiện nghiệp vụ đã có trong query/scope.
+- Controller chỉ authorize, validate, gọi action/query và trả response; không đưa transaction hoặc inventory invariant vào controller.
+- Tên route, view và translation legacy có thể tiếp tục dùng `cinema` để giữ backward compatibility; đó là presentation contract, không phải lý do để domain code quay lại namespace `Cinema`.
+- Khi tách capability mới, cập nhật namespace, factory, seed, policy registration, route imports, test imports và tài liệu trong cùng một change.
+
+Import canonical sau refactor:
+
+```php
+use App\Actions\Movie\Booking\HoldSeats;
+use App\Actions\Movie\Catalog\CreateScreening;
+use App\Actions\Movie\Concessions\AddConcessions;
+use App\Actions\Movie\Ticketing\CheckInTicket;
+use App\Models\Movie\Booking;
+use App\Models\Movie\Screening;
+use App\Queries\Movie\UserBookingsQuery;
+```
+
+Refactor này chỉ thay namespace/path và không thay route URL, route name, database table hoặc business transition. Rollback an toàn bằng cách revert commit namespace/path nếu chưa deploy; không cần migration dữ liệu.
+
+## 15. Payment webhook, retry và resume consistency
+
+### 15.1 Monotonic Stripe webhook
+
+`StripeWebhookController` phải kiểm tra provider payment ID trước khi query. Payload có chữ ký hợp lệ nhưng thiếu `data.object.id` bị đánh dấu failed và trả `422`; không được dùng `whereNull(provider_payment_id)`.
+
+Payment webhook được xử lý dưới row lock của payment. Metadata lưu `stripe_last_event_created` để bỏ qua event Stripe đến trễ. Các trạng thái terminal không bị downgrade:
+
+```text
+Refunded / RequiresRefund  -> không nhận webhook chuyển trạng thái
+Succeeded                  -> bỏ qua processing/failed/canceled đến trễ
+event.created cũ hơn       -> bỏ qua
+```
+
+Event vẫn được ghi `processed_at` khi bị bỏ qua vì stale/terminal để provider không retry vô hạn. Event mismatch amount/currency/metadata vẫn được ghi `failed_at` và không mutate payment.
+
+Ngay cả khi payload không có timestamp event, `Succeeded`, `Refunded` và `RequiresRefund` không bị downgrade; payment `Failed` cũng không quay ngược về `Processing` hoặc `RequiresAction`. Một payment failed chỉ được phục hồi bởi event `succeeded` hợp lệ.
+
+### 15.2 Stripe idempotency theo PaymentAttempt
+
+Mỗi lần charge tạo một `PaymentAttempt` riêng với `attempt_key`. Stripe gateway lấy attempt mới nhất và dùng key đó làm HTTP `Idempotency-Key`:
+
+```php
+$attemptKey = $payment->attempts()->latest('id')->value('attempt_key')
+    ?: 'booking-payment-'.$payment->id;
+```
+
+Không dùng duy nhất `booking-payment-{payment_id}` cho mọi lần retry. Như vậy retry sau provider failure có identity riêng, còn cùng một attempt vẫn an toàn khi request bị retry ở network/job layer.
+
+### 15.3 Invalid combo và transaction boundary
+
+Combo không tồn tại hoặc inactive phải trả lỗi nghiệp vụ `booking.messages.combo_unavailable`, không để `firstOrFail()` phát sinh HTTP 500.
+
+Guest resume dùng chung `EditBookingSelection`. Hold seat và apply combo chạy trong transaction boundary của action; nếu combo fail sau khi seat hold thành công, toàn bộ seat hold/booking mới phải rollback. Session pending được giữ lại để user chọn lại.
+
+### 15.4 Edit sau khi hold hết hạn
+
+Nếu không còn active hold nhưng vẫn có booking Held/PendingPayment đã hết hạn, `EditBookingSelection` khóa booking đó, cancel/release resources trước, rồi tạo hold mới. Điều này tránh giữ ghế/combo cũ tới lúc expiry worker chạy.
+
+### 15.5 Availability contract và DOM state
+
+Availability trả state từ server thay vì chỉ trả boolean:
+
+```json
+{
+  "seats": {
+    "12": {
+      "available": false,
+      "owned_by_current_booking": true
+    }
+  }
+}
+```
+
+Seat picker cập nhật lại `data-seat-own-hold` sau mỗi poll. DOM flag cũ không còn đủ quyền quyết định; seat chỉ selectable khi API hiện tại trả `available` hoặc `owned_by_current_booking`.
+
+### 15.6 Regression tests
+
+Các test bắt buộc cho thay đổi này:
+
+- Stripe webhook thiếu provider ID không query nhầm payment và trả `422`.
+- Event Stripe cũ không downgrade payment đã `Succeeded`.
+- Stripe request dùng `PaymentAttempt.attempt_key` làm idempotency key.
+- Guest resume rollback nếu combo trong session không còn tồn tại.
+- Edit release booking đã hết hạn trước khi tạo booking mới.
+- Availability trả ownership theo current authenticated booking.
+- Frontend polling dừng ở `failed`, `refunded`, `requires_refund`, `canceled` và `unknown`.
+- Frontend không dùng `data-seat-own-hold` cũ khi availability response đã thay đổi.
+
+Các test HTTP/feature chứng minh transaction và authorization; browser E2E vẫn cần thiết để kiểm tra multi-tab, login redirect, polling thật và DOM accessibility.
