@@ -3,7 +3,6 @@
 namespace App\Models\Movie;
 
 use App\Concerns\HasSlug;
-use App\Enums\Movie\Catalog\ScreeningStatus;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Builder;
@@ -34,12 +33,10 @@ class Movie extends Model
         $query->where('is_active', true);
     }
 
+    /** @param Builder<Movie> $query */
     public function scopeHasBookableScreenings(Builder $query): void
     {
-        $query->whereHas('screenings', fn (Builder $screeningQuery): Builder => $screeningQuery
-            ->where('status', ScreeningStatus::Scheduled)
-            ->where('starts_at', '>', now()->utc()->addMinutes((int) config('booking.minimum_lead_minutes')))
-            ->where('starts_at', '<=', now()->utc()->addDays((int) config('booking.maximum_horizon_days'))));
+        $query->whereIn('id', Screening::query()->bookable()->select('movie_id'));
     }
 
     protected function casts(): array

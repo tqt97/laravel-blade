@@ -48,6 +48,7 @@ final readonly class Money
         $fractionDigits = Currency::fractionDigits($this->currency);
         $thousandsSeparator = app()->getLocale() === 'vi' ? '.' : ',';
         $decimalSeparator = app()->getLocale() === 'vi' ? ',' : '.';
+
         if ($fractionDigits === 0) {
             $amount = number_format($this->minorUnits, 0, $decimalSeparator, $thousandsSeparator);
         } else {

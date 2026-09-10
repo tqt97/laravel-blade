@@ -3,33 +3,37 @@
 namespace App\Actions\Movie\Booking;
 
 use App\Contracts\PaymentGateway;
+use App\Enums\Inventory\InventoryMovementType;
 use App\Enums\Movie\Booking\BookingStatus;
-use App\Enums\Movie\Concessions\InventoryMovementType;
 use App\Enums\Movie\Seating\ScreeningSeatStatus;
 use App\Enums\Movie\Ticketing\TicketStatus;
 use App\Enums\Payment\PaymentStatus;
 use App\Enums\Payment\RefundAttemptStatus;
+use App\Models\Inventory\InventoryMovement;
 use App\Models\Movie\Booking;
 use App\Models\Movie\Concession;
-use App\Models\Movie\ConcessionInventoryMovement;
 use App\Models\Movie\ScreeningSeat;
 use App\Models\Payments\Payment;
 use App\Models\Payments\RefundAttempt;
 use App\Support\Booking\Exceptions\BookingOperationFailed;
 use App\Support\Payment\PaymentResult;
+use App\Support\Payment\PaymentStateMachine;
 use Illuminate\Support\Facades\DB;
 use Throwable;
 
 final class RefundBooking
 {
-    public function __construct(private readonly PaymentGateway $gateway) {}
+    public function __construct(
+        private readonly PaymentGateway $gateway,
+        private readonly PaymentStateMachine $stateMachine,
+    ) {}
 
     public function execute(Booking $booking): Payment
     {
         /** @var array{payment: Payment, attempt: ?RefundAttempt, provider_already_refunded: bool} $claim */
         $claim = DB::transaction(function () use ($booking): array {
-            $payment = Payment::query()->where('payable_type', Booking::class)->where('payable_id', $booking->getKey())->lockForUpdate()->firstOrFail();
             $booking = Booking::query()->whereKey($booking->getKey())->lockForUpdate()->firstOrFail();
+            $payment = Payment::query()->where('payable_type', Booking::class)->where('payable_id', $booking->getKey())->lockForUpdate()->firstOrFail();
             $paymentStatus = PaymentStatus::from((string) $payment->getRawOriginal('status'));
             if ($paymentStatus === PaymentStatus::Refunded) {
                 return ['payment' => $payment, 'attempt' => null, 'provider_already_refunded' => false];
@@ -42,8 +46,13 @@ final class RefundBooking
                 throw new BookingOperationFailed(__('booking.messages.checked_in_cannot_refund'));
             }
             $existing = $payment->refundAttempts()->whereIn('status', [RefundAttemptStatus::Processing, RefundAttemptStatus::Unknown])->latest('id')->first();
-            if ($existing !== null) {
+            if ($existing?->getRawOriginal('status') === RefundAttemptStatus::Processing->value) {
                 return ['payment' => $payment, 'attempt' => null, 'provider_already_refunded' => false];
+            }
+            if ($existing?->getRawOriginal('status') === RefundAttemptStatus::Unknown->value) {
+                $existing->forceFill(['status' => RefundAttemptStatus::Processing, 'failure_message' => null, 'started_at' => now()])->save();
+
+                return ['payment' => $payment, 'attempt' => $existing, 'provider_already_refunded' => false];
             }
             $succeededAttempt = $payment->refundAttempts()->where('status', RefundAttemptStatus::Succeeded)->latest('id')->first();
             if ($succeededAttempt !== null) {
@@ -53,7 +62,7 @@ final class RefundBooking
             $attempt = $payment->refundAttempts()->create([
                 'attempt_key' => 'booking-refund-'.$payment->id.'-'.$attemptNumber,
                 'status' => RefundAttemptStatus::Processing,
-                'started_at' => now()->utc(),
+                'started_at' => now(),
             ]);
 
             return ['payment' => $payment, 'attempt' => $attempt, 'provider_already_refunded' => false];
@@ -77,11 +86,21 @@ final class RefundBooking
         }
 
         if ($result->status !== 'refunded') {
-            $claim['attempt']->forceFill(['status' => RefundAttemptStatus::Failed, 'failure_message' => $result->failureMessage, 'metadata' => $result->metadata, 'completed_at' => now()->utc()])->save();
+            $claim['attempt']->forceFill(['status' => RefundAttemptStatus::Failed, 'failure_message' => $result->failureMessage, 'metadata' => $result->metadata, 'completed_at' => now()])->save();
             throw new BookingOperationFailed($result->failureMessage ?? __('booking.messages.refund_failed'));
         }
 
-        $claim['attempt']->forceFill(['status' => RefundAttemptStatus::Succeeded, 'provider_refund_id' => $result->providerPaymentId, 'metadata' => $result->metadata, 'completed_at' => now()->utc()])->save();
+        if (blank($result->providerPaymentId)) {
+            $claim['attempt']->forceFill([
+                'status' => RefundAttemptStatus::Unknown,
+                'failure_message' => 'Refund succeeded without a provider refund ID. Reconciliation is required.',
+                'metadata' => $result->metadata,
+            ])->save();
+
+            return $payment->refresh();
+        }
+
+        $claim['attempt']->forceFill(['status' => RefundAttemptStatus::Succeeded, 'provider_refund_id' => $result->providerPaymentId, 'metadata' => $result->metadata, 'completed_at' => now()])->save();
 
         return DB::transaction(function () use ($payment, $result): Payment {
             $payment = Payment::query()->whereKey($payment->id)->lockForUpdate()->firstOrFail();
@@ -90,8 +109,13 @@ final class RefundBooking
                 return $payment;
             }
 
+            $currentStatus = PaymentStatus::from((string) $payment->getRawOriginal('status'));
+            if (! $this->stateMachine->canTransition($currentStatus, PaymentStatus::Refunded)) {
+                return $payment;
+            }
+
             $payment->setAttribute('status', PaymentStatus::Refunded);
-            $payment->setAttribute('refunded_at', now()->utc());
+            $payment->setAttribute('refunded_at', now());
             $payment->setAttribute('metadata', $result->metadata);
             $payment->save();
 
@@ -120,10 +144,10 @@ final class RefundBooking
                 $concession = Concession::query()->whereKey($line->getAttribute('concession_id'))->lockForUpdate()->first();
 
                 $idempotencyKey = 'payment-refund-'.$payment->getKey().'-'.$line->getAttribute('concession_id');
-                if ($concession !== null && $concession->getAttribute('stock') !== null && ! ConcessionInventoryMovement::query()->where('idempotency_key', $idempotencyKey)->exists()) {
+                if ($concession !== null && $concession->getAttribute('stock') !== null && ! InventoryMovement::query()->where('idempotency_key', $idempotencyKey)->exists()) {
                     $stockBefore = (int) $concession->stock;
                     $concession->increment('stock', (int) $line->getAttribute('quantity'));
-                    ConcessionInventoryMovement::query()->create([
+                    InventoryMovement::query()->create([
                         'concession_id' => $concession->getKey(),
                         'booking_id' => $booking->getKey(),
                         'type' => InventoryMovementType::Refund,

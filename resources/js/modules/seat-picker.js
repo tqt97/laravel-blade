@@ -190,7 +190,7 @@ export const initSeatPickers = () => {
                     window.setTimeout(() => notice.remove(), 6000);
                 }
             } catch (error) {
-                if (error.name !== 'AbortError') {
+                if (error?.name !== 'AbortError') {
                     picker.querySelector('[data-availability-status]')?.classList.remove('hidden');
                 }
             }
@@ -205,6 +205,9 @@ export const initSeatPickers = () => {
             modal.className = 'fixed inset-0 z-50 grid place-items-center bg-black/60 p-4 backdrop-blur-sm';
             modal.setAttribute('role', 'dialog');
             modal.setAttribute('aria-modal', 'true');
+            const dialogId = `seat-confirm-${Date.now()}`;
+            modal.setAttribute('aria-labelledby', `${dialogId}-title`);
+            modal.setAttribute('aria-describedby', `${dialogId}-description`);
 
             const panel = document.createElement('div');
             panel.className = 'w-full max-w-2xl overflow-hidden rounded-2xl border border-border bg-card shadow-xl shadow-black/20';
@@ -216,6 +219,7 @@ export const initSeatPickers = () => {
             icon.innerHTML = '<svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 4 4L19 6" /></svg>';
             const title = document.createElement('h2');
             title.className = 'min-w-0 flex-1 pt-1 text-base font-semibold text-card-foreground sm:text-lg';
+            title.id = `${dialogId}-title`;
             title.textContent = picker.dataset.seatConfirmTitle ?? 'Confirm seats';
             const close = document.createElement('button');
             close.type = 'button';
@@ -228,6 +232,7 @@ export const initSeatPickers = () => {
             content.className = 'max-h-[min(70vh,38rem)] space-y-4 overflow-y-auto px-5 py-4 sm:px-6 sm:py-5';
             const description = document.createElement('p');
             description.className = 'text-sm leading-6 text-muted-foreground';
+            description.id = `${dialogId}-description`;
             description.textContent = picker.dataset.seatConfirmDescription ?? 'Review your selected seats before continuing.';
             const createHeading = (label) => {
                 const heading = document.createElement('h3');

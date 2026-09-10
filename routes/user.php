@@ -20,6 +20,8 @@ Route::get('/bookings', [BookingController::class, 'index'])->name('bookings.ind
 Route::get('/notifications', [NotificationController::class, 'index'])->name('notifications.index');
 Route::patch('/notifications/read-all', [NotificationController::class, 'readAll'])->name('notifications.read-all');
 Route::patch('/notifications/{notification}/read', [NotificationController::class, 'read'])->name('notifications.read');
+Route::delete('/notifications/{notification}', [NotificationController::class, 'destroy'])->name('notifications.destroy');
+Route::delete('/notifications', [NotificationController::class, 'destroyAll'])->name('notifications.destroy-all');
 Route::get('/bookings/{booking}', [BookingController::class, 'show'])->name('bookings.show');
 Route::get('/bookings/{booking}/checkout', [BookingController::class, 'checkout'])->name('bookings.checkout');
 Route::get('/bookings/{booking}/success', [BookingController::class, 'success'])->name('bookings.success');

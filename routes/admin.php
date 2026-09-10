@@ -1,11 +1,10 @@
 <?php
 
 use App\Http\Controllers\Admin\BookingController;
+use App\Http\Controllers\Admin\BookingReportController;
 use App\Http\Controllers\Admin\MovieController;
 use App\Http\Controllers\Admin\TicketController;
 use App\Http\Controllers\Admin\UserController;
-use App\Queries\Movie\BookingReport;
-use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', fn () => redirect()->route('admin.dashboard'))->name('home');
@@ -14,11 +13,7 @@ Route::view('/dashboard', 'dashboard')->name('dashboard');
 Route::view('/samples', 'admin.samples')->name('samples');
 Route::view('/blank', 'admin.blank')->name('blank');
 Route::get('/bookings', [BookingController::class, 'index'])->name('bookings.index');
-Route::get('/reports', function (BookingReport $report) {
-    $summary = $report->summary(CarbonImmutable::now()->startOfMonth(), CarbonImmutable::now()->endOfMonth());
-
-    return view('admin.reports.index', compact('summary'));
-})->name('reports.index');
+Route::get('/reports', BookingReportController::class)->name('reports.index');
 Route::get('/cinema', [MovieController::class, 'index'])->name('cinema.index');
 Route::get('/cinema/concessions', [MovieController::class, 'concessions'])->name('cinema.concessions.index');
 Route::get('/cinema/coupons', [MovieController::class, 'coupons'])->name('cinema.coupons.index');

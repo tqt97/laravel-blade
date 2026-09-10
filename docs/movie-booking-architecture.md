@@ -1,47 +1,66 @@
 # Movie booking architecture
 
-Tài liệu chuẩn cho developer, QA và operator của hệ thống đặt vé phim. Booking không còn là đặt một resource theo khoảng thời gian; `Booking` là order nhiều vé cho một `Screening`, còn inventory cạnh tranh nằm ở từng `ScreeningSeat`. Behavior được mô tả bên dưới là implementation hiện tại; mục `Future work` không phải tính năng đã triển khai.
+Tài liệu chuẩn cho developer, QA và operator của hệ thống đặt vé phim. Đây là modular monolith, trong đó code được group theo domain `Movie`, `Inventory`, `Payments` và `Infrastructure`. `Booking` là order nhiều vé cho một `Screening`, còn inventory cạnh tranh của ghế nằm ở từng `ScreeningSeat`. Behavior bên dưới mô tả implementation hiện tại; mục `Future work` không phải tính năng đã triển khai.
+
+### Cách đọc tài liệu
+
+- Nghiệp vụ thuần: [movie-booking-business-logic.md](movie-booking-business-logic.md).
+- Schema, quan hệ và migration: [movie-booking-database.md](movie-booking-database.md).
+- Kiến trúc, code boundary, reliability, UI và test: tài liệu này.
+- Các section đầu mô tả baseline hiện tại; các section implementation/remediation phía sau là trace chi tiết của các thay đổi đã triển khai, không phải domain mới.
 
 ## 1. Boundary và cấu trúc mã nguồn
 
 ```text
 app/
+├── Actions/Movie/                # use case đặt vé, catalog, combo, ticketing
+│   ├── Booking/
+│   ├── Catalog/
+│   ├── Concessions/
+│   └── Ticketing/
+├── Enums/
+│   ├── Movie/                     # trạng thái/loại dữ liệu movie booking
+│   ├── Inventory/                 # loại biến động tồn kho
+│   ├── Payment/                   # payment/refund/provider status
+│   └── Infrastructure/            # outbox/delivery event status
 ├── Models/
-│   ├── Infrastructure/
-│   │   └── OutboxMessage.php       # generic transactional outbox
-│   ├── Payments/
-│   │   ├── Payment.php              # shared payable payment record
-│   │   └── PaymentWebhookEvent.php
-│   └── Cinema/
-│       ├── Booking.php              # cinema order aggregate
-│       ├── BookingTransitionAudit.php
-│       ├── Movie.php
-│       ├── ScreeningRoom.php
-│       ├── Seat.php
-│       ├── Screening.php
-│       ├── ScreeningSeat.php       # inventory row, source of truth
-│       ├── BookingItem.php          # ticket seat-specific
-│       ├── ScreeningPrice.php
-│       ├── Concession.php
-│       └── BookingConcession.php
-├── Actions/
-│   ├── Booking/                    # hold, pay, cancel, expire, refund
-│   └── Cinema/                     # schedule, combo, check-in
-├── Queries/Cinema/                 # read/report queries
-├── Http/Controllers/Movie/        # public read-only storefront
-├── Http/Controllers/User/          # authenticated customer actions
-└── Support/{Cinema,Payment,Booking}/
+│   ├── Movie/                     # movie, screening, booking, ticket, coupon, combo catalog
+│   ├── Inventory/                 # stock ledger và stock adjustment audit
+│   ├── Payments/                  # payment, attempts, refund và webhook
+│   └── Infrastructure/            # outbox và delivery
+├── Policies/Movie/                # authorization booking movie
+└── Queries/Movie/                 # read/report queries của movie flow
 ```
 
-### Vì sao Booking nằm trong Cinema?
+### Quy tắc phân tầng
 
-Tên Booking nghe có vẻ dùng chung, nhưng aggregate hiện tại phụ thuộc trực tiếp vào screening, ScreeningSeat, ticket code, QR, check-in và quy tắc hold ghế. Đưa nó ra app/Models/Booking.php làm developer dễ tưởng đây là order chung cho mọi sản phẩm. Vì vậy booking phim thuộc namespace App\\Models\\Cinema\\Booking; các action workflow hiện tại vẫn ở Actions/Booking để giữ namespace use-case ổn định, nhưng chỉ được gọi bởi flow cinema.
+| Tầng | Trách nhiệm | Không làm |
+|---|---|---|
+| Controller | Nhận request, authorize, gọi Form Request/Query/Action và trả response/view. | Không dựng lại điều kiện bookable/active/ownership; không tự mở transaction. |
+| Form Request | Xác thực input HTTP, normalize dữ liệu đơn giản và authorize request-level. | Không quyết định stock, hold, payment hoặc transition dựa trên dữ liệu cạnh tranh. |
+| Query object | Đóng gói read model dùng lại, eager loading, selected columns, pagination và filter. | Không mutate dữ liệu hoặc chứa side effect. |
+| Action | Một use case có mutation, transaction, lock, idempotency và invariant. | Không trả HTML/HTTP response. |
+| Model scope | Điều kiện query thuần, dùng lại được như `bookable`, `activeHold`, `availableForSelection`, `availableForBooking`. | Không gọi provider, queue hoặc thay đổi dữ liệu. |
+| Service | Chỉ dùng cho behavior phối hợp được nhiều use case/domain và có boundary rõ. | Không tạo service chỉ bọc một lệnh Eloquent. |
 
-Blog không cần booking. Ecommerce nên có App\\Models\\Commerce\\Order và OrderItem, không tái sử dụng Cinema Booking. Nếu sau này có subscription hoặc event reservation, tạo aggregate riêng thay vì thêm nullable foreign keys vào Cinema Booking.
+Các query dùng chung hiện tại gồm `AvailableConcessionsQuery`, `ScreeningBookingContextQuery` và `UserBookingsQuery`. `AvailableConcessionsQuery` là nơi duy nhất dựng catalog combo khả dụng và giới hạn live availability; `UserBookingsQuery` sở hữu read model dashboard/history; `ScreeningBookingContextQuery` sở hữu lookup active hold và ownership ghế. Các thao tác combo có transaction/stock ledger nằm ở `AddConcessions`, `CreateConcession` và `UpdateConcession`; controller admin chỉ còn nhận input và điều phối Action.
 
-Payment đã tách thành capability dùng chung dưới App\\Models\\Payments và dùng payable_type/payable_id, nên ecommerce có thể thanh toán Order mà không phụ thuộc bảng bookings. OutboxMessage là infrastructure model, không thuộc cinema/payment; payload phải chứa aggregate type/id và event version ổn định.
+Các scope canonical phải được ưu tiên thay vì copy điều kiện trong controller: `Movie::hasBookableScreenings()`, `Screening::bookable()`, `Screening::startsAfter()`, `Booking::activeHold()`, `Booking::expiredHold()`, `Booking::upcoming()`, `Booking::ownedBy()`, `ScreeningSeat::availableForSelection()` và `Concession::availableForBooking()`.
 
-Resource cũ (`BookableResource`) và flow đặt period đã được loại khỏi runtime. Migration lịch sử vẫn giữ để database đã migrate có thể nâng cấp; migration cuối `remove_legacy_resource_booking_schema` xoá bảng resource và các cột legacy khỏi schema hiện tại.
+### Domain ownership
+
+| Domain | Sở hữu | Không sở hữu |
+|---|---|---|
+| Movie | Movie, showtime, room, seat, screening seat, booking, ticket, coupon và combo catalog | Payment provider state, outbox delivery, stock ledger chi tiết |
+| Inventory | `InventoryMovement`, `StockAdjustmentAudit`, stock delta/idempotency/audit | Giá combo và lifecycle booking |
+| Payments | Payment aggregate, payment attempt, refund attempt, webhook/provider reconciliation | Ghế, combo stock và UI booking |
+| Infrastructure | Transactional outbox, delivery, notification và queue integration | Quyết định booking/payment nghiệp vụ |
+
+Movie là domain điều phối trải nghiệm đặt vé; các domain còn lại cung cấp invariant riêng. Tên bảng inventory được giữ nguyên để tránh data migration không cần thiết.
+
+Payment dùng `payable_type/payable_id` để có thể tái sử dụng cho aggregate khác. Outbox là adapter hạ tầng; payload phải chứa aggregate type/id và event version ổn định.
+
+Resource cũ (`BookableResource`) và flow đặt period không còn thuộc runtime. Mọi booking mới phải gắn với Movie `Screening` và có một hoặc nhiều `BookingItem`.
 
 ## 2. Model và quan hệ
 
@@ -196,7 +215,7 @@ GET  /user/bookings            customer order history
 GET  /user/tickets/{ticket}    QR ticket
 ```
 
-Guest được xem/chọn ghế bằng UI; seat selection chỉ là client state và phải được revalidate server-side. Khi guest submit, screening, seat IDs và idempotency key được lưu trong session; sau login endpoint resume tiếp tục hold một lần. Nếu ghế đã bị lấy trong lúc login, user nhận conflict và quay lại seat map. `x-layouts.storefront` phục vụ catalog/seat map, `x-layouts.user` phục vụ lịch sử order/ticket, admin layout phục vụ vận hành rạp. Movie detail hiển thị available/total; seat map hiển thị cùng summary. `ScreeningSeat::isAvailableForSelection()` coi hold có `held_until <= now` là available trên read UI; mutation vẫn lock và release row trong `HoldSeats`.
+Guest được xem/chọn ghế bằng UI; seat selection chỉ là client state và phải được revalidate server-side. Khi guest submit, screening, seat IDs và idempotency key được lưu trong session; sau login endpoint resume tiếp tục hold một lần. Nếu ghế đã bị lấy trong lúc login, user nhận conflict và quay lại seat map. `x-layouts.movie` phục vụ catalog, seat map, checkout và trang đặt vé thành công; `x-layouts.user` phục vụ lịch sử order/ticket, admin layout phục vụ vận hành rạp. Movie layout dùng `x-ui.movie-brand-mark`; tên hiển thị lấy từ `config('app.movie_name')`, cấu hình qua `APP_MOVIE_NAME` và fallback về `APP_NAME` (mặc định `CinePass`), không phụ thuộc tên mặc định Laravel. Movie detail hiển thị available/total; seat map hiển thị cùng summary. `ScreeningSeat::isAvailableForSelection()` coi hold có `held_until <= now` là available trên read UI; mutation vẫn lock và release row trong `HoldSeats`.
 
 ## 5. Pricing và inventory
 
@@ -216,7 +235,7 @@ php artisan app:outbox-publish
 php artisan schedule:work
 ```
 
-`CinemaSeeder` tạo phim, phòng, ghế thường/VIP, suất chiếu, combo, order paid có QR và order held. Seeder dùng `updateOrCreate`, nhưng dữ liệu order demo chỉ tạo một lần cho user `user@gmail.com`.
+`MovieSeeder` tạo phim, phòng, ghế thường/VIP, suất chiếu, combo, order paid có QR và order held. Seeder dùng `updateOrCreate`, nhưng dữ liệu order demo chỉ tạo một lần cho user `user@gmail.com`.
 
 Production cần Redis/SQS cho queue, shared cache cho scheduler, Stripe webhook secret, worker outbox, alert dead-letter, structured logs và metrics cho hold conflict, payment failure, refund, check-in, queue lag và booking latency.
 
@@ -241,7 +260,7 @@ Trust boundary quan trọng là: browser -> Laravel HTTP -> domain action -> dat
 | `movies` | Catalog phim, slug public | unique slug, active index, soft delete |
 | `screening_rooms` | Phòng và timezone business | unique code |
 | `seats` | Ghế vật lý của phòng | unique room/row/number |
-| `screenings` | Suất chiếu, UTC start/end, giá cơ sở | room/time và movie/time indexes |
+| `screenings` | Suất chiếu, start/end theo `config('app.timezone')`, giá cơ sở | room/time và movie/time indexes |
 | `screening_seats` | Inventory ghế theo suất | unique screening/seat, status/held_until indexes |
 | `bookings` | Order của user | screening, status, totals, idempotency fields |
 | `booking_items` | Ticket từng ghế | ticket code và QR hash unique |
@@ -509,11 +528,11 @@ Khi tạo screening, ghế active được materialize và nhận giá theo seat
 
 ### Timezone/DST
 
-`CreateScreening` parse input theo `screening_rooms.timezone`, sau đó lưu UTC. UI format theo timezone của room. Không dùng timezone của browser để quyết định nghiệp vụ. Cần test giờ mùa hè (DST), midnight và các boundary `starts_at/ends_at` trên timezone thật của từng rạp; operating-hours config hiện chưa có holiday/exception entity.
+`CreateScreening` parse input và lưu theo `config('app.timezone')`. UI cũng format theo timezone ứng dụng; `screening_rooms.timezone` không còn được dùng cho nghiệp vụ booking. Không dùng timezone của browser để quyết định nghiệp vụ.
 
 ## 11. Vận hành outbox, queue và email
 
-Booking tạo event `booking.created`; payment success tạo `booking.payment_succeeded`. `app:outbox-publish` dispatch `PublishOutboxMessage`. Job retry 3 lần, gửi `BookingCreatedMail` hoặc `PaymentSucceededMail`, ghi `published_at`; lỗi ghi `failed_at`, `last_error`, `attempts`.
+Booking tạo event `booking.created`; payment success tạo `booking.payment_succeeded`. `app:outbox-publish` dispatch `PublishOutboxMessage`. Job retry 3 lần; chỉ payment success gửi một `BookingConfirmationMail` duy nhất với subject theo ngôn ngữ hiện tại: `Vé xem phim của bạn đã sẵn sàng · :movie` (VI) hoặc `Your cinema tickets are ready · :movie` (EN). Email có hero header, phim/ngày giờ/phòng, danh sách ghế, danh sách vé dạng grid tối đa 4 cột (hỗ trợ tối đa 10 vé), QR được embed bằng CID (không in raw SVG), số ghế và link xác thực từng vé, combo, tổng tiền và link quản lý booking. Mã vé không hiển thị trong email; chỉ dùng nội bộ để tạo link/QR. Event `booking.created` chỉ dùng audit/outbox, không gửi email riêng. Locale của request được snapshot vào outbox payload; queue worker khôi phục locale đó trước khi render subject/body, không phụ thuộc session web. Các key email phải tồn tại đồng bộ trong `lang/vi/booking.php` và `lang/en/booking.php`.
 
 Đây là at-least-once delivery. Email phải chấp nhận duplicate delivery; không gửi email trực tiếp trong transaction nghiệp vụ. Khi có nhiều publisher, cần claim/lease row hoặc queue-native dedup để giảm dispatch trùng. Operator phải theo dõi failed outbox/failed jobs và có quy trình retry/reconcile.
 
@@ -574,10 +593,10 @@ Không hard-code limit trong controller, Blade hoặc JS. Khi đổi limit, ch�
 Release checklist:
 
 1. Migrate trên staging bằng cùng database engine với production.
-2. Xác nhận server UTC và timezone từng room hợp lệ.
+2. Xác nhận `APP_TIMEZONE` hợp lệ và đồng nhất giữa web, queue, scheduler, worker và database.
 3. Cấu hình Stripe webhook secret/endpoint và sandbox payment.
 4. Chạy worker, scheduler, outbox publisher và kiểm tra failed jobs.
-5. Kiểm tra mail, refund, QR/check-in và session resume trên HTTPS.
+5. Kiểm tra mail xác nhận duy nhất, refund, QR/check-in và session resume trên HTTPS.
 6. Load test nhiều process cùng screening/seat set; kiểm tra deadlock retry.
 7. Có backup, restore drill, retention cho audit và alert nghiệp vụ.
 
@@ -657,7 +676,7 @@ npm run build
 
 Mọi mở rộng phải giữ nguyên bốn điểm: lock inventory, snapshot tiền, idempotency và audit transition.
 
-# 15. Chi tiết implementation nâng cấp Booking/Cinema
+# 15. Chi tiết implementation nâng cấp Movie Booking
 
 Tài liệu này mô tả logic đã triển khai cho backend, payment, tiền tệ, webhook, giao diện và kiểm thử. Các ví dụ bám theo code thật trong repository.
 
@@ -1240,15 +1259,9 @@ const previewTotal = originalGrandTotal
 
 Checkout dùng một payment form duy nhất: quantity được gửi cùng request thanh toán, không còn bước `Lưu combo` riêng. Preview chỉ là dữ liệu tạm trên browser; tại thời điểm pay, `PayBooking` giữ lock booking, gọi `AddConcessions::executeForLockedBooking`, lock từng concession, kiểm tra currency/stock, cập nhật total và payment amount trong cùng transaction. Nếu request fail, transaction rollback và feedback Laravel hiển thị lỗi.
 
-### 16.3 Coupon placeholder
+### 16.3 Coupon
 
-Checkout đã có UI coupon nhưng nút apply đang disabled có chủ ý:
-
-- Không làm user nghĩ coupon đã được áp dụng.
-- Không thay đổi total khi backend chưa có coupon engine.
-- Có thể mở rộng sau bằng Form Request, coupon policy, usage limit và audit.
-
-Khi triển khai thật, coupon cần validate server-side và snapshot vào booking/payment:
+Checkout có thể apply coupon qua endpoint server-side. Coupon được validate và snapshot vào booking/payment:
 
 ```text
 coupon code
@@ -1576,7 +1589,7 @@ if ($concession->stock !== null && $delta > (int) $concession->stock) {
 }
 
 $concession->decrement('stock', max(0, $delta));
-ConcessionInventoryMovement::create([
+InventoryMovement::create([
     'type' => 'sale_reserve',
     'quantity_delta' => -$delta,
     'stock_before' => $stockBefore,
@@ -1594,7 +1607,7 @@ if ($stockDelta !== 0 && blank($data['stock_reason'] ?? null)) {
     ]);
 }
 
-ConcessionStockAdjustmentAudit::create([
+StockAdjustmentAudit::create([
     'concession_id' => $concession->id,
     'actor_id' => auth()->id(),
     'quantity_delta' => $stockDelta,
@@ -1871,7 +1884,7 @@ Mọi transition phải đi qua `Booking::transitionTo()` và action tương ứ
 ```php
 public function isBookable(?CarbonImmutable $now = null): bool
 {
-    $now ??= CarbonImmutable::now('UTC');
+    $now ??= CarbonImmutable::now(config('app.timezone'));
     $startsAt = $this->starts_at?->utc();
 
     return $this->status === ScreeningStatus::Scheduled
@@ -1907,9 +1920,9 @@ session()->put('cinema.pending_hold', [
 - `BookingItem.price_minor_units` snapshot giá tại thời điểm hold.
 - `BookingConcession.unit_price_minor_units` và `total_minor_units` snapshot combo.
 - `Money` dùng integer minor units và currency uppercase.
-- `AddConcessions` lock booking/concession, tính delta quantity, kiểm tra currency/stock, ghi `ConcessionInventoryMovement` và cập nhật booking totals trong transaction.
+- `AddConcessions` lock booking/concession, tính delta quantity, kiểm tra currency/stock, ghi `InventoryMovement` và cập nhật booking totals trong transaction. Catalog combo thuộc Movie; ledger stock thuộc Inventory.
 - Tổng combo tối đa là `ticket_count × config('booking.limits.max_combos_per_ticket')`; mỗi line còn chịu `max_combo_quantity`.
-- Admin thay đổi stock bắt buộc reason và ghi `ConcessionStockAdjustmentAudit`.
+- Admin thay đổi stock bắt buộc reason và ghi `StockAdjustmentAudit` thuộc Inventory.
 - Cancel/expire/refund trả stock đúng một lần; retry không được double release.
 
 ### 23.6 Payment reliability và operations
@@ -1979,7 +1992,7 @@ Các case booking bắt buộc trong `MovieBookingFeatureTest`: guest/auth resum
 
 ### 23.9 Những phần hiện chưa phải tính năng hoàn chỉnh
 
-- Coupon UI tồn tại nhưng apply đang disabled; chưa có coupon engine, usage limit hoặc snapshot discount.
+- Coupon apply, usage limit, reservation/release và snapshot discount đã có; cần tiếp tục theo dõi vận hành và bổ sung campaign rule nếu nghiệp vụ mở rộng.
 - Browser/E2E runner chưa được cài; accessibility và mobile cần smoke test thủ công/CI browser.
 - Operating hours mới là config mặc định, chưa có holiday/exception entity.
 - Partial refund, voucher, multi-currency conversion và seat capacity aggregate chưa triển khai.
@@ -2052,7 +2065,7 @@ $payment->forceFill([
 ])->save();
 ```
 
-Payment `unknown` không tự retry. Booking/seat vẫn được giữ đến thời điểm expiry; trạng thái cần được đối soát hoặc xử lý thủ công. Đây là lựa chọn an toàn để tránh double charge. Payment status page dừng polling khi nhận `unknown` và hiển thị hướng dẫn hỗ trợ.
+Payment `unknown` không được coi là terminal. Booking/seat vẫn được giữ đến thời điểm expiry; trạng thái cần được đối soát, retry an toàn hoặc xử lý thủ công. Payment status page tiếp tục polling khi nhận `unknown` và hiển thị hướng dẫn đối soát.
 
 Các trạng thái payment quan trọng:
 
@@ -2202,7 +2215,7 @@ Các giá trị có ý nghĩa nghiệp vụ không được so sánh bằng lite
 - Ticket dùng `App\Enums\Movie\Ticketing\TicketStatus`.
 - Payment và payment attempt dùng `App\Enums\Payment\PaymentStatus` và `PaymentAttemptStatus`.
 - Refund attempt dùng `App\Enums\Payment\RefundAttemptStatus`.
-- Concession inventory movement dùng `App\Enums\Movie\Concessions\InventoryMovementType`.
+- Concession inventory movement dùng `App\Enums\Inventory\InventoryMovementType`.
 - Outbox event dùng `App\Enums\Infrastructure\OutboxEventType`.
 
 Các model tương ứng có Eloquent cast về enum. Khi truy vấn raw database, dùng `Enum::value`; khi làm việc với model đã cast, so sánh trực tiếp enum. Chuỗi trạng thái từ Stripe/fake gateway là protocol boundary, phải được normalize trước khi lưu vào enum nội bộ và không được lan sang UI.
@@ -2267,24 +2280,40 @@ Browser E2E thực tế vẫn cần chạy trong môi trường có browser sess
 
 ### 16.1 Thông báo sau đặt vé thành công
 
-Khi `FinalizeSuccessfulPayment` xác nhận booking, hệ thống tạo outbox event `booking.payment_succeeded`. `PublishOutboxMessage` gửi email xác nhận hiện có và tạo database notification `booking_confirmed` cho user. Outbox delivery có unique channel nên chạy lại job không tạo thông báo trùng.
+Khi `FinalizeSuccessfulPayment` xác nhận booking, hệ thống tạo outbox event `booking.payment_succeeded`. `PublishOutboxMessage` tạo database notification `booking_confirmed` trước rồi gửi email xác nhận cho user. Khi booking chuyển sang `expired` từ scheduler, checkout hoặc payment race, model `Booking` tạo outbox event `booking.expired`; publisher tạo notification `booking_expired` trên chuông, không gửi email. Notification được kiểm tra key idempotent khi retry, nên lỗi SMTP không làm mất notification và retry không tạo thông báo trùng. Outbox delivery có unique channel.
 
 Database notification dùng bảng chuẩn `notifications`. User có thể:
 
 - xem 10 thông báo mới nhất;
 - xem số lượng chưa đọc;
 - đánh dấu từng thông báo đã đọc;
-- đánh dấu toàn bộ đã đọc.
+- đánh dấu toàn bộ đã đọc;
+- xóa từng thông báo khỏi danh sách.
+- xóa toàn bộ thông báo sau khi xác nhận;
+
+Chuông dùng layout compact: tiêu đề không rớt dòng, nội dung giới hạn hai dòng và có chấm trạng thái unread. Khi có thông báo chưa đọc, chuông có hiệu ứng thu hút chú ý; CSS tắt animation khi người dùng bật `prefers-reduced-motion`. Danh sách email ticket tối đa 10 vé được xếp dạng grid tối đa 4 cột; mỗi item chỉ hiển thị QR, số ghế và link xác thực, không hiển thị mã vé.
 
 Các endpoint nằm dưới authenticated user route và luôn query qua `$request->user()->notifications()` để tránh IDOR.
 
 ### 16.2 Chuông thông báo realtime
 
-`x-ui.notification-bell` được dùng ở user layout và storefront khi đã login. Frontend gọi notification endpoint ngay khi render và poll lại mỗi 15 giây. Đây là realtime polling, không yêu cầu thêm WebSocket/broadcast infrastructure; có thể nâng cấp sang broadcast sau mà không đổi database contract.
+`x-ui.notification-bell` được dùng ở user layout và storefront khi đã login. Frontend gọi notification endpoint ngay khi render và poll lại mỗi 15 giây. Payment success/reminder dispatch publisher ngay sau commit transaction nên không phải chờ chu kỳ scheduler một phút; scheduler vẫn là cơ chế retry/recovery. Badge ở góc chuông hiển thị số chưa đọc; khi count lớn hơn 0, chuông rung một lần. Animation tự tắt khi user bật reduced motion. Đây là realtime polling, không yêu cầu WebSocket/broadcast infrastructure; có thể nâng cấp sang broadcast sau mà không đổi database contract.
 
-Notification message được render bằng `textContent`, không inject raw HTML. API URL cho mark-as-read được tạo bằng named route và CSRF token gửi trong request PATCH.
+Mỗi notification hiển thị `created_at` dưới message theo thời gian tương đối (`now`, `2 minutes ago`, `2 phút trước`) dựa trên locale hiện tại. Phần tử `<time>` giữ ISO timestamp và tooltip thời gian đầy đủ để user biết chính xác lúc thông báo được tạo.
+
+Notification message được render bằng `textContent`, không inject raw HTML. API URL cho mark-as-read và delete được tạo bằng named route; các mutation gửi CSRF token.
+
+Notification link phải được lưu dưới dạng relative URL bằng `route(..., false)`. Điều này giữ nguyên session khi môi trường local được mở bằng `localhost` hoặc `127.0.0.1`. API cũng normalize các absolute URL legacy chỉ khi host thuộc app/current request; URL ngoài hệ thống bị thay bằng dashboard để không tạo open redirect.
+
+### 16.2.1 Chạy local bằng `composer run dev`
+
+`composer run dev` chạy `config:clear` trước, sau đó chạy web server, Vite, scheduler và queue worker. Việc clear config giúp các thay đổi Mailtrap trong `.env` được nạp lại. Scheduler chỉ tạo outbox/job theo lịch; queue worker là tiến trình xử lý job để gửi mail và tạo database notification. Nếu chỉ chạy server hoặc scheduler mà không chạy queue worker, notification có thể nằm trong bảng `jobs` nhưng chưa hiển thị trên chuông.
+
+Database MySQL được khởi tạo session timezone theo `env('APP_TIMEZONE', 'UTC')`, cùng nguồn với `config('app.timezone')`, nhưng truyền offset hiện tại (`+00:00`, `+07:00`...) thay vì tên timezone để không phụ thuộc MySQL timezone tables. Nhờ đó các cột `TIMESTAMP` như `available_at` không bị lệch với `now()` của Laravel. `OutboxMessage` cũng luôn gán `available_at` theo timezone ứng dụng khi tạo nếu caller không truyền giá trị; đây là điều kiện cần để scheduler publish outbox đúng thời điểm.
 
 ### 16.3 Reminder trước suất chiếu 2 giờ
+
+> Lưu ý: không cấu hình MySQL bằng named timezone. Timestamp nghiệp vụ được ghi/đọc theo timezone tại `config('app.timezone')` thông qua `BookingClock`; nếu đổi timezone, phải chuyển đổi dữ liệu datetime hiện có.
 
 Scheduler chạy `booking:send-reminders` mỗi phút. Command claim các booking `Confirmed` có `starts_at` trong cửa sổ quanh `now + 2 hours`, khóa booking, kiểm tra lại trạng thái và `reminder_sent_at`, sau đó:
 
@@ -2317,7 +2346,18 @@ Reservation được:
 
 Khi combo thay đổi sau khi coupon đã apply, discount percentage được tính lại trên subtotal mới. Coupon không được thay đổi sau khi payment đã bắt đầu.
 
-Coupon mẫu cho môi trường seed là `MOVIE10`. Production cần có quy trình admin/ops tạo coupon với code, thời gian, currency và usage limit rõ ràng; không nên cho client tự tạo coupon.
+MovieSeeder cung cấp các coupon mẫu để kiểm thử đủ trạng thái trên UI và nghiệp vụ:
+
+| Code | Loại | Giá trị | Trạng thái/mục đích |
+|---|---|---:|---|
+| `MOVIE10` | Percentage | 10% (tối đa 50.000 VND) | Đang hiệu lực |
+| `WELCOME50K` | Fixed | 50.000 VND | Đang hiệu lực |
+| `VIP15` | Percentage | 15% (tối đa 100.000 VND) | Đang hiệu lực |
+| `EARLYBIRD20` | Percentage | 20% (tối đa 75.000 VND) | Chưa bắt đầu |
+| `EXPIRED5` | Percentage | 5% (tối đa 25.000 VND) | Đã hết hạn |
+| `PAUSED10` | Percentage | 10% (tối đa 50.000 VND) | Bị vô hiệu hóa |
+
+Các bản ghi được seed bằng `updateOrCreate` theo code. Seeder không ghi đè `used_count`, nên có thể chạy lại nhiều lần mà không làm mất số lượt đã sử dụng. Production cần có quy trình admin/ops tạo coupon với code, thời gian, currency và usage limit rõ ràng; không nên cho client tự tạo coupon.
 
 ### 16.5 Test coverage mới
 
@@ -2341,7 +2381,7 @@ app/
 ├── Actions/Movie/
 │   ├── Booking/                 # hold, edit, pay, expire, cancel, refund, finalize
 │   ├── Catalog/                 # tạo/quản lý movie screening
-│   ├── Concessions/             # thêm combo và inventory mutation
+│   ├── Concessions/             # combo catalog và booking integration
 │   └── Ticketing/               # check-in và quyền sử dụng ticket
 ├── Enums/Movie/                 # trạng thái/loại dữ liệu thuần movie
 │   ├── Booking/
@@ -2349,7 +2389,9 @@ app/
 │   ├── Concessions/
 │   ├── Seating/
 │   └── Ticketing/
+├── Enums/Inventory/              # inventory movement types
 ├── Models/Movie/                # movie, screening, seat, booking, combo và audit models
+├── Models/Inventory/             # inventory ledger và stock adjustment audit models
 ├── Policies/Movie/              # authorization cho booking movie
 └── Queries/Movie/               # read model/query object của movie flow
 ```
@@ -2372,10 +2414,13 @@ Quy tắc tổ chức mới:
 - Use case mới thuộc movie phải bắt đầu ở `app/Actions/Movie/<Capability>`; không tạo action movie ở root `app/Actions`.
 - Enum thuần movie đặt trong `app/Enums/Movie/<Capability>`; enum payment, infrastructure và admin giữ ở `app/Enums` vì có phạm vi dùng chung.
 - Model có ownership của movie booking đặt tại `app/Models/Movie`; model payment/outbox dùng chung giữ ở layer riêng.
+- Inventory model đặt tại `app/Models/Inventory`; không đặt ledger/audit stock trong `app/Models/Movie` dù catalog combo vẫn thuộc Movie.
+- Payment model đặt tại `app/Models/Payments`; outbox/notification model đặt tại `app/Models/Infrastructure`.
 - Query đọc lại nhiều nơi đặt tại `app/Queries/Movie`; controller không tự copy điều kiện nghiệp vụ đã có trong query/scope.
 - Controller chỉ authorize, validate, gọi action/query và trả response; không đưa transaction hoặc inventory invariant vào controller.
 - Tên route, view và translation legacy có thể tiếp tục dùng `cinema` để giữ backward compatibility; đó là presentation contract, không phải lý do để domain code quay lại namespace `Cinema`.
 - Khi tách capability mới, cập nhật namespace, factory, seed, policy registration, route imports, test imports và tài liệu trong cùng một change.
+- Giới hạn hiển thị/phân trang phải đọc từ `config/booking.php`; không đưa lại magic limit vào controller, Form Request hoặc Blade.
 
 Import canonical sau refactor:
 
@@ -2457,7 +2502,121 @@ Các test bắt buộc cho thay đổi này:
 - Guest resume rollback nếu combo trong session không còn tồn tại.
 - Edit release booking đã hết hạn trước khi tạo booking mới.
 - Availability trả ownership theo current authenticated booking.
-- Frontend polling dừng ở `failed`, `refunded`, `requires_refund`, `canceled` và `unknown`.
+- Frontend polling dừng ở `failed`, `refunded`, `requires_refund` và `canceled`; `unknown` tiếp tục được xem là trạng thái cần reconcile.
 - Frontend không dùng `data-seat-own-hold` cũ khi availability response đã thay đổi.
 
-Các test HTTP/feature chứng minh transaction và authorization; browser E2E vẫn cần thiết để kiểm tra multi-tab, login redirect, polling thật và DOM accessibility.
+Các test HTTP/feature chứng minh transaction và authorization; browser E2E vẫn cần thiết để kiểm tra multi-tab, login redirect, polling thật và DOM accessibility. Project hiện chưa cài browser test runner và môi trường hiện tại không có browser instance, vì vậy đây là khoảng trống verification cần xử lý riêng.
+
+## 17. Chuẩn hóa timezone và payment recovery
+
+### 17.1 Quy ước thời gian
+
+Toàn bộ thời gian của movie booking dùng `config('app.timezone')` làm timezone duy nhất cho PHP, Eloquent, database datetime, query, Blade và countdown frontend. Không dùng timezone riêng của room hoặc browser để quyết định nghiệp vụ. `BookingClock` là boundary dùng chung:
+
+```php
+$now = BookingClock::now();
+$stored = BookingClock::parseStored($model->getRawOriginal('starts_at'));
+```
+
+Checkout parse `expires_at` từ raw database theo `BookingClock::timezone()` rồi so sánh bằng `lessThanOrEqualTo(BookingClock::now())` trên cùng một instant; không dùng timezone của browser để quyết định hold còn hạn.
+
+Countdown checkout cũng nhận `expires_at` từ `getRawOriginal()` qua `BookingClock::parseStored()` rồi xuất ISO-8601 với timezone ứng dụng. Không gọi `utc()` trong Blade countdown, vì sẽ làm UI trộn quy ước timezone với backend.
+
+Input giờ chiếu được parse theo `config('app.timezone')` và lưu cùng timezone đó. Trường `screening_rooms.timezone` chỉ còn là dữ liệu legacy, không tham gia nghiệp vụ booking. Khi đổi `APP_TIMEZONE` trên dữ liệu production, cần chạy migration chuyển đổi dữ liệu cũ trước khi deploy code mới.
+
+### 17.2 Payment provider ID và orphan attempt
+
+Không được tự tạo payment `Succeeded` cho booking `Confirmed` nếu payment record không tồn tại. Provider success thiếu `provider_payment_id` được chuyển thành `Unknown` và không phát hành ticket.
+
+Nếu `PaymentAttempt` đã lưu provider ID nhưng payment cha chưa kịp lưu do local transaction/process failure, `payments:recover-stuck` hoặc `payments:reconcile` phải backfill provider ID và dispatch `ReconcilePayment`:
+
+```text
+PaymentAttempt(provider_id) -> backfill Payment.provider_payment_id
+                         -> ReconcilePayment
+                         -> validate provider payload
+                         -> FinalizeSuccessfulPayment
+```
+
+### 17.3 Refund retry/reconciliation
+
+Refund `Unknown` không phải terminal business state. Retry dùng cùng logical provider idempotency key, không tạo thêm refund operation. Provider refund response phải có refund ID; nếu thiếu ID, local refund không được đánh dấu thành công và phải chờ reconciliation.
+
+Local finalization của refund vẫn idempotent bằng `InventoryMovement.idempotency_key` và ticket/seat status. Vì vậy nếu provider đã refund nhưng DB transaction cuối lỗi, lần retry sau có thể hoàn tất local state mà không restore stock lần hai.
+
+Scheduler/operator có thể chạy `payments:retry-refunds --limit=100`. Command chỉ lấy các `RefundAttempt` đang `Unknown` và dispatch job retry; action refund tiếp tục khóa `Booking` trước `Payment` và dùng lại logical provider idempotency key.
+
+### 17.4 Reconcile invariant
+
+`ReconcilePayment` chỉ được chuyển payment thành công khi provider payload đồng thời khớp:
+
+- provider payment ID;
+- amount minor units;
+- currency;
+- metadata `payable_type=Booking::class`;
+- metadata `payable_id` đúng booking.
+
+Payload không khớp chuyển payment/attempt sang `Unknown`, không finalize ticket và cần được quan sát/reconcile thủ công.
+
+### 17.5 Transaction lock order
+
+Các payment mutation dùng lock order thống nhất:
+
+```text
+Booking -> Payment -> PaymentAttempt/RefundAttempt -> BookingItems -> ScreeningSeats -> Concessions
+```
+
+Không đảo thứ tự giữa pay, finalize, refund và cancel; DB transaction retry chỉ là lớp bảo vệ bổ sung, không thay thế lock order.
+
+### 17.6 Showtime expiry
+
+Checkout, pay và payment finalization đều phải kiểm tra `Screening::isBookable()`. Hold còn hạn không đồng nghĩa suất chiếu còn nhận booking. Nếu provider success đến sau thời điểm bắt đầu chiếu, booking không phát hành ticket và chuyển sang `RequiresRefund` theo policy.
+
+### 17.7 Verification matrix
+
+Các failure mode đã có test feature:
+
+- provider success thiếu ID không finalize;
+- orphan attempt backfill ID và dispatch reconcile;
+- reconcile sai amount/metadata chuyển `Unknown`;
+- refund timeout retry được và finalization chỉ chạy một lần;
+- test suite có thể chạy deterministic với `APP_TIMEZONE=UTC`; production phải dùng cùng `APP_TIMEZONE` giữa mọi process;
+- PHPStan, Pint, frontend tests và ESLint nằm trong quality pipeline.
+
+Chưa thể coi browser E2E, load test, EXPLAIN trên dataset production-size hoặc concurrency nhiều process là đã hoàn tất nếu chưa có browser runner, dữ liệu lớn và môi trường DB tương ứng.
+
+## 18. Production readiness remediation log
+
+Phần này là nhật ký đối chiếu các hạng mục hardening đã triển khai. Khi thêm nghiệp vụ mới, cập nhật cả invariant, boundary code và test tương ứng.
+
+### 18.1 Payment fail-closed và state machine
+
+`BOOKING_PAYMENT_PROVIDER` là cấu hình explicit. Mặc định là `stripe`; `fake` chỉ được phép trong `local` và `testing`. Nếu production thiếu `STRIPE_SECRET` hoặc dùng provider không được hỗ trợ, container ném `LogicException` ngay khi resolve gateway. Không còn suy luận fake provider chỉ vì thiếu secret và không có fake confirmed payment trong production.
+
+Mọi payment transition quan trọng dùng `PaymentStateMachine`: webhook, pay, reconcile, recover, finalize và refund. Trạng thái terminal không bị downgrade bởi event cũ. Payment thành công bắt buộc có provider ID; nếu thiếu thì chuyển `Unknown`, không phát hành vé.
+
+### 18.2 Orphan payment attempt
+
+Nếu `PaymentAttempt` đã có provider ID nhưng `Payment` chưa có, recovery/reconcile khóa payment, backfill ID và dispatch `ReconcilePayment`. Reconcile tiếp tục kiểm tra amount, currency và metadata booking trước khi finalize. Trường hợp không thể xác minh vẫn giữ `Unknown` để operator xử lý, không coi là thành công.
+
+### 18.3 Webhook malformed
+
+Signature sai, JSON không parse được, thiếu event ID hoặc thiếu provider payment ID đều là request `400`. Payload hợp lệ nhưng amount/currency/metadata không khớp là `422` và event được đánh dấu failed để không retry vô hạn một payload độc hại/sai dữ liệu.
+
+### 18.4 Coupon reapply
+
+Coupon reservation có unique key theo booking và coupon. Khi user đổi A → B → A, reservation A đã released được khóa và chuyển lại `Reserved`, không insert dòng mới gây lỗi unique. Stock/usage chỉ thay đổi theo transition thực tế.
+
+### 18.5 Email idempotency
+
+Confirmation/reminder mail dùng Message-ID ổn định theo booking (`booking-confirmation-{id}` hoặc `booking-reminder-{id}`). Outbox vẫn là cơ chế retry; Message-ID giúp mail provider/client deduplicate tốt hơn nhưng không phải cam kết exactly-once tuyệt đối. Muốn đạt exactly-once theo provider cần thêm delivery receipt/provider idempotency API và dashboard theo dõi retry.
+
+### 18.6 Booking observer boundary
+
+Side effect audit/outbox/log của booking đã tách khỏi `Booking` model sang `app/Observers/Movie/BookingObserver.php`. Model giữ quan hệ, scope và invariant chuyển trạng thái; observer là integration boundary hiện tại. Khi cần tách hoàn toàn khỏi model events, chuyển observer sang explicit domain event được phát trong các action transition và giữ test regression tương ứng.
+
+### 18.7 Verification status
+
+- Pint và PHPStan pass.
+- Booking/payment feature tests pass sau remediation, gồm orphan reconcile, malformed webhook và coupon reapply.
+- Cần chạy thêm trên MySQL thật với nhiều process để chứng minh lock/concurrency; SQLite không đủ để kết luận deadlock/locking production.
+- Browser E2E/accessibility, benchmark availability/notification và dashboard metrics cần môi trường runner/dataset tương ứng; không đánh dấu hoàn tất chỉ bằng feature test.

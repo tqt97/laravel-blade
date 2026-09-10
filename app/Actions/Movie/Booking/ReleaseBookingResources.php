@@ -2,13 +2,13 @@
 
 namespace App\Actions\Movie\Booking;
 
+use App\Enums\Inventory\InventoryMovementType;
 use App\Enums\Movie\Booking\CouponReservationStatus;
-use App\Enums\Movie\Concessions\InventoryMovementType;
 use App\Enums\Movie\Seating\ScreeningSeatStatus;
 use App\Enums\Movie\Ticketing\TicketStatus;
+use App\Models\Inventory\InventoryMovement;
 use App\Models\Movie\Booking;
 use App\Models\Movie\Concession;
-use App\Models\Movie\ConcessionInventoryMovement;
 use App\Models\Movie\Coupon;
 use App\Models\Movie\CouponReservation;
 use App\Models\Movie\ScreeningSeat;
@@ -49,10 +49,10 @@ final class ReleaseBookingResources
                 ->first();
 
             $idempotencyKey = 'booking-release-'.$booking->getKey().'-'.$line->getAttribute('concession_id');
-            if ($concession !== null && $concession->getAttribute('stock') !== null && ! ConcessionInventoryMovement::query()->where('idempotency_key', $idempotencyKey)->exists()) {
+            if ($concession !== null && $concession->getAttribute('stock') !== null && ! InventoryMovement::query()->where('idempotency_key', $idempotencyKey)->exists()) {
                 $stockBefore = (int) $concession->stock;
                 $concession->increment('stock', (int) $line->getAttribute('quantity'));
-                ConcessionInventoryMovement::query()->firstOrCreate([
+                InventoryMovement::query()->firstOrCreate([
                     'idempotency_key' => 'booking-release-'.$booking->getKey().'-'.$line->getAttribute('concession_id'),
                 ], [
                     'concession_id' => $concession->getKey(),

@@ -15,6 +15,9 @@ return [
 
         // Safety cap for one concession line, even when stock is unlimited.
         'max_combo_quantity' => (int) env('BOOKING_MAX_COMBO_QUANTITY', 20),
+
+        // Maximum seats generated for one row when an admin creates a room.
+        'max_seats_per_row' => (int) env('BOOKING_MAX_SEATS_PER_ROW', 50),
     ],
 
     // Page-size and preview policies for cinema booking screens.
@@ -24,6 +27,9 @@ return [
         'movies_per_page' => (int) env('BOOKING_MOVIES_PER_PAGE', 12),
         'screenings_per_page' => (int) env('BOOKING_SCREENINGS_PER_PAGE', 18),
         'admin_page_size' => (int) env('BOOKING_ADMIN_PAGE_SIZE', 20),
+        'user_bookings_per_page' => (int) env('BOOKING_USER_BOOKINGS_PER_PAGE', 10),
+        'dashboard_recent_bookings' => (int) env('BOOKING_DASHBOARD_RECENT_BOOKINGS', 5),
+        'notification_preview_limit' => (int) env('BOOKING_NOTIFICATION_PREVIEW_LIMIT', 10),
     ],
 
     // A screening must start after this buffer to remain bookable.
@@ -44,7 +50,9 @@ return [
         // Currency and provider used by booking/payment snapshots.
         'currency' => env('BOOKING_CURRENCY', 'USD'),
         'amount_minor_units' => (int) env('BOOKING_AMOUNT_MINOR_UNITS', 0),
-        'provider' => env('BOOKING_PAYMENT_PROVIDER', env('STRIPE_SECRET') ? 'stripe' : 'fake'),
+        // Explicit provider selection. Fake is only valid in local/testing;
+        // production must fail closed when Stripe is not configured.
+        'provider' => env('BOOKING_PAYMENT_PROVIDER', 'stripe'),
         // Maximum time a payment may remain in a processing state.
         'processing_timeout_minutes' => (int) env('BOOKING_PAYMENT_PROCESSING_TIMEOUT_MINUTES', 15),
     ],

@@ -4,12 +4,18 @@ namespace App\Actions\Movie\Booking;
 
 use App\Enums\Payment\PaymentAttemptStatus;
 use App\Enums\Payment\PaymentStatus;
+use App\Jobs\ReconcilePayment;
 use App\Models\Payments\Payment;
+use App\Models\Payments\PaymentAttempt;
+use App\Support\Payment\PaymentStateMachine;
+use App\Support\Time\BookingClock;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 
 final class RecoverStuckPayment
 {
+    public function __construct(private readonly PaymentStateMachine $stateMachine) {}
+
     public function execute(Payment $payment, ?CarbonImmutable $now = null): bool
     {
         return DB::transaction(function () use ($payment, $now): bool {
@@ -17,14 +23,41 @@ final class RecoverStuckPayment
 
             $status = PaymentStatus::tryFrom((string) $locked->getRawOriginal('status'));
             $startedAt = $locked->getRawOriginal('processing_started_at');
-            $cutoff = ($now ?? now()->utc())->subMinutes((int) config('booking.payment.processing_timeout_minutes', 15));
+            $cutoff = ($now ?? BookingClock::now())->subMinutes((int) config('booking.payment.processing_timeout_minutes', 15));
 
             if (
                 $status !== PaymentStatus::Processing
-                || filled($locked->getRawOriginal('provider_payment_id'))
                 || $startedAt === null
-                || CarbonImmutable::parse((string) $startedAt, 'UTC')->isAfter($cutoff)
+                || BookingClock::parseStored((string) $startedAt)?->isAfter($cutoff)
             ) {
+                return false;
+            }
+
+            if (blank($locked->getRawOriginal('provider_payment_id'))) {
+                /** @var PaymentAttempt|null $orphanedAttempt */
+                $orphanedAttempt = $locked->attempts()
+                    ->whereNotNull('provider_payment_id')
+                    ->latest('id')
+                    ->first();
+
+                if ($orphanedAttempt !== null) {
+                    $locked->forceFill([
+                        'provider_payment_id' => $orphanedAttempt->provider_payment_id,
+                        'status' => PaymentStatus::Pending,
+                        'processing_started_at' => null,
+                        'metadata' => $orphanedAttempt->metadata,
+                    ])->save();
+                    ReconcilePayment::dispatch($locked->getKey())->afterCommit();
+
+                    return true;
+                }
+            }
+
+            if (filled($locked->getRawOriginal('provider_payment_id'))) {
+                return false;
+            }
+
+            if (! $this->stateMachine->canTransition($status, PaymentStatus::Unknown)) {
                 return false;
             }
 

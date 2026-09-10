@@ -1,7 +1,7 @@
 const poll = (root) => {
     const statusUrl = root.dataset.statusUrl;
     let timer;
-    const terminalStatuses = new Set(['failed', 'refunded', 'requires_refund', 'canceled', 'unknown']);
+    const terminalStatuses = new Set(['failed', 'refunded', 'requires_refund', 'canceled']);
 
     const check = async () => {
         try {
@@ -41,6 +41,7 @@ export const initPaymentStatus = () => {
             const clientSecret = root.dataset.clientSecret;
             const showError = (message) => {
                 const error = root.querySelector('[data-payment-error]');
+                if (!error) return;
                 error.textContent = message;
                 error.classList.remove('hidden');
             };

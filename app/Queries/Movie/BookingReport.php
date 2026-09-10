@@ -15,6 +15,7 @@ final class BookingReport
     public function summary(CarbonImmutable $from, CarbonImmutable $to): array
     {
         $base = DB::table('bookings')->whereNotNull('screening_id')->whereBetween('created_at', [$from, $to]);
+
         $tickets = DB::table('booking_items')->join('bookings', 'bookings.id', '=', 'booking_items.booking_id')
             ->whereBetween('bookings.created_at', [$from, $to]);
 

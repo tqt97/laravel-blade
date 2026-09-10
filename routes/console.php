@@ -17,3 +17,4 @@ Schedule::command('payments:alert-stuck')->everyFiveMinutes()->withoutOverlappin
 Schedule::command('booking:send-reminders')->everyMinute()->withoutOverlapping()->onOneServer();
 
 DevCommands::artisan('schedule:work', 'scheduler');
+DevCommands::artisan('queue:work --tries=3 --timeout=90', 'queue');

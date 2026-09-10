@@ -29,6 +29,16 @@ Entry point này được dùng ở:
 
 Không import module vào Blade riêng lẻ vì dễ tạo duplicate runtime và khó kiểm soát thứ tự khởi tạo.
 
+## 2.1. Shared Blade components
+
+Các control dùng chung phải ưu tiên component thay vì lặp markup trong từng view:
+
+- `x-admin.button` là contract chung cho action button, variant, trạng thái disabled và icon.
+- `x-ui.icon` là registry SVG dùng chung cho các icon action/navigation đã chuẩn hóa. Icon được chọn bằng tên ổn định như `dashboard`, `movies`, `bookings`, `logout`, `arrow-right`.
+- Chỉ tạo component mới khi markup có contract và được dùng ở từ hai nơi trở lên. Seat/combo card của showtime hiện còn khác contract với màn hình combo riêng nên giữ ở view tương ứng, tránh component hóa quá mức.
+
+SVG trong `x-ui.icon` chỉ được render từ danh sách path cố định trong component; không nhận SVG hoặc HTML từ input người dùng.
+
 ## 3. Event listener và tối ưu
 
 Các nguyên tắc đang áp dụng:

@@ -6,6 +6,7 @@ use App\Actions\Movie\Booking\HoldSeats;
 use App\Actions\Movie\Booking\PayBooking;
 use App\Actions\Movie\Catalog\CreateScreening;
 use App\Actions\Movie\Concessions\AddConcessions;
+use App\Enums\Movie\Booking\CouponType;
 use App\Enums\Movie\Seating\SeatType;
 use App\Models\Movie\Booking;
 use App\Models\Movie\Concession;
@@ -75,14 +76,87 @@ class MovieSeeder extends Seeder
             );
         });
 
-        Coupon::query()->updateOrCreate(['code' => 'MOVIE10'], [
-            'type' => 'percentage',
-            'value' => 10,
-            'maximum_discount_minor_units' => 50000,
-            'currency' => 'VND',
-            'usage_limit' => 1000,
-            'is_active' => true,
-        ]);
+        /**
+         * Keep deterministic coupon fixtures available for local development and UI review.
+         *
+         * Do not include used_count in the update attributes: re-running the seeder must
+         * update the campaign configuration without erasing real usage from an existing DB.
+         */
+        $couponDefinitions = [
+            [
+                'code' => 'MOVIE10',
+                'type' => CouponType::Percentage,
+                'value' => 10,
+                'maximum_discount_minor_units' => 50000,
+                'currency' => 'VND',
+                'usage_limit' => 1000,
+                'starts_at' => now()->subDay(),
+                'ends_at' => now()->addMonths(3),
+                'is_active' => true,
+            ],
+            [
+                'code' => 'WELCOME50K',
+                'type' => CouponType::Fixed,
+                'value' => 50000,
+                'maximum_discount_minor_units' => null,
+                'currency' => 'VND',
+                'usage_limit' => 100,
+                'starts_at' => now()->subDay(),
+                'ends_at' => now()->addMonth(),
+                'is_active' => true,
+            ],
+            [
+                'code' => 'VIP15',
+                'type' => CouponType::Percentage,
+                'value' => 15,
+                'maximum_discount_minor_units' => 100000,
+                'currency' => 'VND',
+                'usage_limit' => 250,
+                'starts_at' => now()->subDay(),
+                'ends_at' => now()->addMonths(2),
+                'is_active' => true,
+            ],
+            [
+                'code' => 'EARLYBIRD20',
+                'type' => CouponType::Percentage,
+                'value' => 20,
+                'maximum_discount_minor_units' => 75000,
+                'currency' => 'VND',
+                'usage_limit' => 500,
+                'starts_at' => now()->addDay(),
+                'ends_at' => now()->addMonths(2),
+                'is_active' => true,
+            ],
+            [
+                'code' => 'EXPIRED5',
+                'type' => CouponType::Percentage,
+                'value' => 5,
+                'maximum_discount_minor_units' => 25000,
+                'currency' => 'VND',
+                'usage_limit' => 50,
+                'starts_at' => now()->subMonths(2),
+                'ends_at' => now()->subDay(),
+                'is_active' => true,
+            ],
+            [
+                'code' => 'PAUSED10',
+                'type' => CouponType::Percentage,
+                'value' => 10,
+                'maximum_discount_minor_units' => 50000,
+                'currency' => 'VND',
+                'usage_limit' => 100,
+                'starts_at' => now()->subDay(),
+                'ends_at' => now()->addMonth(),
+                'is_active' => false,
+            ],
+        ];
+
+        foreach ($couponDefinitions as $couponDefinition) {
+            Coupon::query()->updateOrCreate(
+                ['code' => $couponDefinition['code']],
+                $couponDefinition,
+            );
+        }
 
         $this->seedDemoOrders($screenings->first(), $concessions);
     }

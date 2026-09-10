@@ -8,5 +8,5 @@
 {{ __('booking.mail.reminder_action_hint') }}
 
 Thanks,<br>
-{{ config('app.name') }}
+{{ config('app.movie_name') }}
 </x-mail::message>

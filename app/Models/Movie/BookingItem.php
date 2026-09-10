@@ -20,6 +20,7 @@ class BookingItem extends Model
         return $this->belongsTo(Booking::class);
     }
 
+    /** @return BelongsTo<ScreeningSeat, $this> */
     public function screeningSeat(): BelongsTo
     {
         return $this->belongsTo(ScreeningSeat::class);

@@ -9,59 +9,73 @@ use App\Http\Controllers\Controller;
 use App\Models\Movie\Booking;
 use App\Models\Payments\Payment;
 use App\Models\Payments\PaymentWebhookEvent;
+use App\Support\Payment\PaymentStateMachine;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
+use JsonException;
 
 final class StripeWebhookController extends Controller
 {
+    public function __construct(private readonly PaymentStateMachine $stateMachine) {}
+
     public function __invoke(Request $request, FinalizeSuccessfulPayment $finalizeSuccessfulPayment): Response|JsonResponse
     {
         $payload = $request->getContent();
+
         abort_unless($this->validSignature($payload, (string) $request->header('Stripe-Signature')), 400, 'Invalid webhook signature.');
-        $data = json_decode($payload, true, 512, JSON_THROW_ON_ERROR);
+
+        try {
+            $data = json_decode($payload, true, 512, JSON_THROW_ON_ERROR);
+        } catch (JsonException) {
+            return response()->json(['message' => 'Invalid webhook JSON payload.'], 400);
+        }
         $eventId = (string) ($data['id'] ?? '');
+
         abort_unless($eventId !== '', 400, 'Missing webhook event id.');
 
-        $mismatch = DB::transaction(function () use ($data, $eventId, $finalizeSuccessfulPayment): bool {
-            $event = PaymentWebhookEvent::query()->firstOrCreate(['provider' => 'stripe', 'event_id' => $eventId], ['payload' => $data]);
+        $result = DB::transaction(function () use ($data, $eventId, $finalizeSuccessfulPayment): int {
+            $event = PaymentWebhookEvent::query()->firstOrCreate([
+                'provider' => 'stripe', 'event_id' => $eventId], ['payload' => $data]);
             if ($event->processed_at !== null) {
-                return false;
+                return 0;
             }
             if ($event->failed_at !== null) {
-                return true;
+                return 1;
             }
             $object = $data['data']['object'] ?? [];
             $providerPaymentId = is_array($object) ? ($object['id'] ?? null) : null;
             if (! is_string($providerPaymentId) || $providerPaymentId === '') {
-                $event->forceFill(['failed_at' => now()->utc(), 'failure_message' => 'Stripe webhook is missing a provider payment ID.'])->save();
+                $event->forceFill(['failed_at' => now(), 'failure_message' => 'Stripe webhook is missing a provider payment ID.'])->save();
 
-                return true;
+                return 2;
             }
             $payment = Payment::query()->where('provider', 'stripe')->where('provider_payment_id', $providerPaymentId)->lockForUpdate()->first();
+
             if ($payment === null) {
                 throw new \RuntimeException('Stripe payment is not available for webhook processing yet.');
             }
             if ($payment->getAttribute('payable_type') !== Booking::class) {
-                $event->forceFill(['processed_at' => now()->utc()])->save();
+                $event->forceFill(['processed_at' => now()])->save();
 
-                return false;
+                return 0;
             }
             $eventType = (string) ($data['type'] ?? '');
+
             if (in_array($eventType, ['payment_intent.succeeded', 'payment_intent.payment_failed', 'payment_intent.processing', 'payment_intent.requires_action', 'payment_intent.canceled'], true)
                 && ! $this->matchesPayment($payment, $object, $eventType === 'payment_intent.succeeded')) {
                 $event->forceFill([
-                    'failed_at' => now()->utc(),
+                    'failed_at' => now(),
                     'failure_message' => 'Stripe webhook amount or currency does not match the local payment.',
                 ])->save();
 
-                return true;
+                return 1;
             }
             if (! $this->shouldApplyTransition($payment, $eventType, $data)) {
-                $event->forceFill(['processed_at' => now()->utc()])->save();
+                $event->forceFill(['processed_at' => now()])->save();
 
-                return false;
+                return 0;
             }
             $metadata = $payment->getAttribute('metadata');
             $metadata = is_array($metadata) ? $metadata : [];
@@ -71,12 +85,12 @@ final class StripeWebhookController extends Controller
             }
             if ($eventType === 'payment_intent.succeeded') {
                 if ($payment->getAttribute('status') === PaymentStatus::Refunded) {
-                    $event->forceFill(['processed_at' => now()->utc()])->save();
+                    $event->forceFill(['processed_at' => now()])->save();
 
-                    return false;
+                    return 0;
                 }
                 $payment->setAttribute('status', PaymentStatus::Succeeded);
-                $payment->setAttribute('paid_at', now()->utc());
+                $payment->setAttribute('paid_at', now());
                 $payment->syncLatestAttempt(PaymentAttemptStatus::Succeeded, (string) ($object['id'] ?? null));
                 $payment->save();
                 $finalizeSuccessfulPayment->execute($payment);
@@ -87,7 +101,7 @@ final class StripeWebhookController extends Controller
                 $payment->save();
             } elseif ($eventType === 'payment_intent.processing') {
                 $payment->setAttribute('status', PaymentStatus::Pending);
-                $payment->setAttribute('processing_started_at', $payment->processing_started_at ?? now()->utc());
+                $payment->setAttribute('processing_started_at', $payment->processing_started_at ?? now());
                 $payment->syncLatestAttempt(PaymentAttemptStatus::Processing, (string) ($object['id'] ?? null));
                 $payment->save();
             } elseif ($eventType === 'payment_intent.requires_action') {
@@ -103,12 +117,16 @@ final class StripeWebhookController extends Controller
                 $payment->syncLatestAttempt(PaymentAttemptStatus::Failed, (string) ($object['id'] ?? null), (string) ($payment->failure_message ?? null));
                 $payment->save();
             }
-            $event->forceFill(['processed_at' => now()->utc()])->save();
+            $event->forceFill(['processed_at' => now()])->save();
 
-            return false;
+            return 0;
         }, 3);
 
-        if ($mismatch) {
+        if ($result === 2) {
+            return response()->json(['message' => 'Webhook payload is missing a provider payment ID.'], 400);
+        }
+
+        if ($result === 1) {
             return response()->json(['message' => 'Webhook payment data does not match the local payment.'], 422);
         }
 
@@ -126,12 +144,27 @@ final class StripeWebhookController extends Controller
         if ($created > 0 && $lastCreated > $created) {
             return false;
         }
+
         if (in_array($current, [PaymentStatus::Refunded, PaymentStatus::RequiresRefund], true)) {
             return false;
         }
+
+        $target = match ($eventType) {
+            'payment_intent.succeeded' => PaymentStatus::Succeeded,
+            'payment_intent.payment_failed', 'payment_intent.canceled' => PaymentStatus::Failed,
+            'payment_intent.processing' => PaymentStatus::Pending,
+            'payment_intent.requires_action' => PaymentStatus::RequiresAction,
+            default => PaymentStatus::tryFrom((string) $payment->getRawOriginal('status')),
+        };
+
+        if ($target === null || ! $this->stateMachine->canTransition(PaymentStatus::from((string) $payment->getRawOriginal('status')), $target)) {
+            return false;
+        }
+
         if ($current === PaymentStatus::Succeeded && $eventType !== 'payment_intent.succeeded') {
             return false;
         }
+
         if ($current === PaymentStatus::Failed && in_array($eventType, ['payment_intent.processing', 'payment_intent.requires_action'], true)) {
             return false;
         }
@@ -149,8 +182,10 @@ final class StripeWebhookController extends Controller
         return is_numeric($amount)
             && (int) $amount === (int) $payment->amount_minor_units
             && $currency === strtoupper((string) $payment->currency)
-            && ((string) ($metadata['payable_id'] ?? $payment->payable_id) === (string) $payment->payable_id)
-            && ((string) ($metadata['payable_type'] ?? Booking::class) === Booking::class);
+            && array_key_exists('payable_id', $metadata)
+            && array_key_exists('payable_type', $metadata)
+            && ((string) $metadata['payable_id'] === (string) $payment->payable_id)
+            && ((string) $metadata['payable_type'] === Booking::class);
     }
 
     private function validSignature(string $payload, string $header): bool

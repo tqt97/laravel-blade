@@ -169,6 +169,29 @@ button:disabled {
     [data-toast] {
         transition: opacity 200ms ease, transform 200ms ease;
     }
+
+    .notification-bell--unread [data-notification-toggle] svg {
+        transform-origin: 50% 10%;
+        animation: notification-bell-shake 1.4s ease-in-out infinite;
+    }
+
+    .notification-bell--unread [data-notification-count] {
+        animation: notification-bell-badge-pulse 1.8s ease-out infinite;
+    }
+
+    @keyframes notification-bell-shake {
+        0%, 100% { transform: rotate(0deg); }
+        12% { transform: rotate(7deg); }
+        24% { transform: rotate(-6deg); }
+        36% { transform: rotate(4deg); }
+        48% { transform: rotate(-2deg); }
+        60%, 100% { transform: rotate(0deg); }
+    }
+
+    @keyframes notification-bell-badge-pulse {
+        0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 38%, transparent); }
+        45% { transform: scale(1.08); box-shadow: 0 0 0 5px transparent; }
+    }
 }
 
 ::selection {

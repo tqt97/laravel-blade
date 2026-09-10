@@ -6,6 +6,7 @@ use App\Contracts\PaymentGateway;
 use App\Contracts\PaymentStatusRetriever;
 use App\Models\Movie\Booking;
 use App\Models\User;
+use App\Observers\Movie\BookingObserver;
 use App\Policies\Movie\BookingPolicy;
 use App\Support\Payment\FakePaymentGateway;
 use App\Support\Payment\StripePaymentGateway;
@@ -26,14 +27,22 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        $this->app->bind(PaymentGateway::class, fn (): PaymentGateway => filled(config('services.stripe.secret'))
-            ? new StripePaymentGateway
-            : new FakePaymentGateway);
-        $this->app->bind(PaymentStatusRetriever::class, function (): PaymentStatusRetriever {
-            return filled(config('services.stripe.secret'))
-                ? new StripePaymentGateway
-                : new FakePaymentGateway;
-        });
+        $factory = function (): PaymentGateway {
+            $provider = (string) config('booking.payment.provider', 'stripe');
+
+            return match ($provider) {
+                'stripe' => filled(config('services.stripe.secret'))
+                    ? new StripePaymentGateway
+                    : throw new \LogicException('Stripe payment provider is configured without STRIPE_SECRET.'),
+                'fake' => app()->environment(['local', 'testing'])
+                    ? new FakePaymentGateway
+                    : throw new \LogicException('Fake payment provider is not allowed outside local/testing environments.'),
+                default => throw new \LogicException("Unsupported payment provider [{$provider}]."),
+            };
+        };
+
+        $this->app->bind(PaymentGateway::class, $factory);
+        $this->app->bind(PaymentStatusRetriever::class, fn (): PaymentStatusRetriever => $factory());
     }
 
     /**
@@ -48,6 +57,7 @@ class AppServiceProvider extends ServiceProvider
 
         Gate::define('manage-users', fn (User $user): bool => $user->is_admin);
         Gate::policy(Booking::class, BookingPolicy::class);
+        Booking::observe(BookingObserver::class);
         RateLimiter::for('booking-mutations', function (Request $request): Limit {
             $user = $request->user();
 

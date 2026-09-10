@@ -13,6 +13,7 @@ final class Currency
     public static function normalize(string $currency): string
     {
         $currency = strtoupper(trim($currency));
+
         if (! in_array($currency, self::codes(), true)) {
             throw new \InvalidArgumentException('Unsupported currency.');
         }

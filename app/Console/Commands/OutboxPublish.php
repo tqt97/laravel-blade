@@ -40,7 +40,7 @@ class OutboxPublish extends Command
                 ->where(function ($query) use ($claimBefore): void {
                     $query->whereNull('claimed_at')->orWhere('claimed_at', '<=', $claimBefore);
                 })
-                ->update(['claimed_at' => now()->utc()]);
+                ->update(['claimed_at' => now()]);
 
             if ($claimed === 1) {
                 PublishOutboxMessage::dispatch($message->id);

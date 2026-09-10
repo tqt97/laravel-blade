@@ -159,7 +159,7 @@ $screeningSeat->status === Available
 Tại:
 
 - [PublicCinemaController.php:81](/Users/tuquoctuan/Code/Tuantq/laravel-blade/resources/views/cinema/screenings/show.blade.php:81)
-- [user/screenings/show.blade.php:49](/Users/tuquoctuan/Code/Tuantq/laravel-blade/resources/views/user/screenings/show.blade.php:49)
+- [cinema/screenings/show.blade.php:81](/Users/tuquoctuan/Code/Tuantq/laravel-blade/resources/views/cinema/screenings/show.blade.php:81)
 
 Hệ quả khi hold hết hạn nhưng database chưa được scheduler release:
 
@@ -466,3 +466,355 @@ PHPStan hiện fail 11 lỗi, nổi bật ở:
 12. Chạy `EXPLAIN` trên dữ liệu lớn và đo slow query thực tế.
 
 Tôi không thay đổi mã nguồn trong lượt review này. Worktree hiện vẫn giữ nguyên các thay đổi trước đó của project.
+
+-----
+10/09
+Đã review toàn bộ luồng movie booking hiện tại. Tổng thể kiến trúc đã tiến bộ tốt: module Movie được gom rõ theo `Actions`, `Models`, `Queries`, có hold seat, combo, coupon, payment attempt, webhook, outbox, notification và ticket QR. Tuy nhiên chưa nên đưa production trước khi xử lý nhóm lỗi payment, timezone và consistency dưới đây.
+
+## Kết quả kiểm tra
+
+- `MovieBookingFeatureTest`: 38 tests passed, 183 assertions.
+- PHPStan: 0 errors.
+- Frontend tests: 3 passed.
+- ESLint: passed.
+- `git diff --check`: passed.
+- Full suite: 84 passed, 2 errors, 1 skipped.
+
+Hai lỗi full suite hiện tại liên quan trực tiếp timezone:
+
+- Check-in bị báo “not open”.
+- Reminder booking bị lỗi “screening outside booking window”.
+
+Điều này cho thấy test và runtime hiện vẫn phụ thuộc timezone môi trường.
+
+## P0 — cần xử lý trước production
+
+### 1. Có thể tạo payment thành công giả không có provider ID
+
+Trong [`PayBooking.php:37`](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Actions/Movie/Booking/PayBooking.php:37>), nếu booking đã `Confirmed`, hệ thống dùng `firstOrCreate()` và tự tạo payment với trạng thái `Succeeded`:
+
+```php
+'status' => PaymentStatus::Succeeded,
+'paid_at' => now(),
+```
+
+Payment này không có:
+
+- `provider_payment_id`
+- payment attempt
+- xác nhận từ Stripe/provider
+
+Nếu dữ liệu booking bị lệch hoặc payment bị mất, người dùng có thể gọi lại endpoint và hệ thống tạo một payment thành công giả.
+
+Khuyến nghị:
+
+- Không tự tạo payment `Succeeded`.
+- Nếu booking đã confirmed, chỉ trả payment đã tồn tại.
+- Nếu payment không tồn tại, ghi integrity error và yêu cầu reconcile/manual repair.
+- Mọi payment thành công bắt buộc phải có provider ID hợp lệ.
+
+### 2. Payment provider thành công nhưng local transaction lỗi thì không recover được
+
+Luồng hiện tại:
+
+1. Gọi provider ở [`PayBooking.php:119`](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Actions/Movie/Booking/PayBooking.php:119>).
+2. Lưu `PaymentAttempt` ở dòng 139.
+3. Cập nhật payment chính ở dòng 140.
+4. Finalize booking.
+
+Nếu bước 2 thành công nhưng bước 3 lỗi DB/process crash:
+
+- `PaymentAttempt` có provider ID.
+- Payment chính vẫn `processing`, provider ID có thể null.
+- `RecoverStuckPayment` chỉ nhìn payment chính ở [`RecoverStuckPayment.php:22`](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Actions/Movie/Booking/RecoverStuckPayment.php:22>).
+- Reconcile chỉ tìm payment có provider ID ở [`ReconcilePayment.php:28`](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Jobs/ReconcilePayment.php:28>).
+
+Kết quả là payment thật trên Stripe có thể bị đánh dấu `Unknown` nhưng không còn đường tự động tìm lại provider ID.
+
+Khuyến nghị:
+
+- Recover phải kiểm tra `PaymentAttempt.provider_payment_id`.
+- Reconcile được phép bắt đầu từ attempt, không chỉ payment cha.
+- Tách rõ các bước `claim → charge → persist provider result → finalize`.
+- Có command reconcile payment attempt bị orphan.
+
+### 3. Refund `Unknown` bị khóa vĩnh viễn
+
+Trong [`RefundBooking.php:44`](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Actions/Movie/Booking/RefundBooking.php:44>), nếu refund attempt đang `Processing` hoặc `Unknown`, hệ thống return ngay:
+
+```php
+return ['payment' => $payment, 'attempt' => null, ...];
+```
+
+Nếu Stripe đã refund thành công nhưng response bị mất:
+
+- Local attempt thành `Unknown`.
+- Payment chưa thành `Refunded`.
+- Lần retry tiếp theo không gọi provider, không reconcile, không cho retry.
+
+Đây là lỗi nghiệp vụ nghiêm trọng vì tiền có thể đã refund nhưng booking và inventory chưa được đồng bộ.
+
+Khuyến nghị:
+
+- Có `RefundStatusRetriever`.
+- Reconcile bằng `provider_refund_id` hoặc provider payment ID.
+- Cho phép retry có kiểm soát.
+- Tách trạng thái `Unknown` thành `NeedsReconciliation`, không coi là kết thúc.
+
+### 4. Outbox email chưa đảm bảo idempotent tuyệt đối
+
+[`PublishOutboxMessage.php:97-124`](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Jobs/PublishOutboxMessage.php:97>) đang:
+
+1. Đánh dấu delivery là `Sending`.
+2. Gửi email.
+3. Đánh dấu `Sent`.
+
+Nếu SMTP nhận email thành công nhưng process chết trước bước 3, lease sẽ hết hạn và job gửi lại. `ShouldBeUnique` không giải quyết được crash window này.
+
+Hiện tại hệ thống chỉ đảm bảo at-least-once, có khả năng gửi trùng.
+
+Khuyến nghị:
+
+- Dùng provider hỗ trợ idempotency key.
+- Key nên dựa trên `outbox_delivery_id`.
+- Hoặc xây dựng bảng delivery có trạng thái và cơ chế provider acknowledgement rõ ràng.
+- Không nên gửi SMTP trực tiếp trong job outbox nếu cần độ tin cậy cao.
+
+## P1 — cần xử lý ngay sau P0
+
+### 5. Reconcile chưa validate đầy đủ provider payment
+
+Webhook có kiểm tra amount/currency, nhưng [`ReconcilePayment.php:38-59`](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Jobs/ReconcilePayment.php:38>) chỉ lấy provider status rồi cập nhật local.
+
+Chưa kiểm tra lại:
+
+- Provider amount.
+- Currency.
+- Metadata booking.
+- Provider ID có đúng payment hiện tại không.
+
+Nếu provider ID bị gán sai hoặc dữ liệu local bị corrupt, reconcile có thể finalize booking nhầm.
+
+### 6. Lock order không đồng nhất, có nguy cơ deadlock
+
+`RefundBooking` lock payment trước booking:
+
+```text
+Payment → Booking → Items → Seats → Concession
+```
+
+Trong khi payment flow thường lock booking trước payment:
+
+```text
+Booking → Payment
+```
+
+Ví dụ:
+
+- Worker A đang pay: lock booking, chờ payment.
+- Worker B đang refund: lock payment, chờ booking.
+
+Database transaction có retry 3 lần nhưng đây chỉ giảm lỗi, không giải quyết nguyên nhân.
+
+Khuyến nghị chuẩn hóa lock order toàn hệ thống, ví dụ:
+
+```text
+Booking → Payment → BookingItems → ScreeningSeats → Concessions
+```
+
+### 7. Có thể thanh toán sau khi suất chiếu đã bắt đầu
+
+`checkout()` chỉ kiểm tra `booking.expires_at` tại [`BookingController.php:50`](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Http/Controllers/User/BookingController.php:50>).
+
+`PayBooking` cũng chỉ kiểm tra thời gian hold tại [`PayBooking.php:51`](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Actions/Movie/Booking/PayBooking.php:51>).
+
+`FinalizeSuccessfulPayment` kiểm tra hold expiry nhưng chưa kiểm tra `screening.starts_at` tại [`FinalizeSuccessfulPayment.php:119`](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Actions/Movie/Booking/FinalizeSuccessfulPayment.php:119>).
+
+Nếu hold 10 phút nhưng suất chiếu sắp bắt đầu, payment có thể được hoàn tất sau giờ chiếu.
+
+Cần centralize:
+
+```text
+Screening::isBookable()
+Screening::canAcceptPayment()
+Screening::canFinalizePayment()
+```
+
+và sử dụng thống nhất ở checkout, pay, edit, webhook, reconcile và finalization.
+
+### 8. Logic timezone đang không nhất quán
+
+Screening được convert về UTC khi tạo ở [`CreateScreening.php:23`](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Actions/Movie/Catalog/CreateScreening.php:23>), nhưng nhiều nơi lại parse raw DB timestamp bằng `config('app.timezone')`:
+
+- [`Screening.php:68`](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Models/Movie/Screening.php:68>)
+- [`ScreeningSeat.php:57`](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Models/Movie/ScreeningSeat.php:57>)
+- [`CheckInTicket.php:40`](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Actions/Movie/Ticketing/CheckInTicket.php:40>)
+- [`SendBookingReminders.php:43`](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Console/Commands/SendBookingReminders.php:43>)
+- [`BookingPolicy.php:64`](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Policies/Movie/BookingPolicy.php:64>)
+
+Đây là nguyên nhân phù hợp với hai lỗi full test hiện tại.
+
+Khuyến nghị:
+
+- Lưu DB bằng UTC.
+- So sánh bằng Carbon object/instant, không parse raw string nhiều lần.
+- Chỉ convert sang timezone phòng chiếu khi hiển thị hoặc nhận input.
+- Set `APP_TIMEZONE` rõ ràng trong `phpunit.xml`.
+- Không ép MySQL timezone bằng named timezone nếu database chưa cài timezone tables.
+
+### 9. `Screening::bookable()` chưa bao phủ movie/room active
+
+[`Screening.php:47-53`](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Models/Movie/Screening.php:47>) chỉ kiểm tra:
+
+- Status screening.
+- Khoảng thời gian.
+
+Nhưng chưa kiểm tra:
+
+- Movie có `is_active`.
+- Screening room có `is_active`.
+
+Ngoài ra [`Movie.php:37-43`](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Models/Movie/Movie.php:37>) đang lặp lại một phần business logic bookable riêng.
+
+Điều này có thể dẫn đến public list và endpoint chi tiết trả kết quả khác nhau.
+
+### 10. Coupon percentage chưa giới hạn tối đa 100
+
+[`SaveCouponRequest.php:38`](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Http/Requests/Admin/SaveCouponRequest.php:38>) chỉ validate `min:1`.
+
+Trong khi `ApplyCoupon` âm thầm giới hạn:
+
+```php
+min(100, $couponValue)
+```
+
+Admin có thể tạo coupon 500%, hệ thống không báo lỗi mà silently biến thành 100%. Đây là lỗi cấu hình nghiệp vụ.
+
+Nên validate conditional:
+
+- Percentage: `1..100`.
+- Fixed amount: lớn hơn 0.
+- Coupon currency phải phù hợp booking currency.
+
+### 11. Guest resume chưa hoàn toàn atomic
+
+[`PublicMovieController.php:175`](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Http/Controllers/Movie/PublicMovieController.php:175>) dùng `session()->pull()` trước khi execute booking.
+
+Nếu xảy ra exception ngoài hai loại đã bắt, dữ liệu guest selection bị mất khỏi session.
+
+Nên:
+
+- Đọc session trước.
+- Chỉ `forget()` sau khi resume thành công.
+- Hoặc bảo đảm mọi exception recoverable đều restore lại payload.
+
+### 12. Payment polling coi `unknown` là terminal
+
+[`payment-status.js:4`](</Users/tuquoctuan/Code/Tuantq/laravel-blade/resources/js/modules/payment-status.js:4>) coi `unknown` là terminal:
+
+```js
+new Set(['failed', 'refunded', 'requires_refund', 'canceled', 'unknown'])
+```
+
+Trong backend, `unknown` lại là trạng thái cần reconcile. UI dừng polling quá sớm có thể khiến payment sau đó reconcile thành công nhưng người dùng không nhận thấy.
+
+Nên tách:
+
+- `terminal`: failed, refunded, canceled.
+- `reconciling`: unknown.
+- Có nút refresh/retry/manual status.
+
+## Review frontend và UI/UX
+
+### Điểm tốt
+
+- Modal đã compact hơn, có nhóm ghế cùng giá.
+- Có chi tiết ghế, combo, tiền ghế, tiền combo, tổng tiền.
+- Có icon SVG cho action.
+- Có focus trap, Escape, backdrop click và restore focus.
+- Ghế ownership lấy từ server `owned_by_current_booking`, không chỉ tin DOM cũ.
+- Giới hạn 10 ghế và combo theo số vé đã được chặn sớm bằng JavaScript.
+- Notification bell có unread badge, delete all, click outside và animation.
+
+### Các vấn đề còn lại
+
+1. Modal dynamic chưa đủ accessibility:
+
+[`seat-picker.js:204-208`](</Users/tuquoctuan/Code/Tuantq/laravel-blade/resources/js/modules/seat-picker.js:204>) có `role="dialog"` nhưng chưa có:
+
+- `aria-labelledby`.
+- `aria-describedby`.
+- ID liên kết tới title/description.
+
+2. Payment error có thể gây JS exception nếu markup thiếu:
+
+[`payment-status.js:43`](</Users/tuquoctuan/Code/Tuantq/laravel-blade/resources/js/modules/payment-status.js:43>):
+
+```js
+error.textContent = message;
+```
+
+`error` có thể là `null`.
+
+3. Chưa có browser E2E cho các luồng quan trọng:
+
+- Guest chọn ghế → login → resume.
+- Edit giữ nguyên ghế.
+- Edit đổi ghế.
+- Multiple tabs.
+- Payment requires action.
+- Payment timeout.
+- Notification bell.
+- Responsive modal ở 320px/375px.
+- Combo limit theo số vé.
+
+4. Notification hiện là polling 15 giây, chưa phải realtime thực sự. Nếu cần realtime đúng nghĩa nên dùng broadcast/WebSocket hoặc SSE.
+
+5. Composer quality chưa chạy frontend test:
+
+[`composer.json`](</Users/tuquoctuan/Code/Tuantq/laravel-blade/composer.json>) chạy lint/build nhưng chưa chạy `npm run test:frontend`. Có thể bổ sung vào CI/quality pipeline.
+
+6. Layout movie đã rõ hơn nhưng vẫn có route legacy:
+
+[`routes/user.php:14-17`](</Users/tuquoctuan/Code/Tuantq/laravel-blade/routes/user.php:14>) vẫn tồn tại `/user/screenings/...` song song với canonical:
+
+```text
+/movies/{movie}/showtimes/{screening}
+```
+
+Nên giữ redirect tạm thời, đánh dấu deprecated rồi loại bỏ để tránh hai flow khác nhau.
+
+## Đánh giá kiến trúc
+
+| Khu vực | Đánh giá |
+|---|---|
+| Module organization | Tốt, đã gom theo Movie |
+| Eloquent/model scope | Khá tốt nhưng còn logic trùng bookable |
+| Seat hold | Tốt, có transaction và ownership |
+| Combo/inventory | Tốt, có snapshot và movement |
+| Coupon | Đạt cơ bản, thiếu domain validation percentage |
+| Payment | Chưa production-safe |
+| Webhook | Có signature/idempotency nhưng transition cần state machine rõ hơn |
+| Refund | Chưa có recovery hoàn chỉnh |
+| Outbox | Có nền tảng tốt nhưng chưa exactly-once |
+| Notification | Đủ chức năng, chưa realtime |
+| UI/UX | Khá tốt, cần cải thiện accessibility và E2E |
+| Test | Feature coverage tốt, thiếu browser/concurrency/payment-failure tests |
+| Timezone | Rủi ro cao, hiện đang gây lỗi full suite |
+| Performance | Chưa có benchmark/EXPLAIN thực tế trong lần review này |
+
+## Thứ tự ưu tiên đề xuất
+
+1. Chuẩn hóa timezone và làm full test deterministic.
+2. Sửa payment provider ID và loại bỏ fake confirmed payment.
+3. Thiết kế recovery cho payment attempt orphan.
+4. Thiết kế refund reconciliation/retry.
+5. Validate provider amount/currency/metadata trong reconcile.
+6. Chuẩn hóa lock order.
+7. Chặn payment/finalize sau giờ chiếu.
+8. Bổ sung browser E2E và concurrency tests.
+9. Bổ sung accessibility cho modal/payment UI.
+10. Đưa frontend test vào quality pipeline.
+11. Sau đó mới benchmark query, availability polling và notification realtime.
+
+Kết luận: phần booking hiện tại có nền tảng tốt và test nghiệp vụ khá rộng, nhưng các vấn đề payment recovery, refund recovery, timezone và lock order vẫn là rủi ro production thực sự. Full suite hiện chưa xanh hoàn toàn, vì vậy chưa nên xem hệ thống là hoàn thiện cho production.

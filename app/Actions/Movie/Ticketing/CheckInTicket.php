@@ -8,7 +8,7 @@ use App\Enums\Payment\RefundAttemptStatus;
 use App\Models\Movie\BookingItem;
 use App\Models\Movie\Screening;
 use App\Support\Booking\Exceptions\BookingOperationFailed;
-use Carbon\CarbonImmutable;
+use App\Support\Time\BookingClock;
 use Illuminate\Support\Facades\DB;
 
 final class CheckInTicket
@@ -38,18 +38,18 @@ final class CheckInTicket
 
             $screening = Screening::query()->find($booking->getAttribute('screening_id'));
             $startsAt = $screening !== null && $screening->getRawOriginal('starts_at') !== null
-                ? CarbonImmutable::parse((string) $screening->getRawOriginal('starts_at'), 'UTC')
+                ? BookingClock::parseStored((string) $screening->getRawOriginal('starts_at'))
                 : null;
             $endsAt = $screening !== null && $screening->getRawOriginal('ends_at') !== null
-                ? CarbonImmutable::parse((string) $screening->getRawOriginal('ends_at'), 'UTC')
+                ? BookingClock::parseStored((string) $screening->getRawOriginal('ends_at'))
                 : null;
 
-            if ($startsAt === null || $endsAt === null || now()->utc()->lessThan($startsAt->subMinutes((int) config('booking.check_in_open_minutes'))) || now()->utc()->greaterThan($endsAt)) {
+            if ($startsAt === null || $endsAt === null || BookingClock::now()->lessThan($startsAt->subMinutes((int) config('booking.check_in_open_minutes'))) || BookingClock::now()->greaterThan($endsAt)) {
                 throw new BookingOperationFailed(__('booking.messages.check_in_closed'));
             }
 
             $item->setAttribute('status', TicketStatus::CheckedIn);
-            $item->setAttribute('checked_in_at', now()->utc());
+            $item->setAttribute('checked_in_at', now());
             $item->setAttribute('checked_in_by', $staffId);
             $item->save();
 

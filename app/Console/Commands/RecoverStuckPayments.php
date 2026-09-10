@@ -5,7 +5,7 @@ namespace App\Console\Commands;
 use App\Actions\Movie\Booking\RecoverStuckPayment;
 use App\Enums\Payment\PaymentStatus;
 use App\Models\Payments\Payment;
-use Carbon\CarbonImmutable;
+use App\Support\Time\BookingClock;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
@@ -16,7 +16,7 @@ class RecoverStuckPayments extends Command
 {
     public function handle(RecoverStuckPayment $recoverStuckPayment): int
     {
-        $cutoff = CarbonImmutable::now()->utc()->subMinutes((int) config('booking.payment.processing_timeout_minutes', 15));
+        $cutoff = BookingClock::now()->subMinutes((int) config('booking.payment.processing_timeout_minutes', 15));
         $payments = Payment::query()
             ->where('status', PaymentStatus::Processing)
             ->whereNull('provider_payment_id')

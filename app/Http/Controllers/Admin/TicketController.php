@@ -17,7 +17,10 @@ final class TicketController extends Controller
     public function __invoke(CheckInTicketRequest $request, CheckInTicket $checkInTicket): RedirectResponse
     {
         try {
-            $checkInTicket->execute($request->validated('ticket_code'), $request->user()->id);
+            $checkInTicket->execute(
+                $request->validated('ticket_code'),
+                $request->user()->id
+            );
         } catch (BookingOperationFailed $exception) {
             throw ValidationException::withMessages(['ticket_code' => $exception->getMessage()]);
         }

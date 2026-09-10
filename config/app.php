@@ -13,7 +13,19 @@ return [
     |
     */
 
-    'name' => env('APP_NAME', 'Laravel'),
+    'name' => env('APP_NAME', 'CinePass'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Movie Experience Name
+    |--------------------------------------------------------------------------
+    |
+    | Product name used by the public movie catalog, booking flow and tickets.
+    | It can be branded independently and falls back to the application name.
+    |
+    */
+
+    'movie_name' => env('APP_MOVIE_NAME', env('APP_NAME', 'CinePass')),
 
     /*
     |--------------------------------------------------------------------------
@@ -65,7 +77,7 @@ return [
     |
     */
 
-    'timezone' => 'UTC',
+    'timezone' => env('APP_TIMEZONE', 'UTC'),
 
     /*
     |--------------------------------------------------------------------------

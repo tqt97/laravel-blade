@@ -6,6 +6,7 @@ use App\Enums\Movie\Booking\CouponType;
 use App\Support\Money\Currency;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class SaveCouponRequest extends FormRequest
 {
@@ -35,7 +36,7 @@ class SaveCouponRequest extends FormRequest
         return [
             'code' => ['required', 'string', 'max:32', 'alpha_dash', 'unique:coupons,code'],
             'type' => ['required', 'string', 'in:'.implode(',', array_column(CouponType::cases(), 'value'))],
-            'value' => ['required', 'integer', 'min:1'],
+            'value' => ['required', 'integer', 'min:1', Rule::when($this->input('type') === CouponType::Percentage->value, ['max:100'])],
             'maximum_discount_minor_units' => ['nullable', 'integer', 'min:1'],
             'currency' => ['nullable', 'string', 'size:3', 'in:'.implode(',', Currency::codes())],
             'usage_limit' => ['nullable', 'integer', 'min:1'],

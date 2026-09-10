@@ -11,13 +11,22 @@ final class StripePaymentGateway implements PaymentGateway, PaymentStatusRetriev
 {
     public function charge(Payment $payment): PaymentResult
     {
-        $parameters = ['amount' => $payment->amount_minor_units, 'currency' => strtolower($payment->currency), 'confirm' => 'true', 'metadata[payable_id]' => (string) $payment->payable_id, 'metadata[payable_type]' => (string) $payment->payable_type];
+        $parameters = [
+            'amount' => $payment->amount_minor_units,
+            'currency' => strtolower($payment->currency),
+            'confirm' => 'true',
+            'metadata[payable_id]' => (string) $payment->payable_id,
+            'metadata[payable_type]' => (string) $payment->payable_type,
+        ];
         $metadata = json_decode((string) $payment->getRawOriginal('metadata'), true);
+
         if (is_array($metadata) && filled($metadata['payment_method_id'] ?? null)) {
             $parameters['payment_method'] = $metadata['payment_method_id'];
         }
+
         $attemptKey = $payment->attempts()->latest('id')->value('attempt_key')
             ?: 'booking-payment-'.$payment->id;
+
         $response = Http::asForm()->withBasicAuth((string) config('services.stripe.secret'), '')
             ->timeout(10)->withHeaders(['Idempotency-Key' => (string) $attemptKey])
             ->post('https://api.stripe.com/v1/payment_intents', $parameters);
@@ -47,7 +56,7 @@ final class StripePaymentGateway implements PaymentGateway, PaymentStatusRetriev
             ->post('https://api.stripe.com/v1/refunds', ['payment_intent' => $payment->provider_payment_id]);
 
         return $response->successful()
-            ? new PaymentResult('refunded', $payment->provider_payment_id, $response->json())
+            ? new PaymentResult('refunded', $response->json('id'), $response->json())
             : new PaymentResult('failed', failureMessage: (string) ($response->json('error.message') ?? 'Stripe refund failed.'));
     }
 

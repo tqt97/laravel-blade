@@ -5,7 +5,7 @@ namespace App\Policies\Movie;
 use App\Enums\Movie\Booking\BookingStatus;
 use App\Models\Movie\Booking;
 use App\Models\User;
-use Carbon\CarbonImmutable;
+use App\Support\Time\BookingClock;
 
 final class BookingPolicy
 {
@@ -66,6 +66,6 @@ final class BookingPolicy
             return false;
         }
 
-        return CarbonImmutable::parse((string) $rawStartAt, 'UTC')->isAfter(now()->utc()->addMinutes($deadlineMinutes));
+        return BookingClock::parseStored((string) $rawStartAt)?->isAfter(BookingClock::now()->addMinutes($deadlineMinutes)) ?? false;
     }
 }

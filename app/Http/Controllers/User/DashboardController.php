@@ -3,31 +3,16 @@
 namespace App\Http\Controllers\User;
 
 use App\Http\Controllers\Controller;
-use App\Models\Movie\Booking;
+use App\Queries\Movie\UserBookingsQuery;
 use Illuminate\View\View;
 
 final class DashboardController extends Controller
 {
-    public function __invoke(): View
+    public function __invoke(UserBookingsQuery $bookings): View
     {
-        $upcomingBooking = Booking::query()
-            ->where('bookings.user_id', request()->user()->getKey())
-            ->select(['bookings.id', 'bookings.user_id', 'bookings.screening_id', 'bookings.status', 'bookings.total_minor_units', 'bookings.pricing_currency'])
-            ->with(['screening:id,movie_id,screening_room_id,starts_at,ends_at', 'screening.movie:id,title', 'screening.room:id,name,timezone'])
-            ->withCount(['items', 'concessions'])
-            ->upcoming()
-            ->whereHas('screening', fn ($query) => $query->where('starts_at', '>', now()->utc()))
-            ->join('screenings', 'bookings.screening_id', '=', 'screenings.id')
-            ->orderBy('screenings.starts_at')
-            ->select('bookings.*')
-            ->first();
-        $recentBookings = request()->user()->bookings()
-            ->select(['bookings.id', 'bookings.user_id', 'bookings.screening_id', 'bookings.status', 'bookings.total_minor_units', 'bookings.pricing_currency', 'bookings.created_at'])
-            ->with(['screening:id,movie_id,screening_room_id,starts_at,ends_at', 'screening.movie:id,title', 'screening.room:id,name,timezone'])
-            ->withCount(['items', 'concessions'])
-            ->latest()
-            ->limit(5)
-            ->get();
+        $user = request()->user();
+        $upcomingBooking = $bookings->upcoming($user);
+        $recentBookings = $bookings->recent($user);
 
         return view('user.dashboard', compact('upcomingBooking', 'recentBookings'));
     }

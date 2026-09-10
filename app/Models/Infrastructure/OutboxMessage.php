@@ -3,6 +3,7 @@
 namespace App\Models\Infrastructure;
 
 use App\Enums\Infrastructure\OutboxEventType;
+use App\Jobs\PublishOutboxMessage;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -10,6 +11,25 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 #[Fillable(['aggregate_type', 'aggregate_id', 'event_type', 'payload', 'available_at', 'claimed_at', 'published_at', 'attempts', 'failed_at', 'last_error'])]
 class OutboxMessage extends Model
 {
+    protected static function booted(): void
+    {
+        static::creating(function (self $message): void {
+            if ($message->getAttribute('available_at') === null) {
+                $message->setAttribute('available_at', now());
+            }
+        });
+
+        static::created(function (self $message): void {
+            if (in_array($message->getRawOriginal('event_type'), [
+                OutboxEventType::BookingPaymentSucceeded->value,
+                OutboxEventType::BookingReminderDue->value,
+                OutboxEventType::BookingExpired->value,
+            ], true)) {
+                PublishOutboxMessage::dispatch($message->getKey())->afterCommit();
+            }
+        });
+    }
+
     public function deliveries(): HasMany
     {
         return $this->hasMany(OutboxDelivery::class);

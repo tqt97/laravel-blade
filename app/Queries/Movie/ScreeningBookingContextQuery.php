@@ -4,6 +4,7 @@ namespace App\Queries\Movie;
 
 use App\Models\Movie\Booking;
 use App\Models\Movie\Screening;
+use App\Models\Movie\ScreeningSeat;
 use App\Models\User;
 
 final class ScreeningBookingContextQuery
@@ -11,11 +12,29 @@ final class ScreeningBookingContextQuery
     public function activeHold(User $user, Screening $screening): ?Booking
     {
         return Booking::query()
-            ->where('user_id', $user->id)
+            ->ownedBy($user->id)
             ->where('screening_id', $screening->getKey())
             ->activeHold()
             ->latest('id')
             ->first();
+    }
+
+    /** @return list<int> */
+    public function ownedSeatIds(User $user, Screening $screening): array
+    {
+        $booking = $this->activeHold($user, $screening);
+
+        if ($booking === null) {
+            return [];
+        }
+
+        return ScreeningSeat::query()
+            ->where('screening_id', $screening->getKey())
+            ->where('held_by_booking_id', $booking->getKey())
+            ->pluck('seat_id')
+            ->map(static fn (int|string $seatId): int => (int) $seatId)
+            ->values()
+            ->all();
     }
 
     /** @return list<int> */

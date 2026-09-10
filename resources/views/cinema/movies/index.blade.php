@@ -1,4 +1,4 @@
-<x-layouts.storefront :title="__('cinema.public.movies')">
+<x-layouts.movie :title="__('cinema.public.movies')">
     <section class="bg-slate-950 text-white">
         <div class="mx-auto max-w-7xl px-5 py-16 sm:px-8 lg:py-24">
             <p class="text-sm font-bold uppercase tracking-[.25em] text-white/60">{{ __('cinema.public.eyebrow') }}</p>
@@ -42,4 +42,4 @@
             {{ $movies->links() }}
         @endif
     </section>
-</x-layouts.storefront>
+</x-layouts.movie>

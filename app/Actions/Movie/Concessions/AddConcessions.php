@@ -2,12 +2,12 @@
 
 namespace App\Actions\Movie\Concessions;
 
+use App\Enums\Inventory\InventoryMovementType;
 use App\Enums\Movie\Booking\BookingStatus;
 use App\Enums\Movie\Booking\CouponType;
-use App\Enums\Movie\Concessions\InventoryMovementType;
+use App\Models\Inventory\InventoryMovement;
 use App\Models\Movie\Booking;
 use App\Models\Movie\Concession;
-use App\Models\Movie\ConcessionInventoryMovement;
 use App\Models\Movie\Coupon;
 use App\Support\Booking\Exceptions\BookingOperationFailed;
 use Illuminate\Support\Facades\DB;
@@ -50,6 +50,9 @@ final class AddConcessions
             ->map(static fn ($quantity): int => (int) $quantity);
         $requestedComboCount = $currentQuantities->sum();
 
+        // The request contains final quantities, not deltas. Subtract the
+        // existing line before adding the requested value so an edit does not
+        // count unchanged combos twice against the per-ticket limit.
         foreach ($quantitiesByConcession as $concessionId => $quantity) {
             $requestedComboCount -= (int) ($currentQuantities[$concessionId] ?? 0);
             $requestedComboCount += max(0, (int) $quantity);
@@ -116,7 +119,7 @@ final class AddConcessions
                 $concession->increment('stock', -$quantityDelta);
             }
 
-            ConcessionInventoryMovement::query()->create([
+            InventoryMovement::query()->create([
                 'concession_id' => $concession->getKey(),
                 'booking_id' => $booking->getKey(),
                 'type' => $quantityDelta > 0 ? InventoryMovementType::SaleReserve : InventoryMovementType::Release,

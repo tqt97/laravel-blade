@@ -22,6 +22,11 @@ final class EditBookingSelection
     /**
      * Reconcile the user's current selection with the existing hold atomically.
      *
+     * The booking row is locked before comparing seats. A same-seat edit keeps
+     * the aggregate and only synchronizes combos; a changed selection releases
+     * the old resources before creating the replacement hold in the same retryable
+     * transaction.
+     *
      * @param  list<int|string>  $seatIds
      * @param  array<int|string, int|string>  $quantities
      */

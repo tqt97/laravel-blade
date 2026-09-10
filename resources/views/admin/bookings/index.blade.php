@@ -27,8 +27,8 @@
                         <td class="px-5 py-4">{{ $booking->user?->name ?? '—' }}<span
                                 class="block text-xs text-muted-foreground">{{ $booking->user?->email }}</span></td>
                         <td class="whitespace-nowrap px-5 py-4 text-muted-foreground">
-                            {{ $booking->screening?->starts_at?->timezone($booking->screening?->room?->timezone ?? config('app.timezone'))->format('d/m/Y H:i') ?? '—' }} –
-                            {{ $booking->screening?->ends_at?->timezone($booking->screening?->room?->timezone ?? config('app.timezone'))->format('H:i') ?? '—' }}</td>
+                            {{ $booking->screening?->starts_at?->timezone(config('app.timezone'))->format('d/m/Y H:i') ?? '—' }} –
+                            {{ $booking->screening?->ends_at?->timezone(config('app.timezone'))->format('H:i') ?? '—' }}</td>
                         <td class="px-5 py-4"><span
                                 class="rounded-full bg-muted px-2.5 py-1 text-xs font-semibold">{{ __('booking.status.' . $booking->status->value) }}</span>
                         </td>

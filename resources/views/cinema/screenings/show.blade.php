@@ -1,4 +1,4 @@
-<x-layouts.storefront :title="$screening->movie->title">
+<x-layouts.movie :title="$screening->movie->title">
     <div class="mx-auto max-w-5xl space-y-8 px-5 py-12 sm:px-8">
         <div>
             <a href="{{ route('cinema.movies.show', $screening->movie) }}"
@@ -7,7 +7,7 @@
             <h1 class="mt-3 text-3xl font-semibold">{{ __('cinema.public.choose_seats') }}</h1>
             <p class="mt-2 text-sm text-muted-foreground">
                 {{ $screening->room->name }} ·
-                {{ $screening->starts_at->timezone($screening->room->timezone)->format('D, d/m/Y · H:i') }}–{{ $screening->ends_at->timezone($screening->room->timezone)->format('H:i') }}
+                {{ $screening->starts_at->timezone(config('app.timezone'))->format('D, d/m/Y · H:i') }}–{{ $screening->ends_at->timezone(config('app.timezone'))->format('H:i') }}
             </p>
             <div
                 class="mt-4 inline-flex rounded-full bg-primary-soft px-4 py-2 text-sm font-semibold text-accent-foreground">
@@ -45,7 +45,7 @@
             data-seat-confirm-movie-label="{{ __('cinema.public.movie_details') }}"
             data-seat-confirm-movie="{{ $screening->movie->title }}"
             data-seat-confirm-showtime-label="{{ __('cinema.public.confirm_showtime') }}"
-            data-seat-confirm-showtime="{{ $screening->starts_at->timezone($screening->room->timezone)->format('D, d/m/Y · H:i') }}"
+            data-seat-confirm-showtime="{{ $screening->starts_at->timezone(config('app.timezone'))->format('D, d/m/Y · H:i') }}"
             data-seat-confirm-room-label="{{ __('cinema.public.confirm_room') }}"
             data-seat-confirm-room="{{ $screening->room->name }}"
             data-seat-confirm-seats="{{ __('booking.checkout.seats') }}"
@@ -301,4 +301,4 @@
             </div>
         </form>
     </div>
-</x-layouts.storefront>
+</x-layouts.movie>

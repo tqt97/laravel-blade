@@ -8,6 +8,7 @@ use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Attachment;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
+use Illuminate\Mail\Mailables\Headers;
 use Illuminate\Queue\SerializesModels;
 
 class BookingReminderMail extends Mailable
@@ -39,6 +40,13 @@ class BookingReminderMail extends Mailable
     {
         return new Content(
             markdown: 'mail.booking-reminder',
+        );
+    }
+
+    public function headers(): Headers
+    {
+        return new Headers(
+            messageId: 'booking-reminder-'.$this->booking->getKey().'@'.parse_url((string) config('app.url'), PHP_URL_HOST),
         );
     }
 

@@ -3,6 +3,7 @@
 namespace App\Models\Movie;
 
 use App\Enums\Movie\Booking\CouponType;
+use App\Support\Time\BookingClock;
 use Database\Factories\Movie\CouponFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
@@ -23,7 +24,7 @@ class Coupon extends Model
 
     public function scopeActive(Builder $query): void
     {
-        $now = now()->utc();
+        $now = BookingClock::now();
         $query->where('is_active', true)
             ->where(fn (Builder $query): Builder => $query->whereNull('starts_at')->orWhere('starts_at', '<=', $now))
             ->where(fn (Builder $query): Builder => $query->whereNull('ends_at')->orWhere('ends_at', '>', $now));

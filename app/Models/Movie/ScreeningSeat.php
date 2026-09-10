@@ -3,6 +3,7 @@
 namespace App\Models\Movie;
 
 use App\Enums\Movie\Seating\ScreeningSeatStatus;
+use App\Support\Time\BookingClock;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
@@ -21,6 +22,7 @@ class ScreeningSeat extends Model
         return $this->belongsTo(Screening::class);
     }
 
+    /** @return BelongsTo<Seat, $this> */
     public function seat(): BelongsTo
     {
         return $this->belongsTo(Seat::class);
@@ -33,7 +35,7 @@ class ScreeningSeat extends Model
 
     public function scopeAvailableForSelection(Builder $query, ?CarbonImmutable $at = null): void
     {
-        $at ??= now()->utc();
+        $at ??= BookingClock::now();
         $query->where(function (Builder $query) use ($at): void {
             $query->where('status', ScreeningSeatStatus::Available)
                 ->orWhere(fn (Builder $heldQuery) => $heldQuery
@@ -53,7 +55,7 @@ class ScreeningSeat extends Model
             return false;
         }
 
-        return CarbonImmutable::parse((string) $this->getRawOriginal('held_until'), 'UTC')->lessThanOrEqualTo($at ?? now()->utc());
+        return BookingClock::parseStored((string) $this->getRawOriginal('held_until'))?->lessThanOrEqualTo($at ?? BookingClock::now()) ?? false;
     }
 
     protected function casts(): array

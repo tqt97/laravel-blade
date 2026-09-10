@@ -2,6 +2,8 @@
 
 namespace App\Models\Movie;
 
+use App\Models\Inventory\InventoryMovement;
+use App\Models\Inventory\StockAdjustmentAudit;
 use Database\Factories\Movie\ConcessionFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
@@ -27,12 +29,12 @@ class Concession extends Model
 
     public function inventoryMovements(): HasMany
     {
-        return $this->hasMany(ConcessionInventoryMovement::class);
+        return $this->hasMany(InventoryMovement::class);
     }
 
     public function stockAdjustmentAudits(): HasMany
     {
-        return $this->hasMany(ConcessionStockAdjustmentAudit::class);
+        return $this->hasMany(StockAdjustmentAudit::class);
     }
 
     public function scopeActive(Builder $query): void
@@ -43,6 +45,12 @@ class Concession extends Model
     public function scopeForCurrency(Builder $query, string $currency): void
     {
         $query->where('currency', strtoupper($currency));
+    }
+
+    /** @param Builder<Concession> $query */
+    public function scopeAvailableForBooking(Builder $query, string $currency): void
+    {
+        $query->active()->forCurrency($currency);
     }
 
     protected function casts(): array

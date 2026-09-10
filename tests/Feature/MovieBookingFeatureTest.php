@@ -11,33 +11,40 @@ use App\Actions\Movie\Booking\RefundBooking;
 use App\Actions\Movie\Catalog\CreateScreening;
 use App\Actions\Movie\Concessions\AddConcessions;
 use App\Actions\Movie\Ticketing\CheckInTicket;
+use App\Contracts\PaymentGateway;
 use App\Enums\Infrastructure\OutboxEventType;
 use App\Enums\Movie\Booking\BookingStatus;
 use App\Enums\Movie\Seating\ScreeningSeatStatus;
 use App\Enums\Movie\Ticketing\TicketStatus;
 use App\Enums\Payment\PaymentAttemptStatus;
 use App\Enums\Payment\PaymentStatus;
+use App\Enums\Payment\RefundAttemptStatus;
 use App\Jobs\PublishOutboxMessage;
-use App\Mail\BookingCreatedMail;
+use App\Mail\BookingConfirmationMail;
 use App\Models\Infrastructure\OutboxMessage;
+use App\Models\Inventory\InventoryMovement;
 use App\Models\Movie\Booking;
 use App\Models\Movie\Concession;
-use App\Models\Movie\ConcessionInventoryMovement;
 use App\Models\Movie\Coupon;
 use App\Models\Movie\CouponReservation;
 use App\Models\Movie\Movie;
 use App\Models\Movie\ScreeningRoom;
 use App\Models\Movie\Seat;
+use App\Models\Payments\Payment;
 use App\Models\User;
+use App\Notifications\MovieBookingNotification;
 use App\Queries\Movie\BookingReport;
 use App\Support\Booking\Exceptions\InvalidBookingTransition;
 use App\Support\Booking\SeatHoldConflict;
 use App\Support\Cinema\TicketQrCode;
+use App\Support\Payment\PaymentResult;
+use App\Support\Time\BookingClock;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\URL;
+use Illuminate\Support\Str;
 
 uses(RefreshDatabase::class);
 
@@ -61,6 +68,37 @@ it('holds a concrete seat and prevents a second user from taking it', function (
     $booking = app(HoldSeats::class)->execute($first, $screening, [$seat->id], 'cinema-1');
     expect($booking->items)->toHaveCount(1)->and($booking->status)->toBe(BookingStatus::Held)->and($booking->items->first()->screeningSeat->status)->toBe(ScreeningSeatStatus::Held);
     expect(fn () => app(HoldSeats::class)->execute($second, $screening, [$seat->id], 'cinema-2'))->toThrow(SeatHoldConflict::class);
+});
+
+it('keeps a freshly held booking valid through checkout in the configured timezone', function (): void {
+    $previousTimezone = config('app.timezone');
+    config(['app.timezone' => 'Asia/Ho_Chi_Minh']);
+    CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-09-10 10:00:00', 'Asia/Ho_Chi_Minh'));
+
+    try {
+        $room = ScreeningRoom::factory()->create(['timezone' => 'Asia/Ho_Chi_Minh']);
+        $seat = Seat::factory()->for($room, 'room')->create();
+        $screening = app(CreateScreening::class)->execute(
+            Movie::factory()->create(),
+            $room,
+            '2026-09-10 11:00:00',
+            '2026-09-10 13:00:00',
+            100000,
+        );
+        $user = User::factory()->create();
+        $booking = app(HoldSeats::class)->execute($user, $screening, [$seat->id], 'checkout-timezone');
+
+        $this->actingAs($user)
+            ->get(route('user.bookings.checkout', $booking))
+            ->assertOk()
+            ->assertViewIs('user.bookings.checkout')
+            ->assertSee('data-expires-at="2026-09-10T10:10:00+07:00"', false);
+
+        expect($booking->refresh()->expires_at?->isFuture())->toBeTrue();
+    } finally {
+        CarbonImmutable::setTestNow();
+        config(['app.timezone' => $previousTimezone]);
+    }
 });
 
 it('keeps the current booking when an edited seat cannot be held', function (): void {
@@ -270,7 +308,44 @@ it('does not restore combo stock twice when a successful refund is retried', fun
 
     expect($concession->refresh()->stock)->toBe(3)
         ->and($booking->payment()->firstOrFail()->status)->toBe(PaymentStatus::Refunded)
-        ->and(ConcessionInventoryMovement::query()->where('idempotency_key', 'payment-refund-'.$booking->payment->id.'-'.$concession->id)->count())->toBe(1);
+        ->and(InventoryMovement::query()->where('idempotency_key', 'payment-refund-'.$booking->payment->id.'-'.$concession->id)->count())->toBe(1);
+});
+
+it('retries an unknown refund with the same logical operation and finalizes it once', function (): void {
+    $room = ScreeningRoom::factory()->create();
+    $seat = Seat::factory()->for($room, 'room')->create();
+    $screening = app(CreateScreening::class)->execute(Movie::factory()->create(), $room, now()->addDay()->toDateTimeString(), now()->addDay()->addHours(2)->toDateTimeString(), 100000);
+    $booking = app(HoldSeats::class)->execute(User::factory()->create(), $screening, [$seat->id], 'refund-retry');
+    app(PayBooking::class)->execute($booking);
+    $gateway = new class implements PaymentGateway
+    {
+        public int $calls = 0;
+
+        public function charge(Payment $payment): PaymentResult
+        {
+            return new PaymentResult('succeeded', 'unused');
+        }
+
+        public function refund(Payment $payment): PaymentResult
+        {
+            $this->calls++;
+            if ($this->calls === 1) {
+                throw new RuntimeException('temporary refund timeout');
+            }
+
+            return new PaymentResult('refunded', 're_123');
+        }
+    };
+    app()->instance(PaymentGateway::class, $gateway);
+
+    app(RefundBooking::class)->execute($booking);
+    expect($booking->payment()->firstOrFail()->refundAttempts()->latest('id')->firstOrFail()->status)->toBe(RefundAttemptStatus::Unknown);
+
+    app(RefundBooking::class)->execute($booking);
+
+    expect($gateway->calls)->toBe(2)
+        ->and($booking->payment()->firstOrFail()->refresh()->status)->toBe(PaymentStatus::Refunded)
+        ->and($booking->refresh()->status)->toBe(BookingStatus::Cancelled);
 });
 
 it('finalizes successful Stripe webhooks idempotently', function (): void {
@@ -279,7 +354,7 @@ it('finalizes successful Stripe webhooks idempotently', function (): void {
     $screening = app(CreateScreening::class)->execute(Movie::factory()->create(), $room, now()->addDay()->toDateTimeString(), now()->addDay()->addHours(2)->toDateTimeString(), 100000);
     $booking = app(HoldSeats::class)->execute(User::factory()->create(), $screening, [$seat->id], 'stripe-webhook-1');
     $payment = $booking->payment()->create(['provider' => 'stripe', 'provider_payment_id' => 'pi_webhook_1', 'status' => PaymentStatus::Pending, 'amount_minor_units' => $booking->amount_minor_units, 'currency' => 'VND']);
-    $payload = ['id' => 'evt_webhook_1', 'type' => 'payment_intent.succeeded', 'data' => ['object' => ['id' => $payment->provider_payment_id, 'amount_received' => $payment->amount_minor_units, 'currency' => 'vnd', 'metadata' => ['payable_id' => (string) $booking->id]]]];
+    $payload = ['id' => 'evt_webhook_1', 'type' => 'payment_intent.succeeded', 'data' => ['object' => ['id' => $payment->provider_payment_id, 'amount_received' => $payment->amount_minor_units, 'currency' => 'vnd', 'metadata' => ['payable_id' => (string) $booking->id, 'payable_type' => Booking::class]]]];
     $body = json_encode($payload, JSON_THROW_ON_ERROR);
     $timestamp = time();
     $signature = 't='.$timestamp.',v1='.hash_hmac('sha256', $timestamp.'.'.$body, 'whsec_test');
@@ -354,6 +429,26 @@ it('releases expired cinema holds and snapshots combo pricing', function (): voi
     app(ExpireBooking::class)->execute($booking);
     expect($booking->refresh()->status)->toBe(BookingStatus::Expired)->and($screeningSeat->refresh()->status)->toBe(ScreeningSeatStatus::Available)->and($concession->refresh()->stock)->toBe(3);
     $this->actingAs($user)->get(route('user.tickets.show', $booking->items()->firstOrFail()))->assertNotFound();
+});
+
+it('notifies the user once when a seat hold expires', function (): void {
+    $room = ScreeningRoom::factory()->create();
+    $seat = Seat::factory()->for($room, 'room')->create();
+    $screening = app(CreateScreening::class)->execute(Movie::factory()->create(), $room, now()->addDay()->toDateTimeString(), now()->addDay()->addHours(2)->toDateTimeString(), 100000);
+    $user = User::factory()->create();
+    $booking = app(HoldSeats::class)->execute($user, $screening, [$seat->id], 'expiry-notification');
+    $booking->forceFill(['expires_at' => now()->subMinute()])->saveQuietly();
+
+    app(ExpireBooking::class)->execute($booking);
+    app(ExpireBooking::class)->execute($booking);
+    $expiredEvent = OutboxMessage::query()
+        ->where('aggregate_id', $booking->id)
+        ->where('event_type', 'booking.expired')
+        ->firstOrFail();
+    (new PublishOutboxMessage($expiredEvent->id))->handle();
+
+    expect($user->notifications()->where('data->key', 'booking_expired:'.$booking->id)->count())->toBe(1)
+        ->and(OutboxMessage::query()->where('aggregate_id', $booking->id)->where('event_type', 'booking.expired')->count())->toBe(1);
 });
 
 it('does not allow combo changes after payment has started', function (): void {
@@ -485,7 +580,7 @@ it('does not send the same outbox email twice when the delivery job is retried',
     $job->handle();
     $job->handle();
 
-    Mail::assertQueued(BookingCreatedMail::class, 1);
+    Mail::assertNothingSent();
     expect($message->refresh()->published_at)->not->toBeNull()
         ->and($message->deliveries()->where('channel', 'booking-created')->where('status', 'sent')->count())->toBe(1);
 });
@@ -498,7 +593,7 @@ it('checks in a paid ticket once inside the configured screening window', functi
     $booking = app(HoldSeats::class)->execute(User::factory()->create(), $screening, [$seat->id], 'cinema-checkin-1');
     app(PayBooking::class)->execute($booking);
     $item = $booking->items()->firstOrFail();
-    CarbonImmutable::setTestNow(CarbonImmutable::parse((string) $screening->getRawOriginal('starts_at'), 'UTC')->subMinutes(30));
+    CarbonImmutable::setTestNow(BookingClock::parseStored((string) $screening->getRawOriginal('starts_at'))?->subMinutes(30));
     app(CheckInTicket::class)->execute($item->ticket_code, User::factory()->create(['is_admin' => true])->id);
     expect($item->refresh()->status)->toBe(TicketStatus::CheckedIn);
     CarbonImmutable::setTestNow();
@@ -582,6 +677,23 @@ it('reserves a valid coupon and updates the booking total', function (): void {
         ->and(CouponReservation::query()->where('booking_id', $booking->id)->count())->toBe(1);
 });
 
+it('reuses a released reservation when a coupon is applied again', function (): void {
+    $room = ScreeningRoom::factory()->create();
+    $seat = Seat::factory()->for($room, 'room')->create(['price_minor_units' => 100000]);
+    $screening = app(CreateScreening::class)->execute(Movie::factory()->create(), $room, now()->addDay()->toDateTimeString(), now()->addDay()->addHours(2)->toDateTimeString(), 100000);
+    $booking = app(HoldSeats::class)->execute(User::factory()->create(), $screening, [$seat->id], 'coupon-reapply');
+    $first = Coupon::factory()->create(['code' => 'FIRST10', 'value' => 10000]);
+    $second = Coupon::factory()->create(['code' => 'SECOND10', 'value' => 10000]);
+
+    app(ApplyCoupon::class)->execute($booking, $first->code);
+    app(ApplyCoupon::class)->execute($booking, $second->code);
+    app(ApplyCoupon::class)->execute($booking, $first->code);
+
+    expect($booking->refresh()->coupon_id)->toBe($first->id)
+        ->and($booking->couponReservations()->where('coupon_id', $first->id)->count())->toBe(1)
+        ->and($booking->couponReservations()->where('status', 'reserved')->count())->toBe(1);
+});
+
 it('creates an in-app notification when a booking payment succeeds', function (): void {
     Mail::fake();
     $room = ScreeningRoom::factory()->create();
@@ -594,6 +706,8 @@ it('creates an in-app notification when a booking payment succeeds', function ()
 
     app(PublishOutboxMessage::class, ['outboxMessageId' => $message->id])->handle();
 
+    Mail::assertSent(BookingConfirmationMail::class);
+
     expect($user->notifications()->count())->toBe(1)
         ->and($user->notifications()->firstOrFail()->data['event'])->toBe('booking_confirmed');
 
@@ -601,18 +715,45 @@ it('creates an in-app notification when a booking payment succeeds', function ()
     $this->actingAs($user)->getJson(route('user.notifications.index'))
         ->assertOk()
         ->assertJsonPath('unread_count', 1)
-        ->assertJsonPath('notifications.0.id', $notification->getKey());
+        ->assertJsonPath('notifications.0.id', $notification->getKey())
+        ->assertJsonPath('notifications.0.url', '/user/bookings/'.$booking->getKey());
     $this->actingAs($user)->patchJson(route('user.notifications.read', $notification->getKey()))
         ->assertOk()
         ->assertJsonPath('unread_count', 0);
+    $this->actingAs($user)->deleteJson(route('user.notifications.destroy', $notification->getKey()))
+        ->assertOk()
+        ->assertJsonPath('unread_count', 0);
+    expect($user->notifications()->whereKey($notification->getKey())->exists())->toBeFalse();
+
+    $user->notify(new MovieBookingNotification($booking, 'booking_confirmed'));
+    $user->notify(new MovieBookingNotification($booking, 'booking_reminder'));
+
+    $this->actingAs($user)->deleteJson(route('user.notifications.destroy-all'))
+        ->assertOk()
+        ->assertJsonPath('unread_count', 0);
+    expect($user->notifications()->count())->toBe(0);
+});
+
+it('keeps legacy local notification links after the app url changes host', function (): void {
+    $user = User::factory()->create();
+    $notification = $user->notifications()->create([
+        'id' => (string) Str::uuid(),
+        'type' => MovieBookingNotification::class,
+        'data' => ['url' => 'http://localhost:8000/user/bookings/123'],
+    ]);
+
+    $this->actingAs($user)->getJson(route('user.notifications.index'))
+        ->assertOk()
+        ->assertJsonPath('notifications.0.id', $notification->getKey())
+        ->assertJsonPath('notifications.0.url', '/user/bookings/123');
 });
 
 it('claims a two-hour movie reminder once and publishes its outbox event', function (): void {
-    $now = CarbonImmutable::now('UTC')->startOfMinute();
+    $now = CarbonImmutable::now(BookingClock::timezone())->startOfMinute();
     CarbonImmutable::setTestNow($now);
     $room = ScreeningRoom::factory()->create();
     $seat = Seat::factory()->for($room, 'room')->create();
-    $screening = app(CreateScreening::class)->execute(Movie::factory()->create(), $room, $now->addHours(2)->addSeconds(30)->setTimezone($room->timezone)->toDateTimeString(), $now->addHours(4)->setTimezone($room->timezone)->toDateTimeString(), 100000);
+    $screening = app(CreateScreening::class)->execute(Movie::factory()->create(), $room, $now->addHours(2)->addSeconds(30)->toDateTimeString(), $now->addHours(4)->toDateTimeString(), 100000);
     $user = User::factory()->create();
     $booking = app(HoldSeats::class)->execute($user, $screening, [$seat->id], 'notification-reminder');
     app(PayBooking::class)->execute($booking);

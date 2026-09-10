@@ -9,6 +9,7 @@ use App\Models\Movie\Screening;
 use App\Models\Movie\ScreeningSeat;
 use App\Models\User;
 use App\Support\Booking\SeatHoldConflict;
+use App\Support\Time\BookingClock;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -46,7 +47,7 @@ final class HoldSeats
             if ($rows->count() !== count($seatIds)) {
                 throw new SeatHoldConflict(__('booking.messages.seats_not_in_screening'));
             }
-            $now = now()->utc();
+            $now = BookingClock::now();
             foreach ($rows as $row) {
                 if ($row->getAttribute('status') === ScreeningSeatStatus::Held && $row->getAttribute('held_until')?->lessThanOrEqualTo($now)) {
                     $row->forceFill(['status' => ScreeningSeatStatus::Available, 'hold_token' => null, 'held_by_booking_id' => null, 'held_until' => null])->save();

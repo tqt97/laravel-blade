@@ -2,12 +2,11 @@
 
 namespace App\Models\Movie;
 
-use App\Enums\Infrastructure\OutboxEventType;
 use App\Enums\Movie\Booking\BookingStatus;
-use App\Models\Infrastructure\OutboxMessage;
 use App\Models\Payments\Payment;
 use App\Models\User;
 use App\Support\Booking\Exceptions\InvalidBookingTransition;
+use App\Support\Time\BookingClock;
 use Carbon\CarbonImmutable;
 use Database\Factories\Movie\BookingFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -18,56 +17,12 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphOne;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Log;
 
 #[Fillable(['user_id', 'screening_id', 'expires_at', 'idempotency_key', 'idempotency_hash', 'cancellation_reason', 'amount_minor_units', 'currency', 'subtotal_minor_units', 'discount_minor_units', 'total_minor_units', 'pricing_currency', 'coupon_id', 'coupon_code', 'reminder_sent_at'])]
 class Booking extends Model
 {
     /** @use HasFactory<BookingFactory> */
     use HasFactory;
-
-    protected static function booted(): void
-    {
-        static::created(function (Booking $booking): void {
-            OutboxMessage::query()->create([
-                'aggregate_type' => self::class,
-                'aggregate_id' => $booking->id,
-                'event_type' => OutboxEventType::BookingCreated,
-                'payload' => ['booking_id' => $booking->id, 'status' => BookingStatus::Held->value],
-            ]);
-        });
-
-        static::updated(function (Booking $booking): void {
-            if (! $booking->wasChanged('status')) {
-                return;
-            }
-            $fromStatus = (string) $booking->getRawOriginal('status');
-            $toStatus = (string) $booking->getAttributes()['status'];
-
-            BookingTransitionAudit::query()->create([
-                'booking_id' => $booking->id,
-                'actor_id' => Auth::id(),
-                'from_status' => $fromStatus,
-                'to_status' => $toStatus,
-                'reason' => $booking->getAttributes()['cancellation_reason'] ?? null,
-            ]);
-
-            OutboxMessage::query()->create([
-                'aggregate_type' => self::class,
-                'aggregate_id' => $booking->id,
-                'event_type' => OutboxEventType::BookingStatusChanged,
-                'payload' => ['booking_id' => $booking->id, 'from' => $fromStatus, 'to' => $toStatus],
-            ]);
-
-            Log::info('booking.status_changed', [
-                'booking_id' => $booking->id,
-                'from_status' => $fromStatus,
-                'to_status' => $toStatus,
-                'actor_id' => Auth::id(),
-            ]);
-        });
-    }
 
     protected static function newFactory(): Factory
     {
@@ -107,6 +62,7 @@ class Booking extends Model
         return $this->belongsTo(Screening::class);
     }
 
+    /** @return HasMany<BookingItem, $this> */
     public function items(): HasMany
     {
         return $this->hasMany(BookingItem::class);
@@ -141,7 +97,12 @@ class Booking extends Model
     {
         $table = $query->getModel()->getTable();
         $query->whereIn($table.'.status', [BookingStatus::Held, BookingStatus::PendingPayment])
-            ->where($table.'.expires_at', '>', $now ?? now()->utc());
+            ->where($table.'.expires_at', '>', $now ?? BookingClock::now());
+    }
+
+    public function scopeOwnedBy(Builder $query, int $userId): void
+    {
+        $query->where($query->getModel()->qualifyColumn('user_id'), $userId);
     }
 
     public function scopeExpiredHold(Builder $query, ?CarbonImmutable $now = null): void
@@ -149,12 +110,12 @@ class Booking extends Model
         $table = $query->getModel()->getTable();
         $query->whereIn($table.'.status', [BookingStatus::Held, BookingStatus::PendingPayment])
             ->whereNotNull($table.'.expires_at')
-            ->where($table.'.expires_at', '<=', $now ?? now()->utc());
+            ->where($table.'.expires_at', '<=', $now ?? BookingClock::now());
     }
 
     public function scopeUpcoming(Builder $query, ?CarbonImmutable $now = null): void
     {
-        $now ??= now()->utc();
+        $now ??= BookingClock::now();
         $table = $query->getModel()->getTable();
         $query->where(function ($query) use ($now, $table): void {
             $query->where($table.'.status', BookingStatus::Confirmed)

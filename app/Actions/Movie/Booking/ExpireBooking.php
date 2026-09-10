@@ -4,7 +4,7 @@ namespace App\Actions\Movie\Booking;
 
 use App\Enums\Movie\Booking\BookingStatus;
 use App\Models\Movie\Booking;
-use Carbon\CarbonImmutable;
+use App\Support\Time\BookingClock;
 use Illuminate\Support\Facades\DB;
 
 final class ExpireBooking
@@ -17,7 +17,7 @@ final class ExpireBooking
             $booking = Booking::query()->whereKey($booking->id)->lockForUpdate()->firstOrFail();
             $status = BookingStatus::from((string) $booking->getRawOriginal('status'));
             $expiresAt = $booking->getRawOriginal('expires_at') !== null
-                ? CarbonImmutable::parse((string) $booking->getRawOriginal('expires_at'), 'UTC')
+                ? BookingClock::parseStored((string) $booking->getRawOriginal('expires_at'))
                 : null;
 
             if (! in_array($status, [BookingStatus::Held, BookingStatus::PendingPayment], true) || $expiresAt?->isFuture()) {

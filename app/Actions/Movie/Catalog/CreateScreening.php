@@ -9,6 +9,7 @@ use App\Models\Movie\Screening;
 use App\Models\Movie\ScreeningRoom;
 use App\Models\Movie\Seat;
 use App\Support\Cinema\ScreeningConflict;
+use App\Support\Time\BookingClock;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 
@@ -18,17 +19,19 @@ final class CreateScreening
     public function execute(Movie $movie, ScreeningRoom $room, string $startsAt, string $endsAt, int $basePriceMinorUnits, string $currency = 'VND', array $pricesBySeatType = []): Screening
     {
         return DB::transaction(function () use ($movie, $room, $startsAt, $endsAt, $basePriceMinorUnits, $currency, $pricesBySeatType): Screening {
+            // Lock the room before checking overlap and materializing its seats;
+            // concurrent admins must not create overlapping screening inventories.
             $room = ScreeningRoom::query()->whereKey($room->getKey())->lockForUpdate()->firstOrFail();
 
-            $starts = CarbonImmutable::parse($startsAt, $room->getAttribute('timezone'))->utc();
-            $ends = CarbonImmutable::parse($endsAt, $room->getAttribute('timezone'))->utc();
+            $starts = CarbonImmutable::parse($startsAt, BookingClock::timezone());
+            $ends = CarbonImmutable::parse($endsAt, BookingClock::timezone());
 
             if ($ends->lessThanOrEqualTo($starts)) {
-                throw new ScreeningConflict('The screening end must be after its start.');
+                throw new ScreeningConflict(__('booking.messages.screening_end_before_start'));
             }
 
             if (Screening::query()->where('screening_room_id', $room->getKey())->scheduled()->overlapping($starts, $ends)->exists()) {
-                throw new ScreeningConflict('The screening overlaps another screening in this room.');
+                throw new ScreeningConflict(__('booking.messages.screening_overlap'));
             }
 
             $screening = Screening::query()->create([

@@ -13,7 +13,7 @@ class StoreScreeningRoomRequest extends FormRequest
      */
     public function authorize(): bool
     {
-        return $this->user()->is_admin;
+        return $this->user()?->is_admin === true;
     }
 
     /**
@@ -23,6 +23,6 @@ class StoreScreeningRoomRequest extends FormRequest
      */
     public function rules(): array
     {
-        return ['name' => ['required', 'string', 'max:255'], 'code' => ['required', 'string', 'max:32', Rule::unique('screening_rooms', 'code')], 'timezone' => ['required', 'timezone'], 'rows' => ['required', 'string', 'regex:/^[A-Za-z](?:\s*,\s*[A-Za-z])*$/'], 'seats_per_row' => ['required', 'integer', 'min:1', 'max:50']];
+        return ['name' => ['required', 'string', 'max:255'], 'code' => ['required', 'string', 'max:32', Rule::unique('screening_rooms', 'code')], 'timezone' => ['required', 'timezone'], 'rows' => ['required', 'string', 'regex:/^[A-Za-z](?:\s*,\s*[A-Za-z])*$/'], 'seats_per_row' => ['required', 'integer', 'min:1', 'max:'.config('booking.limits.max_seats_per_row')]];
     }
 }

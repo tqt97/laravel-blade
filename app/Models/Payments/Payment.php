@@ -32,6 +32,7 @@ class Payment extends Model
         $attempt = $this->attempts()->latest('id')->first();
         if ($attempt === null) {
             $attemptNumber = ((int) $this->getAttribute('attempts')) + 1;
+
             $this->attempts()->create([
                 'attempt_key' => 'booking-payment-'.$this->getKey().'-'.$attemptNumber,
                 'status' => $status,
@@ -39,10 +40,11 @@ class Payment extends Model
                 'amount_minor_units' => $this->getAttribute('amount_minor_units'),
                 'currency' => $this->getAttribute('currency'),
                 'failure_message' => $failureMessage,
-                'started_at' => now()->utc(),
-                'completed_at' => $status === PaymentAttemptStatus::Processing ? null : now()->utc(),
+                'started_at' => now(),
+                'completed_at' => $status === PaymentAttemptStatus::Processing ? null : now(),
             ]);
             $this->setAttribute('attempts', $attemptNumber);
+
             $this->save();
 
             return;
@@ -55,7 +57,7 @@ class Payment extends Model
             'status' => $status,
             'provider_payment_id' => $providerPaymentId ?? $attempt->getAttribute('provider_payment_id'),
             'failure_message' => $failureMessage,
-            'completed_at' => $status === PaymentAttemptStatus::Processing ? null : now()->utc(),
+            'completed_at' => $status === PaymentAttemptStatus::Processing ? null : now(),
         ])->save();
     }
 

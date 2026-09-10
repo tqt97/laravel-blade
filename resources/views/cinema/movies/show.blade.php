@@ -1,4 +1,4 @@
-<x-layouts.storefront :title="$movie->title">
+<x-layouts.movie :title="$movie->title">
     <div class="mx-auto max-w-6xl px-5 py-12 sm:px-8">
         <a href="{{ route('cinema.movies.index') }}" class="text-sm font-semibold text-primary hover:underline">←
             {{ __('cinema.public.movies') }}</a>
@@ -24,7 +24,7 @@
                     href="{{ route('cinema.screenings.show', [$movie, $screening]) }}"
                     class="rounded-2xl border border-border bg-card p-5 transition hover:border-primary hover:shadow-md">
                     <p class="font-semibold">
-                        {{ $screening->starts_at->timezone($screening->room->timezone)->format('D, d/m · H:i') }}</p>
+                        {{ $screening->starts_at->timezone(config('app.timezone'))->format('D, d/m · H:i') }}</p>
                     <p class="mt-2 text-sm text-muted-foreground">{{ $screening->room->name }} ·
                         {{ \App\Support\Money\Money::fromMinorUnits((int) $screening->base_price_minor_units, strtoupper((string) $screening->currency))->format() }}</p>
                     <p
@@ -35,4 +35,4 @@
                 </a>@empty<p class="text-muted-foreground">{{ __('cinema.screenings.empty') }}</p>@endforelse</div>
         </section>
     </div>
-</x-layouts.storefront>
+</x-layouts.movie>

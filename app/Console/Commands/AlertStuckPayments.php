@@ -4,7 +4,7 @@ namespace App\Console\Commands;
 
 use App\Enums\Payment\PaymentStatus;
 use App\Models\Payments\Payment;
-use Carbon\CarbonImmutable;
+use App\Support\Time\BookingClock;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
@@ -19,7 +19,7 @@ class AlertStuckPayments extends Command
      */
     public function handle(): int
     {
-        $cutoff = CarbonImmutable::now()->subMinutes((int) config('booking.payment.processing_timeout_minutes', 15));
+        $cutoff = BookingClock::now()->subMinutes((int) config('booking.payment.processing_timeout_minutes', 15));
 
         $count = Payment::query()->where('status', PaymentStatus::Processing)->where('processing_started_at', '<=', $cutoff)->count();
 
