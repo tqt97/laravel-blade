@@ -11,5 +11,6 @@ enum PaymentStatus: string
     case Failed = 'failed';
     case Refunded = 'refunded';
     case RequiresRefund = 'requires_refund';
+    case Refunding = 'refunding';
     case Unknown = 'unknown';
 }

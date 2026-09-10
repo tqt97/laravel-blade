@@ -17,6 +17,7 @@ use App\Support\Booking\SeatHoldConflict;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
@@ -40,6 +41,17 @@ final class PublicMovieController extends Controller
             ->paginate((int) config('booking.listing.movies_per_page'));
 
         return view('cinema.movies.index', compact('movies'));
+    }
+
+    public function sitemap(): Response
+    {
+        $movies = Movie::query()
+            ->active()
+            ->hasBookableScreenings()
+            ->with(['screenings' => fn ($query) => $query->bookable()->orderBy('starts_at')])
+            ->get();
+
+        return response()->view('seo.sitemap', compact('movies'))->header('Content-Type', 'application/xml');
     }
 
     public function movie(Movie $movie): View

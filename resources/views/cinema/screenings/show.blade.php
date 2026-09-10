@@ -1,4 +1,4 @@
-<x-layouts.movie :title="$screening->movie->title">
+<x-layouts.movie :title="$screening->movie->title" :description="__('cinema.public.choose_seats') . ' · ' . $screening->movie->title">
     <div class="mx-auto max-w-5xl space-y-8 px-5 py-12 sm:px-8">
         <div>
             <a href="{{ route('cinema.movies.show', $screening->movie) }}"
@@ -7,7 +7,7 @@
             <h1 class="mt-3 text-3xl font-semibold">{{ __('cinema.public.choose_seats') }}</h1>
             <p class="mt-2 text-sm text-muted-foreground">
                 {{ $screening->room->name }} ·
-                {{ $screening->starts_at->timezone(config('app.timezone'))->format('D, d/m/Y · H:i') }}–{{ $screening->ends_at->timezone(config('app.timezone'))->format('H:i') }}
+                <time datetime="{{ $screening->starts_at->toIso8601String() }}">{{ $screening->starts_at->timezone(config('app.timezone'))->format('D, d/m/Y · H:i') }}</time>–<time datetime="{{ $screening->ends_at->toIso8601String() }}">{{ $screening->ends_at->timezone(config('app.timezone'))->format('H:i') }}</time>
             </p>
             <div
                 class="mt-4 inline-flex rounded-full bg-primary-soft px-4 py-2 text-sm font-semibold text-accent-foreground">

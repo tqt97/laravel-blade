@@ -22,6 +22,7 @@ Route::post('/locale', function (Request $request) {
 Route::get('/', function () {
     return view('welcome');
 })->name('home');
+Route::get('/sitemap.xml', [PublicMovieController::class, 'sitemap'])->name('seo.sitemap');
 Route::get('/movies', [PublicMovieController::class, 'index'])->name('cinema.movies.index');
 Route::get('/movies/{movie:slug}', [PublicMovieController::class, 'movie'])->name('cinema.movies.show');
 Route::scopeBindings()->group(function (): void {

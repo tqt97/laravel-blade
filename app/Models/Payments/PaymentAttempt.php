@@ -15,6 +15,11 @@ class PaymentAttempt extends Model
         return $this->belongsTo(Payment::class);
     }
 
+    public function attemptKey(): string
+    {
+        return (string) $this->getAttribute('attempt_key');
+    }
+
     protected function casts(): array
     {
         return [

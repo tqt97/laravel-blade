@@ -128,9 +128,11 @@ final class PayBooking
             $payment->syncLatestAttempt(PaymentAttemptStatus::Unknown, null, 'Payment provider response was unknown.');
 
             $payment->forceFill([
-                'status' => PaymentStatus::Unknown,
-                'failure_message' => 'Payment provider response was unknown. Manual reconciliation is required.',
-                'processing_started_at' => null,
+                // Keep the claim processing so a retry cannot create a
+                // second provider intent before reconciliation identifies
+                // the first one by its attempt key.
+                'status' => PaymentStatus::Processing,
+                'failure_message' => 'Payment provider response was unknown. Reconciliation is required.',
             ])->save();
 
             report($exception);

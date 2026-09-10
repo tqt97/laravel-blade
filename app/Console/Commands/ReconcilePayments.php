@@ -20,7 +20,7 @@ class ReconcilePayments extends Command
     public function handle(): int
     {
         $payments = Payment::query()
-            ->whereIn('status', [PaymentStatus::Processing, PaymentStatus::Pending, PaymentStatus::RequiresAction])
+            ->whereIn('status', [PaymentStatus::Processing, PaymentStatus::Pending, PaymentStatus::RequiresAction, PaymentStatus::Unknown])
             ->whereNotNull('provider_payment_id')
             ->oldest('updated_at')
             ->limit((int) $this->option('limit'))
@@ -29,7 +29,7 @@ class ReconcilePayments extends Command
         $orphanedPaymentIds = PaymentAttempt::query()
             ->whereNotNull('provider_payment_id')
             ->whereHas('payment', fn ($query) => $query
-                ->whereIn('status', [PaymentStatus::Processing, PaymentStatus::Pending, PaymentStatus::RequiresAction])
+                ->whereIn('status', [PaymentStatus::Processing, PaymentStatus::Pending, PaymentStatus::RequiresAction, PaymentStatus::Unknown])
                 ->whereNull('provider_payment_id'))
             ->pluck('payment_id');
 

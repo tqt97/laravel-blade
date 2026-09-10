@@ -340,9 +340,10 @@ Payment aggregate gắn với booking.
 | `payable_type`, `payable_id` | Polymorphic owner; thường là Booking. |
 | `provider` | stripe hoặc provider được cấu hình. |
 | `provider_payment_id` | ID provider, nullable khi chưa có; unique khi có. |
-| `status` | pending, processing, requires_action, succeeded, failed, unknown, requires_refund, refunded. |
+| `status` | pending, processing, requires_action, succeeded, failed, unknown, requires_refund, refunding, refunded. |
 | `attempts` | Số lần claim/charge. |
 | `processing_started_at`, `last_attempt_at` | Theo dõi payment stuck. |
+| `reconciliation_attempted_at`, `reconciliation_attempts` | Backoff và audit việc tìm lại provider intent sau timeout. |
 | `amount_minor_units`, `currency` | Amount/currency cần đối chiếu provider. |
 | `metadata` | Provider/client metadata. |
 | `paid_at`, `refunded_at` | Thời điểm terminal tương ứng. |

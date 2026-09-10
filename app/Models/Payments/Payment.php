@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 
-#[Fillable(['payable_type', 'payable_id', 'provider', 'provider_payment_id', 'status', 'attempts', 'processing_started_at', 'last_attempt_at', 'amount_minor_units', 'currency', 'metadata', 'paid_at', 'refunded_at', 'failure_message'])]
+#[Fillable(['payable_type', 'payable_id', 'provider', 'provider_payment_id', 'status', 'attempts', 'processing_started_at', 'last_attempt_at', 'reconciliation_attempted_at', 'reconciliation_attempts', 'amount_minor_units', 'currency', 'metadata', 'paid_at', 'refunded_at', 'failure_message'])]
 class Payment extends Model
 {
     public function payable(): MorphTo
@@ -49,7 +49,7 @@ class Payment extends Model
 
             return;
         }
-        if ($attempt->getRawOriginal('status') !== PaymentAttemptStatus::Processing->value) {
+        if (! in_array($attempt->getRawOriginal('status'), [PaymentAttemptStatus::Processing->value, PaymentAttemptStatus::Unknown->value], true)) {
             return;
         }
 
@@ -68,6 +68,8 @@ class Payment extends Model
             'attempts' => 'integer',
             'processing_started_at' => 'immutable_datetime',
             'last_attempt_at' => 'immutable_datetime',
+            'reconciliation_attempted_at' => 'immutable_datetime',
+            'reconciliation_attempts' => 'integer',
             'metadata' => 'array',
             'paid_at' => 'immutable_datetime',
             'refunded_at' => 'immutable_datetime',

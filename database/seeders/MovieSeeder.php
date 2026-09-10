@@ -25,12 +25,14 @@ class MovieSeeder extends Seeder
     public function run(): void
     {
         $movies = collect([
-            ['title' => 'The Last Horizon', 'synopsis' => 'A pilot crosses an unknown frontier to bring a lost crew home.', 'duration_minutes' => 128, 'rating' => 'PG-13', 'release_date' => now()->subDays(5)->toDateString()],
-            ['title' => 'Midnight in Saigon', 'synopsis' => 'One night, two strangers and a city full of unfinished stories.', 'duration_minutes' => 114, 'rating' => 'PG', 'release_date' => now()->subDays(12)->toDateString()],
-            ['title' => 'Ocean of Stars', 'synopsis' => 'A family discovers that the sea keeps memories of the people we love.', 'duration_minutes' => 102, 'rating' => 'G', 'release_date' => now()->subDays(20)->toDateString()],
-            ['title' => 'The Clockmaker', 'synopsis' => 'A quiet craftsman gets one chance to repair a day that went wrong.', 'duration_minutes' => 121, 'rating' => 'PG-13', 'release_date' => now()->subDays(30)->toDateString()],
-            ['title' => 'Neon District', 'synopsis' => 'A detective follows a signal through the city after the lights go out.', 'duration_minutes' => 109, 'rating' => 'R', 'release_date' => now()->subDays(8)->toDateString()],
-            ['title' => 'Little Comets', 'synopsis' => 'An animated adventure about friendship, courage and finding your way home.', 'duration_minutes' => 96, 'rating' => 'G', 'release_date' => now()->subDays(15)->toDateString()],
+            ['title' => 'The Last Horizon', 'synopsis' => 'A pilot crosses an unknown frontier to bring a lost crew home.', 'duration_minutes' => 128, 'rating' => 'PG-13', 'poster_path' => 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?auto=format&fit=crop&w=900&q=85', 'release_date' => now()->subDays(5)->toDateString()],
+            ['title' => 'Midnight in Saigon', 'synopsis' => 'One night, two strangers and a city full of unfinished stories.', 'duration_minutes' => 114, 'rating' => 'PG', 'poster_path' => 'https://images.unsplash.com/photo-1517604931442-7e0c8ed2963c?auto=format&fit=crop&w=900&q=85', 'release_date' => now()->subDays(12)->toDateString()],
+            ['title' => 'Ocean of Stars', 'synopsis' => 'A family discovers that the sea keeps memories of the people we love.', 'duration_minutes' => 102, 'rating' => 'G', 'poster_path' => 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=900&q=85', 'release_date' => now()->subDays(20)->toDateString()],
+            ['title' => 'The Clockmaker', 'synopsis' => 'A quiet craftsman gets one chance to repair a day that went wrong.', 'duration_minutes' => 121, 'rating' => 'PG-13', 'poster_path' => 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?auto=format&fit=crop&w=900&q=85', 'release_date' => now()->subDays(30)->toDateString()],
+            ['title' => 'Neon District', 'synopsis' => 'A detective follows a signal through the city after the lights go out.', 'duration_minutes' => 109, 'rating' => 'R', 'poster_path' => 'https://images.unsplash.com/photo-1519608487953-e999c86e7455?auto=format&fit=crop&w=900&q=85', 'release_date' => now()->subDays(8)->toDateString()],
+            ['title' => 'Little Comets', 'synopsis' => 'An animated adventure about friendship, courage and finding your way home.', 'duration_minutes' => 96, 'rating' => 'G', 'poster_path' => 'https://images.unsplash.com/photo-1535016120720-40c646be5580?auto=format&fit=crop&w=900&q=85', 'release_date' => now()->subDays(15)->toDateString()],
+            ['title' => 'Paper Moons', 'synopsis' => 'A young photographer follows a trail of mysterious postcards across the city.', 'duration_minutes' => 111, 'rating' => 'PG', 'poster_path' => 'https://images.unsplash.com/photo-1485846234645-a62644f84728?auto=format&fit=crop&w=900&q=85', 'release_date' => now()->subDays(3)->toDateString()],
+            ['title' => 'After the Rain', 'synopsis' => 'When the storm clears, an old theater reveals one final unfinished performance.', 'duration_minutes' => 118, 'rating' => 'PG-13', 'poster_path' => 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?auto=format&fit=crop&w=900&q=85&sat=-35', 'release_date' => now()->subDays(1)->toDateString()],
         ])->map(function (array $attributes): Movie {
             $attributes['slug'] = Str::slug($attributes['title']);
 
@@ -56,7 +58,7 @@ class MovieSeeder extends Seeder
             $room = $rooms[$movieIndex % $rooms->count()];
             foreach ([11, 15, 19] as $hour) {
                 $startsAt = CarbonImmutable::tomorrow($room->timezone)->addDays($movieIndex)->setTime($hour, 0);
-                $screening = Screening::query()->where('movie_id', $movie->id)->where('screening_room_id', $room->id)->where('starts_at', $startsAt->utc())->first();
+                $screening = Screening::query()->where('movie_id', $movie->id)->where('screening_room_id', $room->id)->where('starts_at', $startsAt)->first();
                 if ($screening === null) {
                     $screening = app(CreateScreening::class)->execute($movie, $room, $startsAt->toDateTimeString(), $startsAt->addMinutes($movie->duration_minutes + 20)->toDateTimeString(), 100000, 'VND', ['vip' => 150000]);
                 }

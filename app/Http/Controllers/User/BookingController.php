@@ -90,6 +90,7 @@ final class BookingController extends Controller
     public function paymentAction(Booking $booking): View
     {
         $this->authorize('confirm', $booking);
+        $booking->loadMissing(['screening.movie', 'screening.room', 'items.screeningSeat.seat']);
 
         $payment = $booking->payment;
         abort_unless($payment !== null, 404);

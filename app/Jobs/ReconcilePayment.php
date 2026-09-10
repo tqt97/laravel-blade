@@ -34,23 +34,27 @@ class ReconcilePayment implements ShouldQueue
         if ($payment === null) {
             return;
         }
+        /** @var PaymentAttempt|null $latestAttempt */
+        $latestAttempt = $payment->attempts()->latest('id')->first();
         if (blank($payment->provider_payment_id)) {
-            /** @var PaymentAttempt|null $orphanedAttempt */
-            $orphanedAttempt = $payment->attempts()
-                ->whereNotNull('provider_payment_id')
-                ->latest('id')
-                ->first();
-            if ($orphanedAttempt === null) {
+            if ($latestAttempt === null) {
+                return;
+            }
+
+            $providerStatus = $retriever->retrieveByAttemptKey($latestAttempt->attemptKey());
+            if (blank($providerStatus->providerPaymentId)) {
                 return;
             }
 
             $payment->forceFill([
-                'provider_payment_id' => $orphanedAttempt->provider_payment_id,
-                'metadata' => $orphanedAttempt->metadata,
+                'provider_payment_id' => $providerStatus->providerPaymentId,
+                'metadata' => $providerStatus->metadata,
+                'reconciliation_attempted_at' => null,
             ])->save();
             $payment->refresh();
+        } else {
+            $providerStatus = $retriever->retrieve((string) $payment->provider_payment_id);
         }
-        $providerStatus = $retriever->retrieve((string) $payment->provider_payment_id);
         if ($providerStatus->status !== 'unknown' && ! $this->matchesPayment($payment, $providerStatus)) {
             DB::transaction(function () use ($payment): void {
                 $locked = Payment::query()->whereKey($payment->getKey())->lockForUpdate()->firstOrFail();

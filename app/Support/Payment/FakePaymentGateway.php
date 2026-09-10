@@ -22,4 +22,9 @@ final class FakePaymentGateway implements PaymentGateway, PaymentStatusRetriever
     {
         return new ProviderPaymentStatus('succeeded', $providerPaymentId, ['fake' => true]);
     }
+
+    public function retrieveByAttemptKey(string $attemptKey): ProviderPaymentStatus
+    {
+        return new ProviderPaymentStatus('unknown', metadata: ['fake' => true, 'attempt_key' => $attemptKey]);
+    }
 }

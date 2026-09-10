@@ -5,8 +5,12 @@ return [
     'public' => [
         'brand_tagline' => 'Luxury Cinema',
         'main_navigation' => 'Main navigation',
+        'skip_to_content' => 'Skip to main content',
         'search_label' => 'Search movies',
         'search_placeholder' => 'Search movies, actors…',
+        'search_submit' => 'Search',
+        'search_clear' => 'Clear search',
+        'search_empty' => 'No matching movies found. Try another search term.',
         'account_label' => 'Account',
         'movies' => 'Movies',
         'showtimes' => 'Showtimes',

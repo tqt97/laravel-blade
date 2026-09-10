@@ -4,6 +4,7 @@ namespace App\Actions\Movie\Ticketing;
 
 use App\Enums\Movie\Booking\BookingStatus;
 use App\Enums\Movie\Ticketing\TicketStatus;
+use App\Enums\Payment\PaymentStatus;
 use App\Enums\Payment\RefundAttemptStatus;
 use App\Models\Movie\BookingItem;
 use App\Models\Movie\Screening;
@@ -22,6 +23,7 @@ final class CheckInTicket
             }
 
             $booking = $item->booking()->lockForUpdate()->firstOrFail();
+            $payment = $booking->payment()->lockForUpdate()->first();
             $item = BookingItem::query()->whereKey($item->getKey())->lockForUpdate()->firstOrFail();
 
             if ($item->getAttribute('status') !== TicketStatus::Issued) {
@@ -32,7 +34,8 @@ final class CheckInTicket
                 throw new BookingOperationFailed(__('booking.messages.booking_not_confirmed'));
             }
 
-            if ($booking->payment?->refundAttempts()->whereIn('status', [RefundAttemptStatus::Processing, RefundAttemptStatus::Unknown])->exists()) {
+            if ($payment?->getRawOriginal('status') === PaymentStatus::Refunding->value
+                || $payment?->refundAttempts()->whereIn('status', [RefundAttemptStatus::Processing, RefundAttemptStatus::Unknown])->exists()) {
                 throw new BookingOperationFailed(__('booking.messages.refund_in_progress'));
             }
 

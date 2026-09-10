@@ -3,6 +3,7 @@
 namespace App\Actions\Movie\Booking;
 
 use App\Enums\Movie\Booking\BookingStatus;
+use App\Enums\Payment\PaymentStatus;
 use App\Models\Movie\Booking;
 use App\Support\Time\BookingClock;
 use Illuminate\Support\Facades\DB;
@@ -21,6 +22,14 @@ final class ExpireBooking
                 : null;
 
             if (! in_array($status, [BookingStatus::Held, BookingStatus::PendingPayment], true) || $expiresAt?->isFuture()) {
+                return false;
+            }
+
+            $payment = $booking->payment()->first();
+            $paymentStatus = $payment === null
+                ? null
+                : PaymentStatus::tryFrom((string) $payment->getRawOriginal('status'));
+            if (in_array($paymentStatus, [PaymentStatus::Processing, PaymentStatus::RequiresAction, PaymentStatus::Pending, PaymentStatus::Unknown, PaymentStatus::Refunding], true)) {
                 return false;
             }
 

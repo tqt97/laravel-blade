@@ -5,8 +5,12 @@ return [
     'public' => [
         'brand_tagline' => 'Rạp chiếu phim cao cấp',
         'main_navigation' => 'Điều hướng chính',
+        'skip_to_content' => 'Bỏ qua đến nội dung chính',
         'search_label' => 'Tìm phim',
         'search_placeholder' => 'Tìm phim, diễn viên…',
+        'search_submit' => 'Tìm kiếm',
+        'search_clear' => 'Xóa tìm kiếm',
+        'search_empty' => 'Không tìm thấy phim phù hợp. Hãy thử từ khóa khác.',
         'account_label' => 'Tài khoản',
         'movies' => 'Phim',
         'showtimes' => 'Suất chiếu',

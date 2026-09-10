@@ -719,14 +719,14 @@ Payment:
     pending -> processing -> succeeded
                          -> requires_action -> pending/succeeded
                          -> failed
-                         -> requires_refund -> refunded
+                         -> requires_refund -> refunding -> refunded
 
 Booking::transitionTo() là nơi kiểm tra transition và tạo audit/outbox. Không gán trực tiếp status trong controller nếu transition có business rule.
 
 PaymentStatus hiện gồm:
 
     Pending, Processing, RequiresAction, Succeeded,
-    Failed, Refunded, RequiresRefund
+    Failed, Refunded, RequiresRefund, Refunding, Unknown
 
 Ý nghĩa:
 
@@ -738,6 +738,7 @@ PaymentStatus hiện gồm:
 | succeeded | Payment thành công |
 | failed | Provider từ chối rõ ràng |
 | requires_refund | Đã nhận tiền nhưng booking không thể finalize |
+| refunding | Đã claim quyền hoàn tiền; check-in bị chặn trong lúc gọi provider. |
 | refunded | Đã refund thành công |
 
 ## 3. Chống charge đồng thời
@@ -797,7 +798,7 @@ StripePaymentGateway map PaymentIntent status:
 
     $status = match ($response->json('status')) {
         'succeeded' => 'succeeded',
-        'requires_action', 'requires_confirmation' => 'requires_action',
+        'requires_action', 'requires_confirmation', 'requires_payment_method' => 'requires_action',
         'processing' => 'processing',
         default => 'failed',
     };
@@ -815,6 +816,8 @@ Controller chuyển requires_action và processing tới payment-action page:
 Payment action page:
 
 - Gọi Stripe.js nếu có publishable key và client secret.
+- Trên local hiển thị preset test card và nút copy số thẻ; không tự điền số thẻ/CVC vì Payment Element nằm trong iframe Stripe.
+- Layout responsive dùng hai cột trên desktop để giảm chiều cao, một cột trên mobile.
 - Poll payment-status mỗi 3 giây.
 - Retry sau 5 giây nếu mạng lỗi.
 - Chỉ redirect success khi server trả redirect cho trạng thái succeeded.
@@ -1373,13 +1376,13 @@ Regression test cần kiểm tra success và details đều render tên combo c�
 
 `PayBooking` khóa bản ghi `payments` trước khi claim. Các trạng thái `processing`, `requires_action` và payment đã có provider id không được charge lại. Mỗi lần gọi gateway tạo một `payment_attempts` với `attempt_key` unique, amount/currency snapshot, provider id và trạng thái cuối. Gateway timeout được giữ ở trạng thái `processing`/`unknown` để reconciliation truy vấn provider thay vì thử charge mù lần hai.
 
-Stripe lifecycle đã hỗ trợ `succeeded`, `processing`, `requires_action`, `payment_failed` và `canceled`; `requires_action` lưu `client_secret` để frontend tiếp tục xác thực. `ReconcilePayment` và command `payments:reconcile` đối soát các payment đang chờ theo provider status. `payments:alert-stuck` ghi cảnh báo các payment processing quá `BOOKING_PAYMENT_PROCESSING_TIMEOUT_MINUTES`.
+Stripe lifecycle đã hỗ trợ `succeeded`, `processing`, `requires_action`, `payment_failed` và `canceled`; PaymentIntent được tạo trước để Stripe Payment Element xác nhận bằng `client_secret`. `requires_action` lưu `client_secret` để frontend tiếp tục xác thực. `ReconcilePayment` và command `payments:reconcile` đối soát các payment đang chờ theo provider status. `payments:alert-stuck` ghi cảnh báo các payment processing quá `BOOKING_PAYMENT_PROCESSING_TIMEOUT_MINUTES`.
 
-Giới hạn: payment timeout không có `provider_payment_id` không thể tự đối soát với provider; cần dashboard vận hành hoặc quy trình tra soát thủ công. Việc gửi email vẫn là at-least-once nếu process chết ngay sau khi provider nhận email; unique queue job chỉ giảm duplicate dispatch, không thay thế idempotency key của email provider.
+Payment timeout không có `provider_payment_id` được giữ ở `processing`. Attempt key được gửi vào Stripe metadata; job reconciliation dùng PaymentIntent Search API để tìm lại PaymentIntent, rồi kiểm tra amount/currency/booking metadata trước khi cập nhật local state. Search API có thể có độ trễ eventual consistency, vì vậy job được retry theo lịch và payment không được charge lại mù. Việc gửi email vẫn là at-least-once nếu process chết ngay sau khi provider nhận email; unique queue job chỉ giảm duplicate dispatch, không thay thế idempotency key của email provider.
 
 ### 20.2 Refund, check-in và claim lock
 
-`RefundBooking` dùng lock theo thứ tự payment → booking → booking items, tạo `refund_attempts` unique trước khi gọi provider và re-check `checked_in` sau khi provider trả kết quả. `CheckInTicket` khóa booking/item và từ chối khi refund đang `processing` hoặc `unknown`. Nhờ vậy check-in và refund không thể cùng xác nhận một quyền sử dụng.
+`RefundBooking` claim theo thứ tự booking → payment → booking items, chuyển payment sang `refunding` trước khi gọi provider và tạo `refund_attempts` unique. `CheckInTicket` khóa booking → payment → item và từ chối khi payment đang `refunding` hoặc refund attempt đang `processing`/`unknown`. Nhờ vậy check-in và refund không thể cùng xác nhận một quyền sử dụng.
 
 Nếu provider đã refund thành công nhưng transaction cập nhật nội bộ gặp lỗi hạ tầng, `RefundAttempt::Succeeded` cùng provider refund id là bằng chứng để retry bỏ qua provider call và chạy lại local finalize. Seat, ticket, payment và từng dòng stock đều idempotent; retry chỉ bù phần chưa hoàn tất, không restore stock hai lần.
 
@@ -1401,7 +1404,9 @@ Booking list eager-load screening/movie/room và dùng `withCount` cho seats/com
 
 ### 20.6 UI/UX và accessibility
 
-Dashboard và booking list hiển thị ngày giờ, số ghế, số combo và tổng tiền; checkout giữ summary/sidebar sticky, combo quantity inline và trạng thái sold-out. Payment action có CTA tiếp tục xác thực, polling retry khi status endpoint lỗi, `aria-busy` và thông báo lỗi đã dịch. QR ticket hết hạn theo thời điểm kết thúc suất chiếu cộng grace period 24 giờ; ticket hỗ trợ cache offline qua service worker.
+Dashboard và booking list hiển thị ngày giờ, số ghế, số combo và tổng tiền; checkout giữ summary/sidebar sticky, combo quantity inline và trạng thái sold-out. Payment action có CTA tiếp tục xác thực, Payment Element responsive hai cột trên desktop, preset test card chỉ ở local, loading state khi mount form, spinner và nút disabled trong lúc chờ Stripe/webhook, polling retry khi status endpoint lỗi, `aria-busy` và thông báo lỗi đã dịch. QR ticket hết hạn theo thời điểm kết thúc suất chiếu cộng grace period 24 giờ; ticket hỗ trợ cache offline qua service worker.
+
+Các trang public movie có description, canonical, Open Graph/Twitter metadata và JSON-LD `Movie`/`ScreeningEvent`; `/sitemap.xml` chỉ xuất bản movie active và showtime còn bookable. Các route `user.*` được đánh dấu `noindex,nofollow,noarchive`, còn `robots.txt` chặn vùng user/admin và các trang xác thực. Movie index có search GET giữ query khi phân trang; search vẫn được kiểm tra lại bằng query backend.
 
 Giới hạn: realtime hiện là polling/near-realtime, chưa phải websocket; gợi ý ghế liền nhau, browser E2E đa trình duyệt và dashboard analytics nâng cao vẫn là future work. Khi phát triển tiếp cần kiểm tra keyboard navigation, focus modal, contrast, reduced motion và screen reader trên các luồng chọn ghế, checkout, payment, ticket.
 
@@ -1470,7 +1475,7 @@ try {
 
 ### 21.2 Refund claim và check-in đồng thời
 
-Refund và check-in cùng tác động tới quyền sử dụng ticket. Refund khóa theo thứ tự payment → booking → items, tạo `refund_attempts` trước khi gọi provider. Check-in khóa booking/item và từ chối nếu refund đang `processing` hoặc `unknown`.
+Refund và check-in cùng tác động tới quyền sử dụng ticket. Cả hai khóa theo cùng thứ tự booking → payment → items. Refund tạo `refund_attempts`, chuyển payment sang `refunding` trước khi gọi provider; check-in từ chối nếu payment đang `refunding` hoặc refund attempt đang `processing`/`unknown`.
 
 ```php
 $payment = Payment::query()
@@ -1941,7 +1946,7 @@ php artisan audit:prune-user-management --days=365
 | `StripeWebhookController` | Verify signature/timestamp, dedupe event, reject mismatch |
 | `ReconcilePayments` + `ReconcilePayment` | Đối chiếu pending/processing/requires_action với provider |
 | `AlertStuckPayments` | Log payment processing quá timeout |
-| `ExpireBookings` | Expire unpaid holds và release seat/combo |
+| `ExpireBookings` | Expire unpaid holds và release seat/combo; không release khi payment uncertain |
 | `OutboxPublish` + `PublishOutboxMessage` | Dispatch side effects at-least-once sau commit |
 | `PruneUserManagementAudits` | Dọn audit theo retention |
 
@@ -2060,12 +2065,12 @@ $attempt->forceFill([
 ])->save();
 
 $payment->forceFill([
-    'status' => PaymentStatus::Unknown,
-    'processing_started_at' => null,
+    'status' => PaymentStatus::Processing,
+    'reconciliation_attempted_at' => now(),
 ])->save();
 ```
 
-Payment `unknown` không được coi là terminal. Booking/seat vẫn được giữ đến thời điểm expiry; trạng thái cần được đối soát, retry an toàn hoặc xử lý thủ công. Payment status page tiếp tục polling khi nhận `unknown` và hiển thị hướng dẫn đối soát.
+Payment `processing` không được charge lại. Booking/seat vẫn được giữ đến khi provider xác nhận; job dùng `payment_attempts.attempt_key` để tìm PaymentIntent bằng metadata, sau đó mới cập nhật provider ID và trạng thái. Nếu provider chưa index kịp, lịch reconcile tiếp tục thử lại.
 
 Các trạng thái payment quan trọng:
 
@@ -2251,7 +2256,7 @@ Các invariant production-critical được bảo vệ ở database/action layer
 - `screening_seats.held_by_booking_id` ghi rõ booking sở hữu seat hold. Hold, finalize và release đều kiểm tra ownership; khi seat chuyển sang `sold`, ownership hold được xóa.
 - `concession_inventory_movements.idempotency_key` là unique. Release/refund stock dùng key ổn định theo booking/payment + concession, vì vậy retry không cộng stock hai lần.
 - `RefundBooking` nhận diện `RefundAttemptStatus::Succeeded`. Nếu provider đã refund nhưng transaction local bị rollback, lần retry bỏ qua provider call và finalize từng resource bằng idempotency key; trạng thái `requires_refund` không được dùng để bỏ qua việc hoàn stock.
-- `payments:recover-stuck` chạy mỗi phút. Payment ở `processing`, quá `processing_timeout_minutes` và chưa có provider ID được chuyển sang `unknown`; payment attempt processing tương ứng cũng chuyển sang `unknown`. Trạng thái này không tự charge lại.
+- `payments:recover-stuck` chạy mỗi phút. Payment ở `processing`, quá `processing_timeout_minutes` và chưa có provider ID được đánh dấu một lượt reconciliation, sau đó dispatch `ReconcilePayment`; không tự charge lại. Reconcile dùng `attempt_key` để tìm provider payment và có thể retry vì PaymentIntent Search API có eventual consistency.
 - Webhook, reconcile và synchronous charge đều đồng bộ payment attempt với payment transition. Mapping provider string chỉ tồn tại ở adapter boundary.
 - Outbox có `outbox_deliveries` unique theo message/channel. Delivery được claim bằng lease; delivery `sent` không gửi lại, còn delivery `sending` quá lease có thể được reclaim sau worker crash.
 

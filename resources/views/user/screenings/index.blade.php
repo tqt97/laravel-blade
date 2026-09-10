@@ -12,8 +12,8 @@
             <div class="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
                 @foreach ($screenings as $screening)
                     <article class="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
-                        @if ($screening->movie?->poster_path)
-                            <img src="{{ asset('storage/' . $screening->movie->poster_path) }}"
+                        @if ($screening->movie?->poster_url)
+                            <img src="{{ $screening->movie->poster_url }}"
                                 alt="{{ $screening->movie->title }}" width="440" height="660" loading="lazy"
                                 decoding="async" class="aspect-[2/3] w-full object-cover">
                         @else

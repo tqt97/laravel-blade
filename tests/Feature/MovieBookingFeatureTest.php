@@ -34,6 +34,7 @@ use App\Models\Payments\Payment;
 use App\Models\User;
 use App\Notifications\MovieBookingNotification;
 use App\Queries\Movie\BookingReport;
+use App\Support\Booking\Exceptions\BookingOperationFailed;
 use App\Support\Booking\Exceptions\InvalidBookingTransition;
 use App\Support\Booking\SeatHoldConflict;
 use App\Support\Cinema\TicketQrCode;
@@ -57,6 +58,18 @@ it('lets guests browse movies and seats before requiring authentication to hold 
     $this->get(route('cinema.movies.show', $screening->movie))->assertOk()->assertSee($room->name);
     $this->get(route('cinema.screenings.show', [$screening->movie, $screening]))->assertOk()->assertSee((string) $seat->seat_number);
     $this->post(route('user.screenings.hold', $screening), ['seat_ids' => [$seat->id], 'idempotency_key' => 'guest-hold'])->assertRedirect(route('login'));
+});
+
+it('serves an SEO sitemap with active movie and screening URLs', function (): void {
+    $room = ScreeningRoom::factory()->create();
+    $movie = Movie::factory()->create();
+    $screening = app(CreateScreening::class)->execute($movie, $room, now()->addDay()->toDateTimeString(), now()->addDay()->addHours(2)->toDateTimeString(), 100000);
+
+    $this->get(route('seo.sitemap'))
+        ->assertOk()
+        ->assertHeader('Content-Type', 'application/xml')
+        ->assertSee(route('cinema.movies.show', $movie), false)
+        ->assertSee(route('cinema.screenings.show', [$movie, $screening]), false);
 });
 
 it('holds a concrete seat and prevents a second user from taking it', function (): void {
@@ -596,6 +609,25 @@ it('checks in a paid ticket once inside the configured screening window', functi
     CarbonImmutable::setTestNow(BookingClock::parseStored((string) $screening->getRawOriginal('starts_at'))?->subMinutes(30));
     app(CheckInTicket::class)->execute($item->ticket_code, User::factory()->create(['is_admin' => true])->id);
     expect($item->refresh()->status)->toBe(TicketStatus::CheckedIn);
+    CarbonImmutable::setTestNow();
+});
+
+it('rejects check-in while a refund has claimed the booking payment', function (): void {
+    $room = ScreeningRoom::factory()->create();
+    $seat = Seat::factory()->for($room, 'room')->create();
+    $start = now()->addDay()->startOfHour();
+    $screening = app(CreateScreening::class)->execute(Movie::factory()->create(), $room, $start->toDateTimeString(), $start->copy()->addHours(2)->toDateTimeString(), 100000);
+    $booking = app(HoldSeats::class)->execute(User::factory()->create(), $screening, [$seat->id], 'cinema-refund-checkin-race');
+    app(PayBooking::class)->execute($booking);
+    $payment = $booking->payment()->firstOrFail();
+    $payment->forceFill(['status' => PaymentStatus::Refunding])->save();
+    $item = $booking->items()->firstOrFail();
+    CarbonImmutable::setTestNow(BookingClock::parseStored((string) $screening->getRawOriginal('starts_at'))?->subMinutes(30));
+
+    expect(fn () => app(CheckInTicket::class)->execute($item->ticket_code, User::factory()->create(['is_admin' => true])->id))
+        ->toThrow(BookingOperationFailed::class)
+        ->and($item->refresh()->status)->toBe(TicketStatus::Issued);
+
     CarbonImmutable::setTestNow();
 });
 

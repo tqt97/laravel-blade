@@ -5,6 +5,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    <meta name="description" content="{{ __('booking.landing.description') }}">
+    <meta name="robots" content="index,follow">
+    <link rel="canonical" href="{{ url('/') }}">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="{{ config('app.movie_name') }}">
+    <meta property="og:description" content="{{ __('booking.landing.description') }}">
+    <meta property="og:url" content="{{ url('/') }}">
+    <meta name="twitter:card" content="summary">
     <script>
         (() => {
             const theme = localStorage.getItem('app-theme');
@@ -15,7 +23,7 @@
             }
         })();
     </script>
-    <title>{{ config('app.name', 'Laravel') }}</title>
+    <title>{{ config('app.movie_name') }}</title>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 
@@ -42,7 +50,7 @@
                 @endauth
             </div>
         </header>
-        <main class="mx-auto flex max-w-7xl flex-col gap-16 px-5 pb-16 pt-16 sm:px-8 lg:px-12 lg:pt-24">
+        <main id="main-content" class="mx-auto flex max-w-7xl flex-col gap-16 px-5 pb-16 pt-16 sm:px-8 lg:px-12 lg:pt-24">
             <section class="grid items-center gap-12 lg:grid-cols-[1.1fr_0.9fr]">
                 <div class="max-w-2xl">
                     <p

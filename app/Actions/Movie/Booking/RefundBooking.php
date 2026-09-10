@@ -38,7 +38,7 @@ final class RefundBooking
             if ($paymentStatus === PaymentStatus::Refunded) {
                 return ['payment' => $payment, 'attempt' => null, 'provider_already_refunded' => false];
             }
-            if (! in_array($paymentStatus, [PaymentStatus::Succeeded, PaymentStatus::RequiresRefund], true)) {
+            if (! in_array($paymentStatus, [PaymentStatus::Succeeded, PaymentStatus::RequiresRefund, PaymentStatus::Refunding], true)) {
                 throw new BookingOperationFailed(__('booking.messages.refund_successful_only'));
             }
             $items = $booking->items()->lockForUpdate()->get();
@@ -64,6 +64,10 @@ final class RefundBooking
                 'status' => RefundAttemptStatus::Processing,
                 'started_at' => now(),
             ]);
+            if ($this->stateMachine->canTransition($paymentStatus, PaymentStatus::Refunding)) {
+                $payment->setAttribute('status', PaymentStatus::Refunding);
+                $payment->save();
+            }
 
             return ['payment' => $payment, 'attempt' => $attempt, 'provider_already_refunded' => false];
         }, 3);
@@ -87,6 +91,10 @@ final class RefundBooking
 
         if ($result->status !== 'refunded') {
             $claim['attempt']->forceFill(['status' => RefundAttemptStatus::Failed, 'failure_message' => $result->failureMessage, 'metadata' => $result->metadata, 'completed_at' => now()])->save();
+            $payment->forceFill([
+                'status' => PaymentStatus::RequiresRefund,
+                'failure_message' => $result->failureMessage,
+            ])->save();
             throw new BookingOperationFailed($result->failureMessage ?? __('booking.messages.refund_failed'));
         }
 
@@ -103,6 +111,7 @@ final class RefundBooking
         $claim['attempt']->forceFill(['status' => RefundAttemptStatus::Succeeded, 'provider_refund_id' => $result->providerPaymentId, 'metadata' => $result->metadata, 'completed_at' => now()])->save();
 
         return DB::transaction(function () use ($payment, $result): Payment {
+            $booking = Booking::query()->whereKey($payment->getAttribute('payable_id'))->lockForUpdate()->firstOrFail();
             $payment = Payment::query()->whereKey($payment->id)->lockForUpdate()->firstOrFail();
 
             if (PaymentStatus::from((string) $payment->getRawOriginal('status')) === PaymentStatus::Refunded) {
@@ -118,8 +127,6 @@ final class RefundBooking
             $payment->setAttribute('refunded_at', now());
             $payment->setAttribute('metadata', $result->metadata);
             $payment->save();
-
-            $booking = Booking::query()->whereKey($payment->getAttribute('payable_id'))->lockForUpdate()->firstOrFail();
 
             if ($booking->items()->where('status', TicketStatus::CheckedIn)->exists()) {
                 throw new BookingOperationFailed(__('booking.messages.checked_in_cannot_refund'));

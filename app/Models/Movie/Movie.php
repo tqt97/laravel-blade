@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Str;
 
 #[Fillable(['title', 'slug', 'synopsis', 'duration_minutes', 'rating', 'poster_path', 'release_date', 'is_active'])]
 #[Hidden(['deleted_at'])]
@@ -26,6 +27,17 @@ class Movie extends Model
     public function screenings(): HasMany
     {
         return $this->hasMany(Screening::class);
+    }
+
+    public function getPosterUrlAttribute(): ?string
+    {
+        if (blank($this->poster_path)) {
+            return null;
+        }
+
+        return Str::startsWith($this->poster_path, ['http://', 'https://'])
+            ? $this->poster_path
+            : asset('storage/'.$this->poster_path);
     }
 
     public function scopeActive(Builder $query): void

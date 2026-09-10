@@ -40,7 +40,7 @@
                                     data-modal-open="cancel-booking-modal" data-modal-action="{{ route('admin.bookings.cancel', $booking) }}"
                                     data-modal-method="PATCH" />
                             @endif
-                            @if ($booking->payment?->status === \App\Enums\Payment\PaymentStatus::Succeeded)
+                            @if (in_array($booking->payment?->status, [\App\Enums\Payment\PaymentStatus::Succeeded, \App\Enums\Payment\PaymentStatus::RequiresRefund], true))
                                 <form method="POST" action="{{ route('admin.bookings.refund', $booking) }}" class="inline" onsubmit="return confirm('{{ __('booking.admin.refund_confirm') }}')">@csrf<x-admin.button type="submit" variant="ghost" icon="restore" icon-only :title="__('booking.admin.refund')" aria-label="{{ __('booking.admin.refund') }}" /></form>
                             @endif
                             @if (! in_array($booking->status, [\App\Enums\Movie\Booking\BookingStatus::Held, \App\Enums\Movie\Booking\BookingStatus::PendingPayment, \App\Enums\Movie\Booking\BookingStatus::Confirmed], true) && $booking->payment?->status !== \App\Enums\Payment\PaymentStatus::Succeeded)<span class="text-xs text-muted-foreground">—</span>@endif

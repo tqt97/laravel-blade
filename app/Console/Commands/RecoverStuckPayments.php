@@ -11,7 +11,7 @@ use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 
 #[Signature('payments:recover-stuck {--limit=100}')]
-#[Description('Mark payment claims without a provider ID as unknown after the timeout.')]
+#[Description('Dispatch reconciliation for payment claims without a provider ID after the timeout.')]
 class RecoverStuckPayments extends Command
 {
     public function handle(RecoverStuckPayment $recoverStuckPayment): int
@@ -30,7 +30,7 @@ class RecoverStuckPayments extends Command
             $recovered += (int) $recoverStuckPayment->execute($payment);
         }
 
-        $this->info("Recovered {$recovered} stuck payment claim(s).");
+        $this->info("Dispatched reconciliation for {$recovered} stuck payment claim(s).");
 
         return self::SUCCESS;
     }

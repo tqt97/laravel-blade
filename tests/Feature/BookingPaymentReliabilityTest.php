@@ -167,6 +167,11 @@ it('marks reconciliation unknown when provider amount or metadata does not match
                 'metadata' => ['payable_id' => '999999', 'payable_type' => Booking::class],
             ]);
         }
+
+        public function retrieveByAttemptKey(string $attemptKey): ProviderPaymentStatus
+        {
+            return new ProviderPaymentStatus('unknown');
+        }
     };
 
     (new ReconcilePayment($payment->id))->handle($retriever, app(FinalizeSuccessfulPayment::class));
@@ -195,8 +200,8 @@ it('recovers a payment claim that never received a provider id', function (): vo
     ]);
 
     expect(app(RecoverStuckPayment::class)->execute($payment))->toBeTrue()
-        ->and($payment->refresh()->status)->toBe(PaymentStatus::Unknown)
-        ->and($attempt->refresh()->status)->toBe(PaymentAttemptStatus::Unknown);
+        ->and($payment->refresh()->status)->toBe(PaymentStatus::Processing)
+        ->and($payment->refresh()->reconciliation_attempts)->toBe(1);
 });
 
 it('does not charge again when the first gateway response times out', function (): void {
@@ -221,8 +226,8 @@ it('does not charge again when the first gateway response times out', function (
     };
     app()->instance(PaymentGateway::class, $gateway);
 
-    expect(app(PayBooking::class)->execute($booking)->status)->toBe(PaymentStatus::Unknown)
-        ->and(app(PayBooking::class)->execute($booking)->status)->toBe(PaymentStatus::Unknown)
+    expect(app(PayBooking::class)->execute($booking)->status)->toBe(PaymentStatus::Processing)
+        ->and(app(PayBooking::class)->execute($booking)->status)->toBe(PaymentStatus::Processing)
         ->and($gateway->charges)->toBe(1)
         ->and($booking->payment->attempts()->where('status', 'unknown')->count())->toBe(1);
 });
@@ -251,6 +256,83 @@ it('uses the payment attempt key as the Stripe idempotency key', function (): vo
     app(StripePaymentGateway::class)->charge($payment);
 
     Http::assertSent(fn ($request): bool => $request->header('Idempotency-Key')[0] === 'booking-payment-'.$payment->id.'-1');
+});
+
+it('creates a Payment Element intent with a durable reconciliation key', function (): void {
+    Http::fake([
+        'https://api.stripe.com/v1/payment_intents' => Http::response([
+            'id' => 'pi_payment_element',
+            'status' => 'requires_payment_method',
+            'client_secret' => 'pi_payment_element_secret',
+        ], 200),
+    ]);
+    $payment = Payment::query()->create([
+        'payable_type' => Booking::class,
+        'payable_id' => 999999,
+        'provider' => 'stripe',
+        'amount_minor_units' => 100000,
+        'currency' => 'VND',
+        'status' => PaymentStatus::Processing,
+        'attempts' => 1,
+    ]);
+    $attemptKey = 'booking-payment-'.$payment->id.'-1';
+    $payment->attempts()->create([
+        'attempt_key' => $attemptKey,
+        'status' => PaymentAttemptStatus::Processing,
+        'amount_minor_units' => $payment->amount_minor_units,
+        'currency' => $payment->currency,
+    ]);
+
+    $result = app(StripePaymentGateway::class)->charge($payment);
+
+    expect($result->status)->toBe('requires_action')
+        ->and($result->metadata['client_secret'])->toBe('pi_payment_element_secret');
+    Http::assertSent(function ($request) use ($attemptKey): bool {
+        $body = $request->body();
+
+        return ! str_contains($body, 'confirm=true')
+            && str_contains($body, 'metadata%5Battempt_key%5D='.$attemptKey)
+            && str_contains($body, 'payment_method_types%5B0%5D=card');
+    });
+});
+
+it('reconciles a timeout payment by searching Stripe with its attempt key', function (): void {
+    Http::fake([
+        'https://api.stripe.com/v1/payment_intents/search*' => Http::response([
+            'data' => [[
+                'id' => 'pi_recovered',
+                'status' => 'processing',
+                'amount' => 100000,
+                'amount_received' => 0,
+                'currency' => 'vnd',
+                'metadata' => [
+                    'payable_id' => '999999',
+                    'payable_type' => Booking::class,
+                    'attempt_key' => 'timeout-lookup',
+                ],
+            ]],
+        ], 200),
+    ]);
+    $payment = Payment::query()->create([
+        'payable_type' => Booking::class,
+        'payable_id' => 999999,
+        'provider' => 'stripe',
+        'amount_minor_units' => 100000,
+        'currency' => 'VND',
+        'status' => PaymentStatus::Processing,
+        'attempts' => 1,
+    ]);
+    $payment->attempts()->create([
+        'attempt_key' => 'timeout-lookup',
+        'status' => PaymentAttemptStatus::Unknown,
+        'amount_minor_units' => $payment->amount_minor_units,
+        'currency' => $payment->currency,
+    ]);
+
+    (new ReconcilePayment($payment->id))->handle(new StripePaymentGateway, app(FinalizeSuccessfulPayment::class));
+
+    expect($payment->refresh()->provider_payment_id)->toBe('pi_recovered')
+        ->and($payment->status)->toBe(PaymentStatus::Pending);
 });
 
 it('rejects a Stripe webhook when amount or currency does not match', function (): void {

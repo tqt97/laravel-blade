@@ -2,20 +2,16 @@
 
 namespace App\Actions\Movie\Booking;
 
-use App\Enums\Payment\PaymentAttemptStatus;
 use App\Enums\Payment\PaymentStatus;
 use App\Jobs\ReconcilePayment;
 use App\Models\Payments\Payment;
 use App\Models\Payments\PaymentAttempt;
-use App\Support\Payment\PaymentStateMachine;
 use App\Support\Time\BookingClock;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 
 final class RecoverStuckPayment
 {
-    public function __construct(private readonly PaymentStateMachine $stateMachine) {}
-
     public function execute(Payment $payment, ?CarbonImmutable $now = null): bool
     {
         return DB::transaction(function () use ($payment, $now): bool {
@@ -33,6 +29,10 @@ final class RecoverStuckPayment
                 return false;
             }
 
+            if ($locked->reconciliation_attempted_at?->isAfter($cutoff)) {
+                return false;
+            }
+
             if (blank($locked->getRawOriginal('provider_payment_id'))) {
                 /** @var PaymentAttempt|null $orphanedAttempt */
                 $orphanedAttempt = $locked->attempts()
@@ -46,6 +46,8 @@ final class RecoverStuckPayment
                         'status' => PaymentStatus::Pending,
                         'processing_started_at' => null,
                         'metadata' => $orphanedAttempt->metadata,
+                        'reconciliation_attempted_at' => BookingClock::now(),
+                        'reconciliation_attempts' => ((int) $locked->reconciliation_attempts) + 1,
                     ])->save();
                     ReconcilePayment::dispatch($locked->getKey())->afterCommit();
 
@@ -57,17 +59,12 @@ final class RecoverStuckPayment
                 return false;
             }
 
-            if (! $this->stateMachine->canTransition($status, PaymentStatus::Unknown)) {
-                return false;
-            }
-
-            $locked->setAttribute('status', PaymentStatus::Unknown);
-            $locked->setAttribute('processing_started_at', null);
-            $locked->setAttribute('failure_message', 'Payment claim expired before a provider payment ID was recorded. Manual provider lookup is required.');
-
-            $locked->save();
-
-            $locked->syncLatestAttempt(PaymentAttemptStatus::Unknown, failureMessage: $locked->failure_message);
+            $locked->forceFill([
+                'reconciliation_attempted_at' => BookingClock::now(),
+                'reconciliation_attempts' => ((int) $locked->reconciliation_attempts) + 1,
+                'failure_message' => 'Payment provider response was unknown. Reconciliation is in progress.',
+            ])->save();
+            ReconcilePayment::dispatch($locked->getKey())->afterCommit();
 
             return true;
         }, 3);
