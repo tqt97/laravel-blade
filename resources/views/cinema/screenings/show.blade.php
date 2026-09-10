@@ -92,9 +92,12 @@
                                     aria-label="{{ __('cinema.seats.seat_label', ['seat' => $screeningSeat->seat->row_label . $screeningSeat->seat->seat_number, 'type' => $screeningSeat->seat->seat_type->name]) }}"
                                     class="relative aspect-square min-h-10 min-w-10 rounded-lg border text-xs font-bold transition duration-200 {{ $isOwnHold ? 'border-primary bg-primary text-primary-foreground shadow-md ring-2 ring-primary/30 hover:border-primary-strong' : ($available ? ($screeningSeat->seat->getRawOriginal('seat_type') === 'vip' ? 'border-primary/50 bg-primary-soft hover:border-primary' : 'border-border bg-background hover:border-primary hover:bg-primary/10') : 'cursor-not-allowed border-border bg-muted text-muted-foreground line-through') }}"
                                     title="{{ $screeningSeat->seat->row_label }}{{ $screeningSeat->seat->seat_number }}">{{ $screeningSeat->seat->seat_number }}
+                                    @if ($screeningSeat->seat->getRawOriginal('seat_type') === 'vip' && ($available || $isOwnHold))
+                                        <span class="pointer-events-none absolute bottom-1 left-1/2 -translate-x-1/2 rounded bg-amber-200 px-1 text-[8px] font-black leading-3 text-amber-950 dark:bg-amber-300 dark:text-amber-950" aria-hidden="true">VIP</span>
+                                    @endif
                                     @if($isOwnHold)
                                         <span
-                                            class="pointer-events-none absolute right-1 top-1 text-[10px] leading-none text-primary"
+                                            class="pointer-events-none absolute right-1 top-1 text-[10px] leading-none text-primary-foreground"
                                             aria-hidden="true">✓</span>
                                     @elseif($available)
                                         <span data-seat-selected-indicator
@@ -117,7 +120,7 @@
                             {{ __('cinema.seats.available') }}
                         </span>
                         <span class="inline-flex items-center gap-1.5">
-                            <i class="size-3 rounded border border-primary bg-primary-soft"></i>
+                            <i class="grid size-4 place-items-center rounded border border-amber-400 bg-amber-100 text-[8px] text-amber-700 dark:bg-amber-950/60 dark:text-amber-300">◆</i>
                             {{ __('cinema.seats.vip') }}
                         </span>
                         <span class="inline-flex items-center gap-1.5">

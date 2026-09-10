@@ -143,9 +143,20 @@ export const initSeatPickers = () => {
 
             buttons.forEach((button) => {
                 const isSelected = button.dataset.selected === 'true';
+                const isVip = button.dataset.seatType === 'vip';
+                const isAvailable = !button.disabled || isSelected;
+                button.classList.remove('border-primary/50', 'bg-primary-soft', 'bg-amber-100', 'text-foreground', 'text-amber-950', 'dark:bg-amber-950/60', 'dark:text-amber-100');
                 button.classList.toggle('border-primary', isSelected);
                 button.classList.toggle('bg-primary', isSelected);
                 button.classList.toggle('text-primary-foreground', isSelected);
+                button.classList.toggle('border-amber-400', isAvailable && isVip && !isSelected);
+                button.classList.toggle('bg-amber-100', isAvailable && isVip && !isSelected);
+                button.classList.toggle('text-amber-950', isAvailable && isVip && !isSelected);
+                button.classList.toggle('dark:bg-amber-950/60', isAvailable && isVip && !isSelected);
+                button.classList.toggle('dark:text-amber-100', isAvailable && isVip && !isSelected);
+                button.classList.toggle('border-primary/50', isAvailable && !isSelected && !isVip);
+                button.classList.toggle('bg-primary-soft', isAvailable && !isSelected && !isVip);
+                button.classList.toggle('text-foreground', isAvailable && !isSelected && !isVip);
                 button.classList.toggle('shadow-md', isSelected);
                 button.classList.toggle('ring-2', isSelected);
                 button.classList.toggle('ring-primary/30', isSelected);
