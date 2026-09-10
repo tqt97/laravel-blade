@@ -11,6 +11,16 @@
                 <h2 class="font-semibold">{{ __('cinema.admin.add_movie') }}</h2>
                 <x-auth.input :label="__('cinema.admin.movie_title')" name="title" required />
                 <x-auth.input :label="__('cinema.admin.duration')" name="duration_minutes" type="number" min="1" required />
+                <div class="grid gap-4 sm:grid-cols-2">
+                    <x-auth.input :label="__('cinema.admin.genre')" name="genre" />
+                    <x-auth.input :label="__('cinema.admin.rating')" name="rating" />
+                    <x-auth.input :label="__('cinema.admin.director')" name="director" />
+                    <x-auth.input :label="__('cinema.admin.cast')" name="cast" placeholder="Name 1, Name 2" />
+                    <x-auth.input :label="__('cinema.admin.language')" name="language" />
+                    <x-auth.input :label="__('cinema.admin.format')" name="format" value="2D" />
+                </div>
+                <x-auth.input :label="__('cinema.admin.poster_url')" name="poster_path" type="url" />
+                <x-auth.input :label="__('cinema.admin.backdrop_url')" name="backdrop_path" type="url" />
                 <x-auth.textarea :label="__('cinema.admin.synopsis')" name="synopsis" rows="3" />
                 <x-admin.button type="submit" icon="plus">{{ __('ui.actions.create') }}</x-admin.button>
             </form>

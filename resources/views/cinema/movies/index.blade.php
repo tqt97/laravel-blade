@@ -50,6 +50,12 @@
                         <div class="space-y-3 p-4">
                             <h3 class="text-lg font-semibold">{{ $movie->title }}</h3>
                             <p class="text-sm text-muted-foreground">{{ $movie->duration_minutes }} min · {{ __('cinema.public.now_showing') }}</p>
+                            @if ($movie->screenings->first())
+                                <p class="text-xs font-semibold text-primary">
+                                    {{ __('cinema.public.next_showtime') }}:
+                                    {{ $movie->screenings->first()->starts_at->timezone(config('app.timezone'))->format('d/m · H:i') }}
+                                </p>
+                            @endif
                             <x-admin.button href="{{ route('cinema.movies.show', $movie) }}" icon="arrow-right"
                                 class="w-full">{{ __('cinema.public.view_showtimes') }}</x-admin.button>
                         </div>

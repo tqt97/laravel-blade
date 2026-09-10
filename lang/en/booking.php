@@ -77,6 +77,11 @@ return [
         'total' => 'Total paid',
     ],
     'checkout' => [
+        'progress_label' => 'Booking progress',
+        'review_step' => 'Review',
+        'payment_step' => 'Payment',
+        'complete_step' => 'Complete',
+        'hold_guarantee' => 'Seats are held for a limited time',
         'title' => 'Ticket checkout',
         'description' => 'Review your seats and complete payment to receive your tickets.',
         'edit_selection' => 'Edit seats & combos',
@@ -141,6 +146,7 @@ return [
         'payment_test_card_copied' => 'Card number copied. Paste it into Card number.',
     ],
     'success' => [
+        'check_in_hint' => 'Please arrive 15 minutes before the screening to scan your ticket at the entrance.',
         'title' => 'Booking successful',
         'description' => 'Your payment is complete and your tickets are ready.',
         'view_ticket' => 'Open ticket',

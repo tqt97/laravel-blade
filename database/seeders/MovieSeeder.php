@@ -35,6 +35,19 @@ class MovieSeeder extends Seeder
             ['title' => 'After the Rain', 'synopsis' => 'When the storm clears, an old theater reveals one final unfinished performance.', 'duration_minutes' => 118, 'rating' => 'PG-13', 'poster_path' => 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?auto=format&fit=crop&w=900&q=85&sat=-35', 'release_date' => now()->subDays(1)->toDateString()],
         ])->map(function (array $attributes): Movie {
             $attributes['slug'] = Str::slug($attributes['title']);
+            $attributes['genre'] = match ($attributes['title']) {
+                'Little Comets' => 'Animation · Family',
+                'Midnight in Saigon', 'After the Rain' => 'Drama · Romance',
+                'Neon District' => 'Crime · Thriller',
+                'Ocean of Stars' => 'Adventure · Family',
+                'The Clockmaker', 'Paper Moons' => 'Fantasy · Drama',
+                default => 'Adventure · Sci-Fi',
+            };
+            $attributes['director'] = 'Aurora Pictures';
+            $attributes['cast'] = ['Mia Nguyen', 'Daniel Park', 'Linh Tran'];
+            $attributes['language'] = 'Vietnamese';
+            $attributes['format'] = '2D';
+            $attributes['backdrop_path'] = str_replace('w=900', 'w=1600', $attributes['poster_path']);
 
             return Movie::query()->updateOrCreate(['title' => $attributes['title']], $attributes);
         });

@@ -3,10 +3,11 @@
         $expiresAt = \App\Support\Time\BookingClock::parseStored($booking->getRawOriginal('expires_at'));
     @endphp
 
-    <div class="mx-auto max-w-6xl space-y-8 px-5 py-12 sm:px-8" data-booking-checkout
+    <div class="mx-auto max-w-6xl space-y-8 px-5 py-12 pb-32 sm:px-8 sm:pb-12" data-booking-checkout
         data-expires-at="{{ $expiresAt?->toIso8601String() }}"
         data-expired-label="{{ __('booking.checkout.expired_notice') }}"
         data-combo-availability-url="{{ route('user.bookings.combo-availability', $booking) }}">
+        <x-cinema.booking-stepper current="review" />
         <div>
             @if ($booking->status === \App\Enums\Movie\Booking\BookingStatus::Held)
                 <a href="{{ route('cinema.screenings.show', [$booking->screening->movie, $booking->screening]) }}"
@@ -18,6 +19,10 @@
             @endif
             <h1 class="mt-4 text-3xl font-semibold tracking-tight">{{ __('booking.checkout.title') }}</h1>
             <p class="mt-2 max-w-2xl text-sm text-muted-foreground">{{ __('booking.checkout.description') }}</p>
+            <div class="mt-4 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                <span class="rounded-full bg-success-soft px-3 py-1.5 text-success-foreground">🔒 {{ __('booking.checkout.secure_payment') }}</span>
+                <span class="rounded-full bg-primary-soft px-3 py-1.5 text-accent-foreground">⏱ {{ __('booking.checkout.hold_guarantee') }}</span>
+            </div>
         </div>
 
         <x-auth.feedback />
@@ -162,7 +167,7 @@
                             class="w-full justify-center">{{ __('booking.checkout.pay') }}</x-admin.button></div>
                 </aside>
             </div>
-            <div class="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-card/95 p-3 shadow-2xl backdrop-blur lg:hidden"
+    <div class="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-card/95 p-3 shadow-2xl backdrop-blur lg:hidden"
                 role="region" aria-label="{{ __('booking.checkout.price_summary') }}">
                 <div class="mx-auto flex max-w-6xl items-center gap-3">
                     <div class="min-w-0 flex-1">

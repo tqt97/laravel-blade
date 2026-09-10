@@ -11,6 +11,7 @@
         data-unavailable-label="{{ __('booking.checkout.payment_action_unavailable') }}"
         data-error-label="{{ __('booking.checkout.payment_action_failed') }}">
 
+        <x-cinema.booking-stepper current="payment" />
         <a href="{{ route('user.bookings.checkout', $booking) }}"
             class="text-sm font-semibold text-primary hover:underline">
             ← {{ __('booking.checkout.title') }}

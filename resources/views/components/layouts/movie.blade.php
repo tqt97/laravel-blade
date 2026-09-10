@@ -53,6 +53,7 @@
                 <nav aria-label="{{ __('cinema.public.main_navigation') }}" class="hidden sm:block">
                     <x-cinema.public-menu />
                 </nav>
+                <div class="sm:hidden"><x-cinema.public-menu /></div>
                 <x-ui.language-switcher />
                 <x-ui.theme-toggle />
                 @auth

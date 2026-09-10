@@ -2099,6 +2099,12 @@ Route GET cũ `/user/screenings/{screening}` được giữ để backward compa
 
 Mục tiêu là chỉ còn một UI seat picker, một availability contract và một đường analytics chính.
 
+### 20.7 Catalog presentation và booking UX
+
+Public catalog có mobile navigation, featured-style movie hero, poster/backdrop URL tương thích cả storage local và CDN, metadata catalog (genre, director, cast, language, format), showtime preview và JSON-LD. Showtime detail nhóm lịch theo ngày; seat map có vùng scroll ngang có chủ đích trên viewport nhỏ, label screen-reader gồm số ghế và loại ghế, cùng legend VIP.
+
+Booking screens dùng stepper `seats -> review -> payment -> complete`. Checkout mobile chừa khoảng trống cho fixed CTA; payment phân biệt loading/processing/delayed state; success và ticket ưu tiên CTA xem vé, thông tin check-in và QR, còn verification URL kỹ thuật nằm trong disclosure. Các thay đổi này chỉ là UX; availability, giá, authorization và payment status vẫn do server quyết định.
+
 ## 5. Guest resume và dữ liệu cũ
 
 Guest selection được lưu trong session gồm:

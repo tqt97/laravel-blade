@@ -1,5 +1,6 @@
 <x-layouts.movie :title="$screening->movie->title" :description="__('cinema.public.choose_seats') . ' · ' . $screening->movie->title">
     <div class="mx-auto max-w-5xl space-y-8 px-5 py-12 sm:px-8">
+        <x-cinema.booking-stepper current="seats" />
         <div>
             <a href="{{ route('cinema.movies.show', $screening->movie) }}"
                 class="text-sm font-semibold text-primary hover:underline">← {{ $screening->movie->title }}
@@ -67,7 +68,8 @@
                         class="mx-auto mb-8 max-w-md rounded-full bg-slate-900 py-2 text-center text-xs font-semibold uppercase tracking-[.2em] text-white">
                         {{ __('cinema.seats.screen') }}
                     </div>
-                    <div class="mx-auto grid max-w-2xl gap-3">
+                    <div class="overflow-x-auto pb-2">
+                    <div class="mx-auto grid min-w-[35rem] max-w-2xl gap-3 sm:min-w-0">
                         @foreach($screening->screeningSeats->groupBy(fn($item) => $item->seat->row_label) as $row => $seats)
                         <div class="flex items-center gap-3">
                             <span class="w-6 text-center text-xs font-bold text-muted-foreground">
@@ -83,11 +85,12 @@
                                 <button type="button" data-seat-id="{{ $screeningSeat->seat_id }}"
                                     data-seat-label="{{ $screeningSeat->seat->row_label }}{{ $screeningSeat->seat->seat_number }}"
                                     data-seat-price="{{ $screeningSeat->price_minor_units }}"
+                                    data-seat-type="{{ $screeningSeat->seat->getRawOriginal('seat_type') }}"
                                     data-seat-own-hold="{{ $isOwnHold ? 'true' : 'false' }}"
                                     data-seat-selected="{{ $isOwnHold ? 'true' : 'false' }}"
                                     aria-pressed="{{ $isOwnHold ? 'true' : 'false' }}" @disabled(!$available)
-                                    aria-label="{{ $screeningSeat->seat->row_label }}{{ $screeningSeat->seat->seat_number }}"
-                                    class="relative aspect-square min-h-10 min-w-10 rounded-lg border text-xs font-bold transition duration-200 {{ $isOwnHold ? 'border-primary bg-primary text-primary-foreground shadow-md ring-2 ring-primary/30 hover:border-primary-strong' : ($available ? 'border-border bg-background hover:border-primary hover:bg-primary/10' : 'cursor-not-allowed border-border bg-muted text-muted-foreground line-through') }}"
+                                    aria-label="{{ __('cinema.seats.seat_label', ['seat' => $screeningSeat->seat->row_label . $screeningSeat->seat->seat_number, 'type' => $screeningSeat->seat->seat_type->name]) }}"
+                                    class="relative aspect-square min-h-10 min-w-10 rounded-lg border text-xs font-bold transition duration-200 {{ $isOwnHold ? 'border-primary bg-primary text-primary-foreground shadow-md ring-2 ring-primary/30 hover:border-primary-strong' : ($available ? ($screeningSeat->seat->getRawOriginal('seat_type') === 'vip' ? 'border-primary/50 bg-primary-soft hover:border-primary' : 'border-border bg-background hover:border-primary hover:bg-primary/10') : 'cursor-not-allowed border-border bg-muted text-muted-foreground line-through') }}"
                                     title="{{ $screeningSeat->seat->row_label }}{{ $screeningSeat->seat->seat_number }}">{{ $screeningSeat->seat->seat_number }}
                                     @if($isOwnHold)
                                         <span
@@ -107,10 +110,15 @@
                         </div>
                         @endforeach
                     </div>
+                    </div>
                     <div class="mt-8 flex flex-wrap justify-center gap-4 text-xs text-muted-foreground">
                         <span class="inline-flex items-center gap-1.5">
                             <i class="size-3 rounded border border-border bg-background"></i>
                             {{ __('cinema.seats.available') }}
+                        </span>
+                        <span class="inline-flex items-center gap-1.5">
+                            <i class="size-3 rounded border border-primary bg-primary-soft"></i>
+                            {{ __('cinema.seats.vip') }}
                         </span>
                         <span class="inline-flex items-center gap-1.5">
                             <i class="size-3 rounded border border-primary/40 bg-primary-soft"></i>

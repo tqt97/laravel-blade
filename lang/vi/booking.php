@@ -77,6 +77,11 @@ return [
         'total' => 'Tổng đã thanh toán',
     ],
     'checkout' => [
+        'progress_label' => 'Tiến trình đặt vé',
+        'review_step' => 'Xác nhận',
+        'payment_step' => 'Thanh toán',
+        'complete_step' => 'Hoàn tất',
+        'hold_guarantee' => 'Ghế được giữ trong thời gian giới hạn',
         'title' => 'Thanh toán đặt vé',
         'description' => 'Kiểm tra thông tin ghế và hoàn tất thanh toán để nhận vé.',
         'edit_selection' => 'Chỉnh sửa ghế & combo',
@@ -141,6 +146,7 @@ return [
         'payment_test_card_copied' => 'Đã sao chép số thẻ. Hãy dán vào ô Card number.',
     ],
     'success' => [
+        'check_in_hint' => 'Vui lòng có mặt trước giờ chiếu 15 phút để quét mã vé tại quầy.',
         'title' => 'Đặt vé thành công',
         'description' => 'Thanh toán đã hoàn tất. Vé của bạn đã sẵn sàng.',
         'view_ticket' => 'Mở vé',

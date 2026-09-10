@@ -1,5 +1,6 @@
 <x-layouts.movie :title="__('booking.success.title')">
     <div class="mx-auto max-w-3xl space-y-8 px-5 py-12 sm:px-8">
+        <x-cinema.booking-stepper current="done" />
         @php
             $currency = strtoupper((string) ($booking->pricing_currency ?? $booking->currency));
             $seatTotal = (int) $booking->items->sum('price_minor_units');
@@ -14,21 +15,22 @@
             <p class="mx-auto mt-2 max-w-xl text-sm text-success-foreground">{{ __('booking.success.description') }}</p>
             <p class="mt-4 text-sm font-semibold text-success-foreground">
                 {{ __('booking.bookings.booking_id', ['id' => $booking->id]) }}</p>
+            <p class="mt-2 text-xs text-success-foreground">{{ __('booking.success.check_in_hint') }}</p>
         </section>
 
-        <section class="rounded-2xl border border-border bg-card p-6 shadow-sm sm:p-8">
+        <section class="overflow-hidden rounded-2xl border border-border bg-card shadow-sm sm:p-8">
             <div class="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
-                <div>
+                <div class="p-6 pb-0 sm:p-0">
                     <p class="text-sm text-muted-foreground">{{ __('cinema.public.movie_details') }}</p>
                     <h2 class="mt-1 text-xl font-semibold">{{ $booking->screening?->movie?->title ?? '—' }}</h2>
                 </div>
                 <span
-                    class="rounded-full border border-success/30 bg-success-soft px-3 py-1 text-xs font-semibold text-success-foreground">
+                    class="mr-6 mt-6 self-start rounded-full border border-success/30 bg-success-soft px-3 py-1 text-xs font-semibold text-success-foreground sm:mr-0 sm:mt-0 sm:self-auto">
                     {{ __('booking.status.confirmed') }}
                 </span>
             </div>
 
-            <div class="mt-6 grid gap-4 rounded-xl bg-muted p-4 text-left sm:grid-cols-3">
+            <div class="m-6 grid gap-4 rounded-xl bg-muted p-4 text-left sm:m-0 sm:mt-6 sm:grid-cols-3">
                 <div>
                     <p class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                         {{ __('booking.bookings.date') }}</p>
@@ -93,7 +95,7 @@
                 </div>
             @endif
 
-            <div class="mt-6 grid gap-3 sm:grid-cols-2">
+            <div class="mx-6 mt-6 grid gap-3 sm:mx-0 sm:grid-cols-2">
                 @foreach ($booking->items as $item)
                     <a href="{{ route('user.tickets.show', $item) }}"
                         class="group rounded-xl border border-border bg-muted p-4 transition hover:border-primary hover:bg-accent">
@@ -109,7 +111,7 @@
                 @endforeach
             </div>
 
-            <div class="mt-6 flex flex-wrap justify-end gap-3 border-t border-border pt-6">
+            <div class="mx-6 mt-6 flex flex-wrap justify-end gap-3 border-t border-border pb-6 pt-6 sm:mx-0 sm:pb-0">
                 <x-admin.button :href="route('user.bookings.show', $booking)" variant="secondary" icon="eye">
                     {{ __('booking.success.view_details') }}
                 </x-admin.button>

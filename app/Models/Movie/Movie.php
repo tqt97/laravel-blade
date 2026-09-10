@@ -12,7 +12,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Str;
 
-#[Fillable(['title', 'slug', 'synopsis', 'duration_minutes', 'rating', 'poster_path', 'release_date', 'is_active'])]
+#[Fillable(['title', 'slug', 'synopsis', 'duration_minutes', 'rating', 'genre', 'director', 'cast', 'language', 'format', 'poster_path', 'backdrop_path', 'trailer_url', 'release_date', 'is_active'])]
 #[Hidden(['deleted_at'])]
 class Movie extends Model
 {
@@ -57,6 +57,18 @@ class Movie extends Model
             'duration_minutes' => 'integer',
             'release_date' => 'date',
             'is_active' => 'boolean',
+            'cast' => 'array',
         ];
+    }
+
+    public function getBackdropUrlAttribute(): ?string
+    {
+        if (blank($this->backdrop_path)) {
+            return null;
+        }
+
+        return Str::startsWith($this->backdrop_path, ['http://', 'https://'])
+            ? $this->backdrop_path
+            : asset('storage/'.$this->backdrop_path);
     }
 }
