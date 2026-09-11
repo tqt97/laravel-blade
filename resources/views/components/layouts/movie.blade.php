@@ -111,7 +111,7 @@
                         </div>
                     </details>
                 @else
-                    <x-admin.button href="{{ route('login') }}" variant="secondary" icon="arrow-right" iconOnly
+                    <x-admin.button href="{{ route('login') }}" variant="secondary" icon="login" iconOnly
                         title="{{ __('cinema.public.login') }}" compact />
                 @endauth
             </div>
