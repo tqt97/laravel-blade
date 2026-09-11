@@ -16,12 +16,13 @@ final class ExpireBooking
     {
         return DB::transaction(function () use ($booking): bool {
             $booking = Booking::query()->whereKey($booking->id)->lockForUpdate()->firstOrFail();
+
             $status = BookingStatus::from((string) $booking->getRawOriginal('status'));
             $expiresAt = $booking->getRawOriginal('expires_at') !== null
                 ? BookingClock::parseStored((string) $booking->getRawOriginal('expires_at'))
                 : null;
 
-            if (! in_array($status, [BookingStatus::Held, BookingStatus::PendingPayment], true) || $expiresAt?->isFuture()) {
+            if (! $status->isPayable() || $expiresAt?->isFuture()) {
                 return false;
             }
 
@@ -29,11 +30,16 @@ final class ExpireBooking
             $paymentStatus = $payment === null
                 ? null
                 : PaymentStatus::tryFrom((string) $payment->getRawOriginal('status'));
-            if (in_array($paymentStatus, [PaymentStatus::Processing, PaymentStatus::RequiresAction, PaymentStatus::Pending, PaymentStatus::Unknown, PaymentStatus::Refunding], true)) {
+
+            if (
+                $paymentStatus?->isAwaitingProviderResolution() === true ||
+                $paymentStatus === PaymentStatus::Refunding
+            ) {
                 return false;
             }
 
             $booking->transitionTo(BookingStatus::Expired);
+
             $booking->save();
 
             $this->resourceReleaser->execute($booking);

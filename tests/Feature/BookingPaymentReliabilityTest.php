@@ -11,6 +11,7 @@ use App\Enums\Movie\Booking\BookingStatus;
 use App\Enums\Movie\Ticketing\TicketStatus;
 use App\Enums\Payment\PaymentAttemptStatus;
 use App\Enums\Payment\PaymentStatus;
+use App\Jobs\ProcessStripeWebhook;
 use App\Jobs\ReconcilePayment;
 use App\Models\Movie\Booking;
 use App\Models\Movie\Movie;
@@ -62,6 +63,35 @@ it('does not charge a payment again while a previous attempt is pending', functi
         ->and(app(PayBooking::class)->execute($booking)->status)->toBe(PaymentStatus::Pending)
         ->and($gateway->charges)->toBe(1)
         ->and($booking->payment->attempts()->firstOrFail()->status)->toBe(PaymentAttemptStatus::Processing);
+});
+
+it('uses a new immutable provider idempotency key for every payment retry', function (): void {
+    $room = ScreeningRoom::factory()->create();
+    $seat = Seat::factory()->for($room, 'room')->create();
+    $screening = app(CreateScreening::class)->execute(Movie::factory()->create(), $room, now()->addDay()->toDateTimeString(), now()->addDay()->addHours(2)->toDateTimeString(), 100000);
+    $booking = app(HoldSeats::class)->execute(User::factory()->create(), $screening, [$seat->id], 'payment-retry-key');
+    $gateway = new class implements PaymentGateway
+    {
+        public function charge(Payment $payment): PaymentResult
+        {
+            return new PaymentResult('failed', failureMessage: 'Card declined.');
+        }
+
+        public function refund(Payment $payment): PaymentResult
+        {
+            return new PaymentResult('refunded', 'refund_retry_key');
+        }
+    };
+    app()->instance(PaymentGateway::class, $gateway);
+
+    app(PayBooking::class)->execute($booking);
+    app(PayBooking::class)->execute($booking->refresh());
+
+    $keys = $booking->payment->attempts()->orderBy('id')->pluck('attempt_key');
+
+    expect($keys)->toHaveCount(2)
+        ->and($keys->unique())->toHaveCount(2)
+        ->and($keys->every(fn (string $key): bool => str_starts_with($key, 'booking-payment-')))->toBeTrue();
 });
 
 it('does not finalize a provider success that has no provider payment id', function (): void {
@@ -366,6 +396,30 @@ it('rejects a signed Stripe webhook without a provider payment id', function ():
 
     $response->assertStatus(400);
     expect(PaymentWebhookEvent::query()->where('event_id', 'evt_missing_provider_id')->firstOrFail()->failed_at)->not->toBeNull();
+});
+
+it('persists a signed webhook as an orphan when its payment is not local yet', function (): void {
+    Queue::fake();
+    $payload = ['id' => 'evt_orphan_payment', 'type' => 'payment_intent.succeeded', 'data' => ['object' => [
+        'id' => 'pi_orphan_webhook',
+        'amount_received' => 100000,
+        'currency' => 'vnd',
+        'metadata' => ['payable_id' => '999999', 'payable_type' => Booking::class],
+    ]]];
+    $body = json_encode($payload, JSON_THROW_ON_ERROR);
+    $timestamp = time();
+    config(['services.stripe.webhook_secret' => 'whsec_test']);
+
+    $response = $this->call('POST', route('webhooks.stripe'), [], [], [], [
+        'HTTP_STRIPE_SIGNATURE' => 't='.$timestamp.',v1='.hash_hmac('sha256', $timestamp.'.'.$body, 'whsec_test'),
+        'CONTENT_TYPE' => 'application/json',
+    ], $body);
+
+    $response->assertStatus(202);
+    expect(PaymentWebhookEvent::query()->where('event_id', 'evt_orphan_payment')->firstOrFail())
+        ->provider_payment_id->toBe('pi_orphan_webhook')
+        ->orphaned_at->not->toBeNull();
+    Queue::assertPushed(ProcessStripeWebhook::class, fn (ProcessStripeWebhook $job): bool => $job->eventId === 'evt_orphan_payment');
 });
 
 it('returns bad request for malformed signed Stripe webhook JSON', function (): void {

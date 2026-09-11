@@ -30,6 +30,7 @@ final class FinalizeSuccessfulPayment
         return DB::transaction(function () use ($payment): Payment {
             $booking = Booking::query()->whereKey($payment->getAttribute('payable_id'))->lockForUpdate()->firstOrFail();
             $payment = Payment::query()->whereKey($payment->getKey())->lockForUpdate()->firstOrFail();
+
             if ($payment->getRawOriginal('status') !== PaymentStatus::Succeeded->value) {
                 return $payment;
             }
@@ -45,13 +46,15 @@ final class FinalizeSuccessfulPayment
 
             $bookingStatus = BookingStatus::from((string) $booking->getRawOriginal('status'));
 
-            if (in_array($bookingStatus, [BookingStatus::Confirmed, BookingStatus::Completed], true)
-                && ! $booking->items()->where('ticket_code', 'like', 'HOLD-%')->exists()) {
+            if (
+                $bookingStatus->isTicketAccessible()
+                && ! $booking->items()->where('ticket_code', 'like', 'HOLD-%')->exists()
+            ) {
                 return $payment;
             }
 
             if ($this->bookingCannotBeFinalized($booking, $bookingStatus)) {
-                if (in_array($bookingStatus, [BookingStatus::Held, BookingStatus::PendingPayment], true)) {
+                if ($bookingStatus->isPayable()) {
                     $this->expireAndReleaseBooking($booking);
                 }
 
@@ -72,7 +75,9 @@ final class FinalizeSuccessfulPayment
             // Lock all booking items first, then seats in item order. This
             // preserves the shared lock order used by hold/edit/refund flows.
             foreach ($items as $item) {
-                $seat = ScreeningSeat::query()->whereKey($item->getAttribute('screening_seat_id'))->lockForUpdate()->firstOrFail();
+                $seat = ScreeningSeat::query()
+                    ->whereKey($item->getAttribute('screening_seat_id'))->lockForUpdate()
+                    ->firstOrFail();
                 $seats[] = [$item, $seat];
             }
 
@@ -90,7 +95,7 @@ final class FinalizeSuccessfulPayment
                 }
             }
 
-            $wasPending = in_array($bookingStatus, [BookingStatus::Held, BookingStatus::PendingPayment], true);
+            $wasPending = $bookingStatus->isPayable();
             if ($wasPending) {
                 $booking->transitionTo(BookingStatus::Confirmed);
                 $booking->expires_at = null;
@@ -109,8 +114,10 @@ final class FinalizeSuccessfulPayment
                 if (str_starts_with((string) $item->getAttribute('ticket_code'), 'HOLD-')) {
                     $item->setAttribute('ticket_code', strtoupper('TKT-'.Str::random(20)));
                 }
+
                 $item->setAttribute('status', TicketStatus::Issued);
                 $item->setAttribute('qr_token_hash', hash('sha256', (string) $item->getAttribute('ticket_code')));
+
                 $item->save();
             }
 
@@ -119,11 +126,16 @@ final class FinalizeSuccessfulPayment
                     ->where('booking_id', $booking->getKey())
                     ->where('status', CouponReservationStatus::Reserved)
                     ->update(['status' => CouponReservationStatus::Redeemed]);
+
                 OutboxMessage::query()->create([
                     'aggregate_type' => Booking::class,
                     'aggregate_id' => $booking->getKey(),
                     'event_type' => OutboxEventType::BookingPaymentSucceeded,
-                    'payload' => ['booking_id' => $booking->getKey(), 'payment_id' => $payment->getKey(), 'locale' => app()->getLocale()],
+                    'payload' => [
+                        'booking_id' => $booking->getKey(),
+                        'payment_id' => $payment->getKey(),
+                        'locale' => app()->getLocale(),
+                    ],
                 ]);
             }
 
@@ -133,11 +145,11 @@ final class FinalizeSuccessfulPayment
 
     private function bookingCannotBeFinalized(Booking $booking, BookingStatus $status): bool
     {
-        if (in_array($status, [BookingStatus::Expired, BookingStatus::Cancelled, BookingStatus::NoShow], true)) {
+        if ($status->isClosed()) {
             return true;
         }
 
-        if (! in_array($status, [BookingStatus::Held, BookingStatus::PendingPayment], true)) {
+        if (! $status->isPayable()) {
             return false;
         }
 
@@ -148,7 +160,8 @@ final class FinalizeSuccessfulPayment
 
         $expiresAt = $booking->getRawOriginal('expires_at');
 
-        return $expiresAt === null || BookingClock::parseStored((string) $expiresAt)?->lessThanOrEqualTo(BookingClock::now()) !== false;
+        return $expiresAt === null
+            || BookingClock::parseStored((string) $expiresAt)?->lessThanOrEqualTo(BookingClock::now()) !== false;
     }
 
     private function releaseBookingResources(Booking $booking): void
@@ -158,7 +171,7 @@ final class FinalizeSuccessfulPayment
 
     private function expireAndReleaseBooking(Booking $booking): void
     {
-        if (in_array(BookingStatus::from((string) $booking->getRawOriginal('status')), [BookingStatus::Held, BookingStatus::PendingPayment], true)) {
+        if (BookingStatus::from((string) $booking->getRawOriginal('status'))->isPayable()) {
             $booking->transitionTo(BookingStatus::Expired);
             $booking->save();
             $this->releaseBookingResources($booking);
@@ -173,12 +186,14 @@ final class FinalizeSuccessfulPayment
         }
 
         $metadata = $payment->getAttribute('metadata');
+
         $payment->setAttribute('status', PaymentStatus::RequiresRefund);
         $payment->setAttribute('failure_message', $reason);
         $payment->setAttribute('metadata', array_merge(is_array($metadata) ? $metadata : [], [
             'requires_refund' => true,
             'requires_refund_reason' => 'seat_not_available_during_finalization',
         ]));
+
         $payment->save();
 
         return $payment->refresh();

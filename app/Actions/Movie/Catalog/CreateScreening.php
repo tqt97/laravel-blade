@@ -44,14 +44,20 @@ final class CreateScreening
                 'currency' => strtoupper($currency),
             ]);
 
-            $seats = Seat::query()->where('screening_room_id', $room->getKey())->active()->get();
+            $seats = Seat::query()
+                ->where('screening_room_id', $room->getKey())
+                ->active()
+                ->get();
+
             foreach ($pricesBySeatType as $seatType => $price) {
                 $screening->prices()->create(['seat_type' => $seatType, 'price_minor_units' => $price, 'currency' => strtoupper($currency)]);
             }
 
             foreach ($seats as $seat) {
                 $seatType = (string) $seat->getRawOriginal('seat_type');
-                $price = $pricesBySeatType[$seatType] ?? ((int) $seat->getAttribute('price_minor_units') ?: $basePriceMinorUnits);
+                $price = $pricesBySeatType[$seatType]
+                    ?? ((int) $seat->getAttribute('price_minor_units') ?: $basePriceMinorUnits);
+
                 $screening->screeningSeats()->create([
                     'seat_id' => $seat->getKey(),
                     'status' => ScreeningSeatStatus::Available,

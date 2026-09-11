@@ -1,6 +1,19 @@
 <?php
 
 return [
+    'errors' => [
+        'not_found_title' => 'Không tìm thấy trang',
+        'not_found_message' => 'Trang bạn yêu cầu không tồn tại hoặc đã được di chuyển.',
+        'session_expired_title' => 'Phiên đã hết hạn',
+        'session_expired_message' => 'Phiên làm việc đã hết hạn. Vui lòng tải lại trang và thử lại.',
+        'too_many_requests_title' => 'Có quá nhiều yêu cầu',
+        'too_many_requests_message' => 'Vui lòng chờ một chút rồi thử lại.',
+        'server_error_title' => 'Đã xảy ra lỗi',
+        'server_error_message' => 'Không thể hoàn tất yêu cầu. Vui lòng thử lại sau.',
+        'unavailable_title' => 'Tạm thời không khả dụng',
+        'unavailable_message' => 'Dịch vụ đang tạm thời không khả dụng. Vui lòng thử lại sau ít phút.',
+        'back_home' => 'Về trang chủ',
+    ],
     'notifications' => [
         'title' => 'Thông báo',
         'empty' => 'Bạn chưa có thông báo nào.',
@@ -124,6 +137,7 @@ return [
         'payment_pending_description' => 'Hãy giữ trang này mở. Trạng thái thanh toán sẽ được cập nhật tự động.',
         'payment_unknown_title' => 'Cần kiểm tra trạng thái thanh toán',
         'payment_unknown_description' => 'Nhà cung cấp thanh toán chưa trả về kết quả xác định. Ghế của bạn vẫn được giữ tạm thời trong lúc hệ thống đối soát. Vui lòng liên hệ hỗ trợ nếu trạng thái không cập nhật.',
+        'payment_unknown_stalled' => 'Việc xác minh thanh toán đang lâu hơn dự kiến. Hệ thống sẽ không tự động thu tiền lần nữa. Vui lòng tải lại trang hoặc liên hệ hỗ trợ trước khi thử lại.',
         'payment_action_title' => 'Xác thực thanh toán',
         'payment_action_description' => 'Ngân hàng yêu cầu thêm một bước xác thực để hoàn tất thanh toán.',
         'payment_action_button' => 'Tiếp tục xác thực',
@@ -203,6 +217,7 @@ return [
         'expired' => 'Lượt giữ chỗ đã hết hạn. Vui lòng chọn ghế lại.',
         'checked_in' => 'Check-in vé thành công.',
         'refunded' => 'Đã hoàn tiền và giải phóng vé.',
+        'refund_in_progress' => 'Giao dịch này đang được xử lý hoàn tiền.',
         'updated' => 'Đã cập nhật đặt vé.',
         'booking_cannot_be_paid' => 'Đặt vé này không thể thanh toán ở trạng thái hiện tại.',
         'booking_expired' => 'Lượt giữ chỗ đã hết hạn.',
@@ -217,6 +232,7 @@ return [
         'screening_unavailable' => 'Suất chiếu này không còn tồn tại hoặc không còn khả dụng. Vui lòng chọn suất chiếu khác.',
         'seats_not_in_screening' => 'Một hoặc nhiều ghế đã chọn không thuộc suất chiếu này.',
         'select_seat' => 'Vui lòng chọn ít nhất một ghế.',
+        'seat_limit' => 'Bạn chỉ có thể chọn tối đa :count ghế.',
         'idempotency_key_reused' => 'Mã yêu cầu này đã được dùng cho một lựa chọn ghế khác.',
         'payment_after_expiry' => 'Thanh toán thành công sau khi lượt giữ chỗ đã hết hạn.',
         'invalid_transition' => 'Không thể xác nhận đặt vé từ trạng thái hiện tại.',

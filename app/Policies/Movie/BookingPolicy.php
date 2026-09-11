@@ -22,7 +22,7 @@ final class BookingPolicy
     public function pay(User $user, Booking $booking): bool
     {
         return $this->confirm($user, $booking)
-            && in_array(BookingStatus::tryFrom((string) $booking->getRawOriginal('status')), [BookingStatus::Held, BookingStatus::PendingPayment], true);
+            && BookingStatus::tryFrom((string) $booking->getRawOriginal('status'))?->isPayable() === true;
     }
 
     public function editSelection(User $user, Booking $booking): bool
@@ -51,7 +51,7 @@ final class BookingPolicy
             return true;
         }
 
-        if (! in_array($status, [BookingStatus::Held, BookingStatus::PendingPayment], true)) {
+        if (! $status->isPayable()) {
             return false;
         }
 

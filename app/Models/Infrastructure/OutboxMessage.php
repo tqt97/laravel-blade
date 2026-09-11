@@ -20,11 +20,8 @@ class OutboxMessage extends Model
         });
 
         static::created(function (self $message): void {
-            if (in_array($message->getRawOriginal('event_type'), [
-                OutboxEventType::BookingPaymentSucceeded->value,
-                OutboxEventType::BookingReminderDue->value,
-                OutboxEventType::BookingExpired->value,
-            ], true)) {
+            $eventType = OutboxEventType::tryFrom((string) $message->getRawOriginal('event_type'));
+            if ($eventType?->shouldDispatch() === true) {
                 PublishOutboxMessage::dispatch($message->getKey())->afterCommit();
             }
         });

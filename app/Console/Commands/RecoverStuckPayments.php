@@ -17,6 +17,7 @@ class RecoverStuckPayments extends Command
     public function handle(RecoverStuckPayment $recoverStuckPayment): int
     {
         $cutoff = BookingClock::now()->subMinutes((int) config('booking.payment.processing_timeout_minutes', 15));
+
         $payments = Payment::query()
             ->where('status', PaymentStatus::Processing)
             ->whereNull('provider_payment_id')
@@ -25,6 +26,7 @@ class RecoverStuckPayments extends Command
             ->oldest('processing_started_at')
             ->limit((int) $this->option('limit'))
             ->get();
+
         $recovered = 0;
         foreach ($payments as $payment) {
             $recovered += (int) $recoverStuckPayment->execute($payment);

@@ -166,7 +166,7 @@ sequenceDiagram
 
 1. Request bắt buộc `seat_ids` và `idempotency_key`, giới hạn theo `config('booking.limits.max_seats')`.
 2. Seat picker chặn ngay ở client khi selection đạt `config('booking.limits.max_seats')`; backend vẫn validate cùng config.
-3. Tổng quantity combo không được vượt `số ticket × config('booking.limits.max_combos_per_ticket')`; UI clamp theo quota còn lại, còn `AddConcessions` kiểm tra lại sau khi lock booking.
+3. Tổng quantity combo không được vượt `số ticket × config('booking.limits.max_combos_per_ticket')`; mỗi line cũng không vượt `config('booking.limits.max_combo_quantity')`. UI clamp theo quota còn lại, còn `AddConcessions` kiểm tra lại sau khi lock booking.
 4. Action khóa user để serialize retry cùng user, khóa screening, rồi khóa các seat theo thứ tự tăng dần để giảm deadlock.
 5. Hold hết hạn được giải phóng trong transaction khi có request hoặc bởi scheduler.
 6. Unique `(screening_id, seat_id)` bảo vệ inventory không nhân bản.
@@ -583,9 +583,9 @@ Mapping bắt buộc:
 
 | Limit | Backend | Frontend |
 |---|---|---|
-| `max_seats` | `HoldSeatsRequest` | `data-seat-max` và seat picker |
+| `max_seats` | `HoldSeatsRequest` + `HoldSeats` | `data-seat-max` và seat picker |
 | `max_combos_per_ticket` | `AddConcessions` | `data-combos-per-seat` và quota tổng |
-| `max_combo_quantity` | `HoldSeatsRequest`/availability | input `max`, combo controls |
+| `max_combo_quantity` | `HoldSeatsRequest` + `AddConcessions`/availability | input `max`, combo controls |
 | `hold_minutes` | `HoldSeats`/expiry actions | countdown và hold hint |
 
 Không hard-code limit trong controller, Blade hoặc JS. Khi đổi limit, chạy `php artisan config:clear`/`php artisan config:cache` tùy môi trường rồi chạy lại regression test.
@@ -627,7 +627,7 @@ $this->get(route('cinema.screenings.show', [$movie, $screening]))
     ->assertSee('value="2"', false);
 ```
 
-Ngoài UI contract, test phải assert inventory: giữ nguyên ghế không tạo booking thứ hai, đổi ghế làm booking cũ `cancelled`, ghế cũ available trở lại, combo cũ được hoàn stock và combo mới được reserve đúng quantity.
+Ngoài UI contract, test phải assert inventory: giữ nguyên ghế không tạo booking thứ hai, đổi ghế làm booking cũ `cancelled`, ghế cũ available trở lại, combo cũ được hoàn stock và combo mới được reserve đúng quantity. Với payload replacement, combo bị omit phải bị xóa line và hoàn stock; trường hợp combo inactive cũng phải được release thay vì làm booking bị kẹt.
 
 Regression cho giới hạn combo cần chứng minh cả client và domain:
 
@@ -845,7 +845,7 @@ Không đưa secret key vào Blade, JavaScript hoặc URL.
         ->lockForUpdate()
         ->first();
 
-Webhook cần verify chữ ký, event id, provider, payable type và event type.
+Webhook cần verify chữ ký, event id, provider, payable type và event type. Controller chỉ ingest/dedupe rồi dispatch `ProcessStripeWebhook` sau commit; worker lock `Booking` trước `Payment` và chỉ mark event processed sau finalize. Nếu payment chưa tồn tại, event lưu provider ID/orphan metadata để `payments:reconcile` thử lại.
 
 ### 5.2 Amount, currency và metadata
 
@@ -2597,15 +2597,21 @@ Chưa thể coi browser E2E, load test, EXPLAIN trên dataset production-size ho
 
 ## 18. Production readiness remediation log
 
+Audit end-to-end mới nhất về nghiệp vụ, kiến trúc, edge case, frontend và kế hoạch test được duy trì tại [movie-booking-deep-review.md](movie-booking-deep-review.md). Không đánh dấu một finding là đã hoàn tất chỉ vì đã có mô tả trong tài liệu; cần có code, test và verification tương ứng.
+
 Phần này là nhật ký đối chiếu các hạng mục hardening đã triển khai. Khi thêm nghiệp vụ mới, cập nhật cả invariant, boundary code và test tương ứng.
 
 ### 18.1 Payment fail-closed và state machine
+
+Mỗi `PaymentAttempt` dùng một `attempt_key` UUID bất biến làm Stripe idempotency key. Không dùng lại key ghép từ payment ID/counter cho payment retry mới, vì amount, payment method hoặc metadata có thể khác và Stripe sẽ trả `idempotency_error`. Cùng một attempt vẫn giữ key để retry/reconcile an toàn; attempt mới luôn có key mới.
 
 `BOOKING_PAYMENT_PROVIDER` là cấu hình explicit. Mặc định là `stripe`; `fake` chỉ được phép trong `local` và `testing`. Nếu production thiếu `STRIPE_SECRET` hoặc dùng provider không được hỗ trợ, container ném `LogicException` ngay khi resolve gateway. Không còn suy luận fake provider chỉ vì thiếu secret và không có fake confirmed payment trong production.
 
 Mọi payment transition quan trọng dùng `PaymentStateMachine`: webhook, pay, reconcile, recover, finalize và refund. Trạng thái terminal không bị downgrade bởi event cũ. Payment thành công bắt buộc có provider ID; nếu thiếu thì chuyển `Unknown`, không phát hành vé.
 
 ### 18.2 Orphan payment attempt
+
+Payment action không render Stripe Elements khi payment đang `Unknown`, vì `client_secret` có thể trỏ tới PaymentIntent đã terminal. `ReconcilePayment` retry provider lookup với backoff hữu hạn; status endpoint chỉ redirect success hoặc failed về đúng flow, còn `Unknown` không được redirect giả hoặc charge lại.
 
 Nếu `PaymentAttempt` đã có provider ID nhưng `Payment` chưa có, recovery/reconcile khóa payment, backfill ID và dispatch `ReconcilePayment`. Reconcile tiếp tục kiểm tra amount, currency và metadata booking trước khi finalize. Trường hợp không thể xác minh vẫn giữ `Unknown` để operator xử lý, không coi là thành công.
 

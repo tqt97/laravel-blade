@@ -1,5 +1,10 @@
 <x-layouts.movie :title="__('booking.checkout.payment_action_title')">
     <div class="mx-auto max-w-6xl space-y-6 px-5 py-10 sm:px-8 lg:py-14" data-payment-status
+        data-terminal-statuses="{{ implode(',', \App\Enums\Payment\PaymentStatus::browserTerminalValues()) }}"
+        data-poll-interval-ms="{{ config('booking.payment.status_poll_interval_ms') }}"
+        data-error-retry-interval-ms="{{ config('booking.payment.status_error_retry_interval_ms') }}"
+        data-max-unknown-attempts="{{ config('booking.payment.status_max_unknown_attempts') }}"
+        data-delayed-notice-ms="{{ config('booking.payment.status_delayed_notice_ms') }}"
         data-status-url="{{ route('user.bookings.payment-status', $booking) }}"
         data-success-url="{{ route('user.bookings.success', $booking) }}" data-client-secret="{{ $clientSecret ?? '' }}"
         data-return-url="{{ request()->url() }}" data-stripe-key="{{ config('services.stripe.key') ?? '' }}"
@@ -9,7 +14,8 @@
         data-delayed-label="{{ __('booking.checkout.payment_processing_delayed') }}"
         data-action-label="{{ __('booking.checkout.payment_action_button') }}"
         data-unavailable-label="{{ __('booking.checkout.payment_action_unavailable') }}"
-        data-error-label="{{ __('booking.checkout.payment_action_failed') }}">
+        data-error-label="{{ __('booking.checkout.payment_action_failed') }}"
+        data-unknown-stalled-label="{{ __('booking.checkout.payment_unknown_stalled') }}">
 
         <x-cinema.booking-stepper current="payment" />
         <a href="{{ route('user.bookings.checkout', $booking) }}"

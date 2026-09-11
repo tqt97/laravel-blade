@@ -33,21 +33,31 @@ final class RefundBooking
         /** @var array{payment: Payment, attempt: ?RefundAttempt, provider_already_refunded: bool} $claim */
         $claim = DB::transaction(function () use ($booking): array {
             $booking = Booking::query()->whereKey($booking->getKey())->lockForUpdate()->firstOrFail();
+
             $payment = Payment::query()->where('payable_type', Booking::class)->where('payable_id', $booking->getKey())->lockForUpdate()->firstOrFail();
+
             $paymentStatus = PaymentStatus::from((string) $payment->getRawOriginal('status'));
             if ($paymentStatus === PaymentStatus::Refunded) {
                 return ['payment' => $payment, 'attempt' => null, 'provider_already_refunded' => false];
             }
-            if (! in_array($paymentStatus, [PaymentStatus::Succeeded, PaymentStatus::RequiresRefund, PaymentStatus::Refunding], true)) {
+
+            if (! $paymentStatus->isRefundable()) {
                 throw new BookingOperationFailed(__('booking.messages.refund_successful_only'));
             }
+
             $items = $booking->items()->lockForUpdate()->get();
             if ($items->contains(fn ($item): bool => $item->getAttribute('status') === TicketStatus::CheckedIn)) {
                 throw new BookingOperationFailed(__('booking.messages.checked_in_cannot_refund'));
             }
+
             $existing = $payment->refundAttempts()->whereIn('status', [RefundAttemptStatus::Processing, RefundAttemptStatus::Unknown])->latest('id')->first();
+
             if ($existing?->getRawOriginal('status') === RefundAttemptStatus::Processing->value) {
-                return ['payment' => $payment, 'attempt' => null, 'provider_already_refunded' => false];
+                return [
+                    'payment' => $payment,
+                    'attempt' => null,
+                    'provider_already_refunded' => false,
+                ];
             }
             if ($existing?->getRawOriginal('status') === RefundAttemptStatus::Unknown->value) {
                 $existing->forceFill(['status' => RefundAttemptStatus::Processing, 'failure_message' => null, 'started_at' => now()])->save();
@@ -60,7 +70,7 @@ final class RefundBooking
             }
             $attemptNumber = $payment->refundAttempts()->count() + 1;
             $attempt = $payment->refundAttempts()->create([
-                'attempt_key' => 'booking-refund-'.$payment->id.'-'.$attemptNumber,
+                'attempt_key' => config('booking.payment.refund_idempotency_key_prefix', 'booking-refund-').$payment->id.'-'.$attemptNumber,
                 'status' => RefundAttemptStatus::Processing,
                 'started_at' => now(),
             ]);

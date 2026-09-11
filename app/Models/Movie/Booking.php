@@ -87,15 +87,18 @@ class Booking extends Model
     public function transitionTo(BookingStatus $target): void
     {
         $current = BookingStatus::tryFrom((string) $this->getRawOriginal('status'));
+
         if ($current === null || ! $current->canTransitionTo($target)) {
             throw new InvalidBookingTransition(__('booking.messages.invalid_transition'));
         }
+
         $this->setAttribute('status', $target);
     }
 
     public function scopeActiveHold(Builder $query, ?CarbonImmutable $now = null): void
     {
         $table = $query->getModel()->getTable();
+
         $query->whereIn($table.'.status', [BookingStatus::Held, BookingStatus::PendingPayment])
             ->where($table.'.expires_at', '>', $now ?? BookingClock::now());
     }
@@ -108,6 +111,7 @@ class Booking extends Model
     public function scopeExpiredHold(Builder $query, ?CarbonImmutable $now = null): void
     {
         $table = $query->getModel()->getTable();
+
         $query->whereIn($table.'.status', [BookingStatus::Held, BookingStatus::PendingPayment])
             ->whereNotNull($table.'.expires_at')
             ->where($table.'.expires_at', '<=', $now ?? BookingClock::now());
@@ -116,7 +120,9 @@ class Booking extends Model
     public function scopeUpcoming(Builder $query, ?CarbonImmutable $now = null): void
     {
         $now ??= BookingClock::now();
+
         $table = $query->getModel()->getTable();
+
         $query->where(function ($query) use ($now, $table): void {
             $query->where($table.'.status', BookingStatus::Confirmed)
                 ->orWhere(fn ($pendingQuery) => $pendingQuery

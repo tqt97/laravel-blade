@@ -48,7 +48,7 @@ final class BookingController extends Controller
     {
         $this->authorize('view', $booking);
 
-        abort_unless(in_array((string) $booking->getRawOriginal('status'), [BookingStatus::Held->value, BookingStatus::PendingPayment->value], true), 404);
+        abort_unless(BookingStatus::tryFrom((string) $booking->getRawOriginal('status'))?->isPayable() === true, 404);
 
         $expiresAt = $booking->getRawOriginal('expires_at');
         $expiresAtInstant = BookingClock::parseStored($expiresAt !== null ? (string) $expiresAt : null);
@@ -94,18 +94,20 @@ final class BookingController extends Controller
 
         $payment = $booking->payment;
         abort_unless($payment !== null, 404);
-        abort_unless(in_array(
-            (string) $payment->getRawOriginal('status'),
-            [PaymentStatus::RequiresAction->value, PaymentStatus::Pending->value, PaymentStatus::Processing->value, PaymentStatus::Unknown->value],
-            true
-        ), 404);
+        abort_unless(PaymentStatus::tryFrom((string) $payment->getRawOriginal('status'))?->isAwaitingProviderResolution() === true, 404);
 
         $metadata = $payment->getAttribute('metadata');
+        $paymentStatus = PaymentStatus::from((string) $payment->getRawOriginal('status'));
 
         return view('user.bookings.payment-action', [
             'booking' => $booking,
             'payment' => $payment,
-            'clientSecret' => is_array($metadata) ? ($metadata['client_secret'] ?? null) : null,
+            // An unknown payment may point to an old/terminal provider
+            // intent. Never mount Stripe Elements until reconciliation has
+            // established that the provider intent is usable.
+            'clientSecret' => $paymentStatus === PaymentStatus::Unknown
+                ? null
+                : (is_array($metadata) ? ($metadata['client_secret'] ?? null) : null),
         ]);
     }
 
@@ -116,7 +118,14 @@ final class BookingController extends Controller
         $payment = $booking->payment;
         abort_unless($payment !== null, 404);
 
-        return response()->json(['status' => $payment->getRawOriginal('status'), 'redirect' => $payment->getRawOriginal('status') === PaymentStatus::Succeeded->value ? route('user.bookings.success', $booking) : null]);
+        $status = (string) $payment->getRawOriginal('status');
+        $redirect = match ($status) {
+            PaymentStatus::Succeeded->value => route('user.bookings.success', $booking),
+            PaymentStatus::Failed->value => route('user.bookings.checkout', $booking),
+            default => null,
+        };
+
+        return response()->json(['status' => $status, 'redirect' => $redirect]);
     }
 
     public function comboAvailability(Booking $booking, AvailableConcessionsQuery $concessionsQuery): JsonResponse
@@ -212,7 +221,7 @@ final class BookingController extends Controller
 
         $paymentStatus = (string) $payment->getRawOriginal('status');
 
-        if ($paymentStatus === PaymentStatus::RequiresAction->value || in_array($paymentStatus, [PaymentStatus::Pending->value, PaymentStatus::Processing->value, PaymentStatus::Unknown->value], true)) {
+        if (PaymentStatus::tryFrom($paymentStatus)?->isAwaitingProviderResolution() === true) {
             return to_route('user.bookings.payment-action', $booking);
         }
 

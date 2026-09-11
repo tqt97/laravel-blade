@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Contracts\PaymentGateway;
 use App\Contracts\PaymentStatusRetriever;
+use App\Enums\Payment\PaymentProvider;
 use App\Models\Movie\Booking;
 use App\Models\User;
 use App\Observers\Movie\BookingObserver;
@@ -28,16 +29,15 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $factory = function (): PaymentGateway {
-            $provider = (string) config('booking.payment.provider', 'stripe');
+            $provider = PaymentProvider::configured();
 
             return match ($provider) {
-                'stripe' => filled(config('services.stripe.secret'))
+                PaymentProvider::Stripe => filled(config('services.stripe.secret'))
                     ? new StripePaymentGateway
                     : throw new \LogicException('Stripe payment provider is configured without STRIPE_SECRET.'),
-                'fake' => app()->environment(['local', 'testing'])
+                PaymentProvider::Fake => app()->environment(['local', 'testing'])
                     ? new FakePaymentGateway
                     : throw new \LogicException('Fake payment provider is not allowed outside local/testing environments.'),
-                default => throw new \LogicException("Unsupported payment provider [{$provider}]."),
             };
         };
 

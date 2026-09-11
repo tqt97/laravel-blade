@@ -3,15 +3,25 @@
 namespace App\Models\Payments;
 
 use App\Enums\Payment\PaymentAttemptStatus;
+use App\Enums\Payment\PaymentProvider;
 use App\Enums\Payment\PaymentStatus;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
+use Illuminate\Support\Str;
 
 #[Fillable(['payable_type', 'payable_id', 'provider', 'provider_payment_id', 'status', 'attempts', 'processing_started_at', 'last_attempt_at', 'reconciliation_attempted_at', 'reconciliation_attempts', 'amount_minor_units', 'currency', 'metadata', 'paid_at', 'refunded_at', 'failure_message'])]
 class Payment extends Model
 {
+    public function scopeForProvider(Builder $query, PaymentProvider|string $provider): void
+    {
+        $provider = $provider instanceof PaymentProvider ? $provider : PaymentProvider::from($provider);
+
+        $query->where($query->qualifyColumn('provider'), $provider->value);
+    }
+
     public function payable(): MorphTo
     {
         return $this->morphTo();
@@ -34,7 +44,7 @@ class Payment extends Model
             $attemptNumber = ((int) $this->getAttribute('attempts')) + 1;
 
             $this->attempts()->create([
-                'attempt_key' => 'booking-payment-'.$this->getKey().'-'.$attemptNumber,
+                'attempt_key' => config('booking.payment.attempt_key_prefix', 'booking-payment-').Str::uuid(),
                 'status' => $status,
                 'provider_payment_id' => $providerPaymentId,
                 'amount_minor_units' => $this->getAttribute('amount_minor_units'),
@@ -49,7 +59,7 @@ class Payment extends Model
 
             return;
         }
-        if (! in_array($attempt->getRawOriginal('status'), [PaymentAttemptStatus::Processing->value, PaymentAttemptStatus::Unknown->value], true)) {
+        if (! PaymentAttemptStatus::tryFrom((string) $attempt->getRawOriginal('status'))?->isOpen() === true) {
             return;
         }
 

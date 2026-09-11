@@ -3,6 +3,7 @@
 // User routes belong here and inherit the user route group's web/auth middleware.
 
 use App\Http\Controllers\Movie\PublicMovieController;
+use App\Http\Controllers\RedirectToMovieCatalogueController;
 use App\Http\Controllers\User\BookingController;
 use App\Http\Controllers\User\DashboardController;
 use App\Http\Controllers\User\NotificationController;
@@ -10,18 +11,25 @@ use App\Http\Controllers\User\ScreeningController;
 use App\Http\Controllers\User\TicketController;
 use Illuminate\Support\Facades\Route;
 
+// Dashboard and catalogue navigation.
 Route::get('/dashboard', DashboardController::class)->name('dashboard');
-Route::get('/screenings', fn () => to_route('cinema.movies.index'))->name('screenings.index');
+Route::get('/screenings', RedirectToMovieCatalogueController::class)->name('screenings.index');
 Route::get('/cinema/hold/resume', [PublicMovieController::class, 'resumeHold'])->name('cinema.hold.resume');
 Route::get('/screenings/{screening}', [ScreeningController::class, 'show'])->name('screenings.show');
 Route::post('/screenings/{screening}/hold', [ScreeningController::class, 'hold'])->middleware('throttle:booking-mutations')->name('screenings.hold');
+
+// Ticket routes.
 Route::get('/tickets/{ticket}', TicketController::class)->name('tickets.show');
-Route::get('/bookings', [BookingController::class, 'index'])->name('bookings.index');
+
+// Notification routes.
 Route::get('/notifications', [NotificationController::class, 'index'])->name('notifications.index');
 Route::patch('/notifications/read-all', [NotificationController::class, 'readAll'])->name('notifications.read-all');
 Route::patch('/notifications/{notification}/read', [NotificationController::class, 'read'])->name('notifications.read');
 Route::delete('/notifications/{notification}', [NotificationController::class, 'destroy'])->name('notifications.destroy');
 Route::delete('/notifications', [NotificationController::class, 'destroyAll'])->name('notifications.destroy-all');
+
+// Booking read/payment/mutation routes.
+Route::get('/bookings', [BookingController::class, 'index'])->name('bookings.index');
 Route::get('/bookings/{booking}', [BookingController::class, 'show'])->name('bookings.show');
 Route::get('/bookings/{booking}/checkout', [BookingController::class, 'checkout'])->name('bookings.checkout');
 Route::get('/bookings/{booking}/success', [BookingController::class, 'success'])->name('bookings.success');

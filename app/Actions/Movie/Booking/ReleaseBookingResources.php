@@ -27,7 +27,11 @@ final class ReleaseBookingResources
                 ->lockForUpdate()
                 ->first();
 
-            if ($seat !== null && $seat->getAttribute('status') === ScreeningSeatStatus::Held && (int) $seat->getAttribute('held_by_booking_id') === $booking->getKey()) {
+            if (
+                $seat !== null &&
+                $seat->getAttribute('status') === ScreeningSeatStatus::Held &&
+                (int) $seat->getAttribute('held_by_booking_id') === $booking->getKey()
+            ) {
                 $seat->forceFill([
                     'status' => ScreeningSeatStatus::Available,
                     'hold_token' => null,
@@ -49,9 +53,11 @@ final class ReleaseBookingResources
                 ->first();
 
             $idempotencyKey = 'booking-release-'.$booking->getKey().'-'.$line->getAttribute('concession_id');
+
             if ($concession !== null && $concession->getAttribute('stock') !== null && ! InventoryMovement::query()->where('idempotency_key', $idempotencyKey)->exists()) {
                 $stockBefore = (int) $concession->stock;
                 $concession->increment('stock', (int) $line->getAttribute('quantity'));
+
                 InventoryMovement::query()->firstOrCreate([
                     'idempotency_key' => 'booking-release-'.$booking->getKey().'-'.$line->getAttribute('concession_id'),
                 ], [
@@ -72,11 +78,17 @@ final class ReleaseBookingResources
             ->where('status', CouponReservationStatus::Reserved)
             ->lockForUpdate()
             ->first();
+
         if ($reservation !== null) {
-            $coupon = Coupon::query()->whereKey($reservation->coupon_id)->lockForUpdate()->first();
+            $coupon = Coupon::query()
+                ->whereKey($reservation->coupon_id)
+                ->lockForUpdate()
+                ->first();
+
             if ($coupon !== null && $coupon->used_count > 0) {
                 $coupon->decrement('used_count');
             }
+
             $reservation->update(['status' => CouponReservationStatus::Released]);
         }
     }

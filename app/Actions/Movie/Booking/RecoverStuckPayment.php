@@ -15,7 +15,10 @@ final class RecoverStuckPayment
     public function execute(Payment $payment, ?CarbonImmutable $now = null): bool
     {
         return DB::transaction(function () use ($payment, $now): bool {
-            $locked = Payment::query()->whereKey($payment->getKey())->lockForUpdate()->firstOrFail();
+            $locked = Payment::query()
+                ->whereKey($payment->getKey())
+                ->lockForUpdate()
+                ->firstOrFail();
 
             $status = PaymentStatus::tryFrom((string) $locked->getRawOriginal('status'));
             $startedAt = $locked->getRawOriginal('processing_started_at');
@@ -29,7 +32,8 @@ final class RecoverStuckPayment
                 return false;
             }
 
-            if ($locked->reconciliation_attempted_at?->isAfter($cutoff)) {
+            $reconciliationAttemptedAt = BookingClock::parseStored($locked->getRawOriginal('reconciliation_attempted_at'));
+            if ($reconciliationAttemptedAt?->isAfter($cutoff)) {
                 return false;
             }
 
@@ -49,6 +53,7 @@ final class RecoverStuckPayment
                         'reconciliation_attempted_at' => BookingClock::now(),
                         'reconciliation_attempts' => ((int) $locked->reconciliation_attempts) + 1,
                     ])->save();
+
                     ReconcilePayment::dispatch($locked->getKey())->afterCommit();
 
                     return true;
@@ -64,6 +69,7 @@ final class RecoverStuckPayment
                 'reconciliation_attempts' => ((int) $locked->reconciliation_attempts) + 1,
                 'failure_message' => 'Payment provider response was unknown. Reconciliation is in progress.',
             ])->save();
+
             ReconcilePayment::dispatch($locked->getKey())->afterCommit();
 
             return true;

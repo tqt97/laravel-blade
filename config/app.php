@@ -92,6 +92,13 @@ return [
 
     'locale' => env('APP_LOCALE', 'en'),
 
+    'supported_locales' => ['en', 'vi'],
+
+    'locale_labels' => [
+        'en' => 'English',
+        'vi' => 'Tiếng Việt',
+    ],
+
     'fallback_locale' => env('APP_FALLBACK_LOCALE', 'en'),
 
     'faker_locale' => env('APP_FAKER_LOCALE', 'en_US'),

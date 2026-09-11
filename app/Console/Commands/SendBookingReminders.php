@@ -32,24 +32,42 @@ class SendBookingReminders extends Command
             ->orderBy('id')
             ->limit($chunk)
             ->pluck('id');
+
         $count = 0;
+
         foreach ($ids as $id) {
             $claimed = DB::transaction(function () use ($id, $from, $until): bool {
                 $booking = Booking::query()->whereKey($id)->lockForUpdate()->first();
-                if ($booking === null || $booking->reminder_sent_at !== null || $booking->getRawOriginal('status') !== BookingStatus::Confirmed->value) {
+
+                if (
+                    $booking === null ||
+                    $booking->reminder_sent_at !== null ||
+                    $booking->getRawOriginal('status') !== BookingStatus::Confirmed->value
+                ) {
                     return false;
                 }
+
                 $startsAt = $booking->screening()->value('starts_at');
                 $parsedStartsAt = BookingClock::parseStored($startsAt !== null ? (string) $startsAt : null);
-                if ($parsedStartsAt === null || $parsedStartsAt->isBefore($from) || $parsedStartsAt->isAfter($until)) {
+
+                if (
+                    $parsedStartsAt === null ||
+                    $parsedStartsAt->isBefore($from) ||
+                    $parsedStartsAt->isAfter($until)
+                ) {
                     return false;
                 }
+
                 $booking->forceFill(['reminder_sent_at' => now()])->save();
+
                 OutboxMessage::query()->create([
                     'aggregate_type' => Booking::class,
                     'aggregate_id' => $booking->getKey(),
                     'event_type' => OutboxEventType::BookingReminderDue,
-                    'payload' => ['booking_id' => $booking->getKey(), 'locale' => app()->getLocale()],
+                    'payload' => [
+                        'booking_id' => $booking->getKey(),
+                        'locale' => app()->getLocale(),
+                    ],
                 ]);
 
                 return true;

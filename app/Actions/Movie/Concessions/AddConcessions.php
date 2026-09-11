@@ -3,24 +3,29 @@
 namespace App\Actions\Movie\Concessions;
 
 use App\Enums\Inventory\InventoryMovementType;
-use App\Enums\Movie\Booking\BookingStatus;
 use App\Enums\Movie\Booking\CouponType;
 use App\Models\Inventory\InventoryMovement;
 use App\Models\Movie\Booking;
 use App\Models\Movie\Concession;
 use App\Models\Movie\Coupon;
+use App\Support\Booking\BookingMutationGuard;
 use App\Support\Booking\Exceptions\BookingOperationFailed;
 use Illuminate\Support\Facades\DB;
 
 final class AddConcessions
 {
+    public function __construct(private readonly BookingMutationGuard $mutationGuard) {}
+
     /** @param array<int, int> $quantitiesByConcession */
     public function execute(Booking $booking, array $quantitiesByConcession): Booking
     {
         ksort($quantitiesByConcession);
 
         return DB::transaction(function () use ($booking, $quantitiesByConcession): Booking {
-            $booking = Booking::query()->whereKey($booking->getKey())->lockForUpdate()->firstOrFail();
+            $booking = Booking::query()
+                ->whereKey($booking->getKey())
+                ->lockForUpdate()
+                ->firstOrFail();
 
             return $this->executeForLockedBooking($booking, $quantitiesByConcession);
         }, 3);
@@ -38,43 +43,62 @@ final class AddConcessions
     {
         ksort($quantitiesByConcession);
 
-        $status = BookingStatus::from((string) $booking->getRawOriginal('status'));
-        if ($status !== BookingStatus::Held) {
-            throw new BookingOperationFailed(__('booking.messages.combos_locked'));
-        }
+        $this->mutationGuard->assertHeldAndBookable($booking);
 
         $ticketCount = $booking->items()->count();
         $maxComboCount = $ticketCount * (int) config('booking.limits.max_combos_per_ticket');
-        $currentQuantities = $booking->concessions()
-            ->pluck('quantity', 'concession_id')
-            ->map(static fn ($quantity): int => (int) $quantity);
-        $requestedComboCount = $currentQuantities->sum();
+        $existingLines = $booking->concessions()->lockForUpdate()->get()->keyBy('concession_id');
 
-        // The request contains final quantities, not deltas. Subtract the
-        // existing line before adding the requested value so an edit does not
-        // count unchanged combos twice against the per-ticket limit.
-        foreach ($quantitiesByConcession as $concessionId => $quantity) {
-            $requestedComboCount -= (int) ($currentQuantities[$concessionId] ?? 0);
-            $requestedComboCount += max(0, (int) $quantity);
-        }
+        $concessionIds = $existingLines->keys()
+            ->merge(array_keys($quantitiesByConcession))
+            ->map(static fn (int|string $concessionId): int => (int) $concessionId)
+            ->unique()
+            ->sort()
+            ->values();
+
+        $concessions = Concession::query()
+            ->whereIn('id', $concessionIds)
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get()
+            ->keyBy('id');
+
+        $requestedComboCount = $concessionIds->sum(
+            function (int $concessionId) use ($quantitiesByConcession): int {
+                $quantity = (int) ($quantitiesByConcession[$concessionId] ?? 0);
+
+                if (
+                    $quantity < 0
+                    || $quantity > (int) config('booking.limits.max_combo_quantity')
+                ) {
+                    throw new BookingOperationFailed(__('booking.messages.combo_limit_per_seat'));
+                }
+
+                return $quantity;
+            }
+        );
 
         if ($requestedComboCount > $maxComboCount) {
             throw new BookingOperationFailed(__('booking.messages.combo_limit_per_seat'));
         }
 
         $totalDelta = 0;
-        foreach ($quantitiesByConcession as $concessionId => $quantity) {
-            $desiredQuantity = max(0, (int) $quantity);
-            $concession = Concession::query()->whereKey($concessionId)->active()->lockForUpdate()->first();
-            if ($concession === null) {
+        foreach ($concessionIds as $concessionId) {
+            $desiredQuantity = (int) ($quantitiesByConcession[$concessionId] ?? 0);
+            $concession = $concessions->get($concessionId);
+            $line = $existingLines->get($concessionId);
+
+            if ($desiredQuantity > 0 && ($concession === null || ! $concession->is_active)) {
                 throw new BookingOperationFailed(__('booking.messages.combo_unavailable'));
+            }
+
+            if ($concession === null) {
+                continue;
             }
 
             if (strtoupper((string) $booking->currency) !== strtoupper((string) $concession->currency)) {
                 throw new BookingOperationFailed(__('booking.messages.currency_mismatch'));
             }
-
-            $line = $booking->concessions()->where('concession_id', $concession->getKey())->lockForUpdate()->first();
 
             if ($line !== null && strtoupper((string) $line->currency) !== strtoupper((string) $booking->currency)) {
                 throw new BookingOperationFailed(__('booking.messages.currency_mismatch'));
@@ -133,6 +157,7 @@ final class AddConcessions
         }
         $newSubtotal = (int) $booking->getAttribute('subtotal_minor_units') + $totalDelta;
         $discount = (int) $booking->getAttribute('discount_minor_units');
+
         if ($booking->coupon_id !== null) {
             $coupon = Coupon::query()->whereKey($booking->coupon_id)->first();
             if ($coupon !== null) {
@@ -141,9 +166,11 @@ final class AddConcessions
                 $discount = $couponType === CouponType::Percentage
                     ? intdiv($newSubtotal * min(100, $couponValue), 100)
                     : $couponValue;
+
                 if ($coupon->maximum_discount_minor_units !== null) {
                     $discount = min($discount, $coupon->maximum_discount_minor_units);
                 }
+
                 $discount = min($discount, $newSubtotal);
             }
         }

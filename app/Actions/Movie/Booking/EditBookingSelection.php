@@ -7,6 +7,7 @@ use App\Enums\Movie\Booking\BookingStatus;
 use App\Models\Movie\Booking;
 use App\Models\Movie\Screening;
 use App\Models\User;
+use App\Support\Booking\BookingMutationGuard;
 use App\Support\Booking\Exceptions\BookingOperationFailed;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -17,6 +18,7 @@ final class EditBookingSelection
         private readonly HoldSeats $holdSeats,
         private readonly CancelBooking $cancelBooking,
         private readonly AddConcessions $addConcessions,
+        private readonly BookingMutationGuard $mutationGuard,
     ) {}
 
     /**
@@ -50,9 +52,8 @@ final class EditBookingSelection
             $heldSeatIds = $activeHold?->items()->with('screeningSeat')->get()->pluck('screeningSeat.seat_id')->map(fn (int|string $seatId): int => (int) $seatId)->sort()->values()->all() ?? [];
 
             if ($activeHold !== null && $requestedSeatIds === $heldSeatIds) {
-                if ($quantities !== []) {
-                    $this->addConcessions->executeForLockedBooking($activeHold, $quantities);
-                }
+                $this->mutationGuard->assertHeldAndBookable($activeHold);
+                $this->addConcessions->executeForLockedBooking($activeHold, $quantities);
 
                 return $activeHold->refresh();
             }

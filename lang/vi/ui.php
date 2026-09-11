@@ -174,6 +174,7 @@ return [
         'per_page_label' => 'Số dòng mỗi trang',
         'apply' => 'Áp dụng',
         'select_all' => 'Chọn tất cả người dùng trong trang này',
+        'select_user_disabled' => 'Không thể chọn tài khoản đang hoạt động của chính bạn: :name',
         'select_user' => 'Chọn :name',
         'role' => 'Vai trò',
         'verification' => 'Xác minh',
@@ -202,6 +203,7 @@ return [
         'new_password_optional' => 'Mật khẩu mới (không bắt buộc)',
         'administrator_access' => 'Quyền quản trị viên',
         'administrator_description' => 'Cho phép người dùng này truy cập quản lý người dùng.',
+        'self_admin_warning' => 'Quyền quản trị của tài khoản hiện tại đã bị khóa để tránh mất quyền truy cập workspace.',
     ],
     'user_warnings' => [
         'self_admin_warning' => 'Quyền quản trị của tài khoản hiện tại đã bị khóa để tránh mất quyền truy cập workspace.',

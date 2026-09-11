@@ -5,10 +5,12 @@ use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
 
+// Development helper command.
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
+// Booking/payment recurring maintenance.
 Schedule::command('booking:expire-holds')->everyMinute()->withoutOverlapping()->onOneServer();
 Schedule::command('app:outbox-publish')->everyMinute()->withoutOverlapping()->onOneServer();
 Schedule::command('payments:reconcile')->everyMinute()->withoutOverlapping()->onOneServer();

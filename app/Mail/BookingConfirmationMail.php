@@ -23,9 +23,10 @@ final class BookingConfirmationMail extends Mailable
     {
         $booking->loadMissing(['items.screeningSeat.seat', 'screening.movie', 'screening.room', 'concessions.concession']);
         $endsAt = $booking->screening->ends_at ?? now()->addDay();
+        $verificationGraceHours = (int) config('booking.ticket.verification_grace_hours', 24);
         $qrCode = new TicketQrCode;
-        $this->tickets = $booking->items->map(function ($item) use ($endsAt, $qrCode): array {
-            $verifyUrl = URL::temporarySignedRoute('user.tickets.verify', $endsAt->copy()->addHours(24), ['ticket' => $item->ticket_code]);
+        $this->tickets = $booking->items->map(function ($item) use ($endsAt, $qrCode, $verificationGraceHours): array {
+            $verifyUrl = URL::temporarySignedRoute('user.tickets.verify', $endsAt->copy()->addHours($verificationGraceHours), ['ticket' => $item->ticket_code]);
 
             return [
                 'seat' => (string) ($item->screeningSeat->seat->row_label ?? '').(string) ($item->screeningSeat->seat->seat_number ?? ''),

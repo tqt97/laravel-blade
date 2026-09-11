@@ -9,7 +9,18 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['booking_id', 'screening_seat_id', 'ticket_code', 'qr_token_hash', 'qr_payload_version', 'price_minor_units', 'currency', 'status', 'checked_in_at', 'checked_in_by'])]
+#[Fillable([
+    'booking_id',
+    'screening_seat_id',
+    'ticket_code',
+    'qr_token_hash',
+    'qr_payload_version',
+    'price_minor_units',
+    'currency',
+    'status',
+    'checked_in_at',
+    'checked_in_by',
+])]
 class BookingItem extends Model
 {
     use HasFactory;

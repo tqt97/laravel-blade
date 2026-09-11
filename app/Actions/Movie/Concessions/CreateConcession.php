@@ -36,6 +36,7 @@ final class CreateConcession
     private function catalogAttributes(array $attributes): array
     {
         unset($attributes['stock_reason']);
+
         $attributes['currency'] = strtoupper((string) $attributes['currency']);
         $attributes['image_url'] = filled($attributes['image_url'] ?? null) ? $attributes['image_url'] : null;
         $attributes['is_active'] = (bool) ($attributes['is_active'] ?? false);

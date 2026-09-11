@@ -1,6 +1,19 @@
 <?php
 
 return [
+    'errors' => [
+        'not_found_title' => 'Page not found',
+        'not_found_message' => 'The page you requested could not be found.',
+        'session_expired_title' => 'Session expired',
+        'session_expired_message' => 'Your session expired. Please refresh the page and try again.',
+        'too_many_requests_title' => 'Too many requests',
+        'too_many_requests_message' => 'Please wait a moment and try again.',
+        'server_error_title' => 'Something went wrong',
+        'server_error_message' => 'We could not complete this request. Please try again later.',
+        'unavailable_title' => 'Temporarily unavailable',
+        'unavailable_message' => 'The service is temporarily unavailable. Please try again shortly.',
+        'back_home' => 'Back to home',
+    ],
     'notifications' => [
         'title' => 'Notifications',
         'empty' => 'You have no notifications.',
@@ -124,6 +137,7 @@ return [
         'payment_pending_description' => 'Keep this page open. We will refresh the payment status automatically.',
         'payment_unknown_title' => 'Payment status needs checking',
         'payment_unknown_description' => 'The payment provider did not return a definitive response. Your seats remain held temporarily while the payment is reconciled. Please contact support if the status does not update.',
+        'payment_unknown_stalled' => 'Payment verification is taking longer than expected. The system will not charge you again automatically. Refresh this page or contact support before retrying.',
         'payment_action_title' => 'Confirm your payment',
         'payment_action_description' => 'Your bank requires an extra verification step to complete this payment.',
         'payment_action_button' => 'Continue verification',
@@ -203,6 +217,7 @@ return [
         'expired' => 'This booking hold has expired. Please select your seats again.',
         'checked_in' => 'Ticket checked in successfully.',
         'refunded' => 'Payment refunded and tickets released.',
+        'refund_in_progress' => 'This payment refund is still in progress.',
         'updated' => 'Booking updated.',
         'booking_cannot_be_paid' => 'This booking cannot be paid in its current state.',
         'booking_expired' => 'The booking hold has expired.',
@@ -217,6 +232,7 @@ return [
         'screening_unavailable' => 'This screening is no longer available. Please choose another showtime.',
         'seats_not_in_screening' => 'One or more selected seats do not belong to this screening.',
         'select_seat' => 'Select at least one seat.',
+        'seat_limit' => 'You can select at most :count seats.',
         'idempotency_key_reused' => 'This request key was already used for another seat selection.',
         'payment_after_expiry' => 'Payment succeeded after the booking hold expired.',
         'invalid_transition' => 'The booking cannot be confirmed from its current state.',

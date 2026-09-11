@@ -17,6 +17,7 @@ final class UpdateConcession
     {
         return DB::transaction(function () use ($concession, $attributes, $actor): Concession {
             $locked = Concession::query()->whereKey($concession->getKey())->lockForUpdate()->firstOrFail();
+
             $stockBefore = $locked->stock;
             $newStock = array_key_exists('stock', $attributes)
                 ? ($attributes['stock'] === null ? null : (int) $attributes['stock'])
@@ -37,6 +38,7 @@ final class UpdateConcession
                     'stock_after' => $newStock,
                     'reason' => $attributes['stock_reason'],
                 ]);
+
                 InventoryMovement::query()->create([
                     'concession_id' => $locked->getKey(),
                     'actor_id' => $actor->getKey(),
@@ -57,6 +59,7 @@ final class UpdateConcession
     private function catalogAttributes(array $attributes): array
     {
         unset($attributes['stock_reason']);
+
         $attributes['currency'] = strtoupper((string) $attributes['currency']);
         $attributes['image_url'] = filled($attributes['image_url'] ?? null) ? $attributes['image_url'] : null;
         $attributes['is_active'] = (bool) ($attributes['is_active'] ?? false);

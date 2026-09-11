@@ -24,7 +24,10 @@ final class CheckInTicket
 
             $booking = $item->booking()->lockForUpdate()->firstOrFail();
             $payment = $booking->payment()->lockForUpdate()->first();
-            $item = BookingItem::query()->whereKey($item->getKey())->lockForUpdate()->firstOrFail();
+            $item = BookingItem::query()
+                ->whereKey($item->getKey())
+                ->lockForUpdate()
+                ->firstOrFail();
 
             if ($item->getAttribute('status') !== TicketStatus::Issued) {
                 throw new BookingOperationFailed(__('booking.messages.ticket_invalid_check_in'));
@@ -34,8 +37,10 @@ final class CheckInTicket
                 throw new BookingOperationFailed(__('booking.messages.booking_not_confirmed'));
             }
 
-            if ($payment?->getRawOriginal('status') === PaymentStatus::Refunding->value
-                || $payment?->refundAttempts()->whereIn('status', [RefundAttemptStatus::Processing, RefundAttemptStatus::Unknown])->exists()) {
+            if (
+                $payment?->getRawOriginal('status') === PaymentStatus::Refunding->value
+                || $payment?->refundAttempts()->whereIn('status', [RefundAttemptStatus::Processing, RefundAttemptStatus::Unknown])->exists()
+            ) {
                 throw new BookingOperationFailed(__('booking.messages.refund_in_progress'));
             }
 
@@ -47,13 +52,19 @@ final class CheckInTicket
                 ? BookingClock::parseStored((string) $screening->getRawOriginal('ends_at'))
                 : null;
 
-            if ($startsAt === null || $endsAt === null || BookingClock::now()->lessThan($startsAt->subMinutes((int) config('booking.check_in_open_minutes'))) || BookingClock::now()->greaterThan($endsAt)) {
+            if (
+                $startsAt === null ||
+                $endsAt === null ||
+                BookingClock::now()->lessThan($startsAt->subMinutes((int) config('booking.check_in_open_minutes'))) ||
+                BookingClock::now()->greaterThan($endsAt)
+            ) {
                 throw new BookingOperationFailed(__('booking.messages.check_in_closed'));
             }
 
             $item->setAttribute('status', TicketStatus::CheckedIn);
             $item->setAttribute('checked_in_at', now());
             $item->setAttribute('checked_in_by', $staffId);
+
             $item->save();
 
             return $item->refresh();

@@ -22,14 +22,15 @@ final class TicketController extends Controller
 
         abort_unless($ticket->booking->getAttribute('user_id') === auth()->id(), 403);
 
-        abort_unless(in_array($ticket->booking->getRawOriginal('status'), [BookingStatus::Confirmed->value, BookingStatus::Completed->value], true), 404);
+        abort_unless(BookingStatus::tryFrom((string) $ticket->booking->getRawOriginal('status'))?->isTicketAccessible() === true, 404);
 
-        abort_unless(in_array($ticket->getRawOriginal('status'), [TicketStatus::Issued->value, TicketStatus::CheckedIn->value], true), 404);
+        abort_unless(TicketStatus::tryFrom((string) $ticket->getRawOriginal('status'))?->isCheckInEligible() === true, 404);
 
         $rawEndsAt = $ticket->booking->screening?->getRawOriginal('ends_at');
+        $verificationGraceHours = (int) config('booking.ticket.verification_grace_hours', 24);
         $verificationExpiresAt = $rawEndsAt !== null
-            ? BookingClock::parseStored((string) $rawEndsAt)?->addHours(24)
-            : now()->addHours(24);
+            ? BookingClock::parseStored((string) $rawEndsAt)?->addHours($verificationGraceHours)
+            : now()->addHours($verificationGraceHours);
         $verifyUrl = URL::temporarySignedRoute('user.tickets.verify', $verificationExpiresAt, ['ticket' => $ticket->ticket_code]);
 
         $qrCode = $ticketQrCode->render($verifyUrl);

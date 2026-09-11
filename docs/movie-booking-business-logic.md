@@ -1,6 +1,6 @@
 # Business Logic — Movie Booking
 
-Tài liệu này chỉ mô tả nghiệp vụ của tính năng đặt vé xem phim. Đây là tài liệu tham chiếu để kiểm tra hành vi sản phẩm và bổ sung quy tắc mới trong tương lai. Chi tiết về controller, model, route, queue hoặc cấu trúc thư mục được ghi ở tài liệu kiến trúc riêng.
+Tài liệu này chỉ mô tả nghiệp vụ của tính năng đặt vé xem phim. Đây là tài liệu tham chiếu để kiểm tra hành vi sản phẩm và bổ sung quy tắc mới trong tương lai. Chi tiết về controller, model, route, queue hoặc cấu trúc thư mục được ghi ở tài liệu kiến trúc riêng. Bản audit chuyên sâu, findings theo P0/P1/P2, edge-case matrix và kế hoạch test nằm tại [movie-booking-deep-review.md](movie-booking-deep-review.md).
 
 ## 0. Phân chia nghiệp vụ theo domain
 
@@ -164,6 +164,8 @@ Không được hủy hold cũ trước khi chắc chắn có thể giữ đư�
 
 Booking ở trạng thái `pending_payment` không được chỉnh sửa ghế hoặc combo. Người dùng phải tiếp tục payment hiện tại hoặc chờ hệ thống xử lý/reconcile.
 
+Mọi mutation của booking `held` phải qua guard expiry/bookability trong transaction. Nếu `expires_at` đã qua hoặc screening không còn bookable thì combo, coupon và same-seat edit bị từ chối trước khi thay đổi stock hoặc discount; scheduler không phải là lớp bảo vệ duy nhất.
+
 Lý do: thay đổi tài nguyên trong lúc payment đang xử lý có thể làm số tiền, ghế và dữ liệu provider không còn khớp.
 
 ## 8. Combo và tồn kho
@@ -182,9 +184,11 @@ Lý do: thay đổi tài nguyên trong lúc payment đang xử lý có thể là
 Khi cập nhật combo:
 
 - Quantity là quantity cuối cùng mong muốn, không phải số lượng cộng thêm mù.
+- Payload quantities có semantics replacement đầy đủ: concession line hiện tại bị thiếu trong payload được hiểu là quantity `0`.
 - Tăng quantity thì trừ phần chênh lệch tồn kho.
 - Giảm quantity thì hoàn phần chênh lệch.
 - Xóa dòng khi quantity về 0.
+- Combo đã inactive không được tăng mới, nhưng line đang giữ vẫn phải được release khi payload replacement bỏ line đó.
 - Nếu booking hết hạn hoặc bị hủy, hoàn toàn bộ combo đã giữ.
 
 Mọi thay đổi tồn kho phải có movement idempotency key để retry không hoàn/trừ kho hai lần.
@@ -321,6 +325,8 @@ Nếu payment succeeded nhưng hold đã hết hạn hoặc showtime không còn
 | `refunded` | Refund đã được provider xác nhận. |
 
 Payment polling dừng ở trạng thái terminal như succeeded, failed, refunded hoặc requires_refund. Trạng thái unknown tiếp tục chờ reconcile.
+
+Nếu payment ở `unknown`, hệ thống không được tự coi là thất bại hoặc tạo charge mới vì provider có thể đã nhận tiền. Payment action không được mount lại `client_secret` của một PaymentIntent terminal. Reconcile phải retry hữu hạn; nếu provider xác định `failed`, user được đưa về checkout để tạo payment attempt mới. Nếu vẫn unknown sau retry, giữ trạng thái để operator đối soát và hiển thị thông báo rõ ràng, không để UI polling vô hạn.
 
 ## 13. Webhook, retry và payment orphan
 
@@ -473,3 +479,5 @@ Mỗi nghiệp vụ mới phải trả lời:
 | 2026-09-10 | Bổ sung guest resume, edit booking, combo limit, coupon, payment recovery, refund, notification expiry và timezone. |
 | 2026-09-10 | Chuẩn hóa tài liệu theo các domain Movie, Inventory, Payments và Infrastructure. |
 | 2026-09-10 | Chuẩn hóa controller/query/action boundary, dùng lại model scope và đưa giới hạn hiển thị vào booking config. |
+| 2026-09-11 | Bổ sung liên kết audit chuyên sâu, phân loại rủi ro production, edge case và tiêu chí traceability. |
+| 2026-09-11 | Bổ sung rule xử lý payment `unknown`, PaymentIntent terminal, reconcile retry và giới hạn polling frontend. |

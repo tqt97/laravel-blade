@@ -493,6 +493,65 @@ it('treats combo quantities as the selected final quantity', function (): void {
         ->and($concession->refresh()->stock)->toBe(2);
 });
 
+it('releases all combos when a same-seat edit submits an empty replacement payload', function (): void {
+    $room = ScreeningRoom::factory()->create();
+    $seat = Seat::factory()->for($room, 'room')->create();
+    $screening = app(CreateScreening::class)->execute(Movie::factory()->create(), $room, now()->addDay()->toDateTimeString(), now()->addDay()->addHours(2)->toDateTimeString(), 100000);
+    $user = User::factory()->create();
+    $booking = app(HoldSeats::class)->execute($user, $screening, [$seat->id], 'combo-empty-edit');
+    $concession = Concession::query()->create(['name' => 'Empty Edit Combo', 'sku' => 'COMBO-EMPTY-EDIT', 'price_minor_units' => 50000, 'currency' => 'VND', 'stock' => 3, 'is_active' => true]);
+
+    app(AddConcessions::class)->execute($booking, [$concession->id => 1]);
+    app(EditBookingSelection::class)->execute($user, $screening, [$seat->id], 'combo-empty-edit-retry', []);
+
+    expect($booking->refresh()->concessions)->toHaveCount(0)
+        ->and($concession->refresh()->stock)->toBe(3);
+});
+
+it('rejects combo mutation after a booking hold expires before scheduler cleanup', function (): void {
+    $room = ScreeningRoom::factory()->create();
+    $seat = Seat::factory()->for($room, 'room')->create();
+    $screening = app(CreateScreening::class)->execute(Movie::factory()->create(), $room, now()->addDay()->toDateTimeString(), now()->addDay()->addHours(2)->toDateTimeString(), 100000);
+    $booking = app(HoldSeats::class)->execute(User::factory()->create(), $screening, [$seat->id], 'expired-mutation');
+    $concession = Concession::query()->create(['name' => 'Expired Mutation Combo', 'sku' => 'COMBO-EXPIRED-MUTATION', 'price_minor_units' => 50000, 'currency' => 'VND', 'stock' => 3, 'is_active' => true]);
+    $booking->forceFill(['expires_at' => now()->subMinute()])->save();
+
+    expect(fn () => app(AddConcessions::class)->execute($booking, [$concession->id => 1]))->toThrow(RuntimeException::class);
+    expect($concession->refresh()->stock)->toBe(3)
+        ->and($booking->refresh()->concessions)->toHaveCount(0);
+});
+
+it('treats omitted combo quantities as zero and releases their stock', function (): void {
+    $room = ScreeningRoom::factory()->create();
+    $seat = Seat::factory()->for($room, 'room')->create();
+    $screening = app(CreateScreening::class)->execute(Movie::factory()->create(), $room, now()->addDay()->toDateTimeString(), now()->addDay()->addHours(2)->toDateTimeString(), 100000);
+    $booking = app(HoldSeats::class)->execute(User::factory()->create(), $screening, [$seat->id], 'combo-replacement');
+    $first = Concession::query()->create(['name' => 'First Combo', 'sku' => 'COMBO-REPLACEMENT-1', 'price_minor_units' => 50000, 'currency' => 'VND', 'stock' => 3, 'is_active' => true]);
+    $second = Concession::query()->create(['name' => 'Second Combo', 'sku' => 'COMBO-REPLACEMENT-2', 'price_minor_units' => 75000, 'currency' => 'VND', 'stock' => 3, 'is_active' => true]);
+
+    app(AddConcessions::class)->execute($booking, [$first->id => 1, $second->id => 1]);
+    app(AddConcessions::class)->execute($booking, [$first->id => 1]);
+
+    expect($booking->refresh()->concessions()->pluck('concession_id')->all())->toBe([$first->id])
+        ->and($first->refresh()->stock)->toBe(2)
+        ->and($second->refresh()->stock)->toBe(3);
+});
+
+it('releases an inactive combo when it is omitted from a replacement payload', function (): void {
+    $room = ScreeningRoom::factory()->create();
+    $seat = Seat::factory()->for($room, 'room')->create();
+    $screening = app(CreateScreening::class)->execute(Movie::factory()->create(), $room, now()->addDay()->toDateTimeString(), now()->addDay()->addHours(2)->toDateTimeString(), 100000);
+    $booking = app(HoldSeats::class)->execute(User::factory()->create(), $screening, [$seat->id], 'combo-inactive-replacement');
+    $concession = Concession::query()->create(['name' => 'Inactive Combo', 'sku' => 'COMBO-INACTIVE-REPLACEMENT', 'price_minor_units' => 50000, 'currency' => 'VND', 'stock' => 3, 'is_active' => true]);
+
+    app(AddConcessions::class)->execute($booking, [$concession->id => 1]);
+    $concession->forceFill(['is_active' => false])->save();
+    app(AddConcessions::class)->execute($booking, []);
+
+    expect($booking->refresh()->concessions)->toHaveCount(0)
+        ->and($concession->refresh()->stock)->toBe(3);
+});
+
 it('limits total combo quantity to three times the held tickets', function (): void {
     $room = ScreeningRoom::factory()->create();
     $seat = Seat::factory()->for($room, 'room')->create();
@@ -595,7 +654,9 @@ it('does not send the same outbox email twice when the delivery job is retried',
 
     Mail::assertNothingSent();
     expect($message->refresh()->published_at)->not->toBeNull()
-        ->and($message->deliveries()->where('channel', 'booking-created')->where('status', 'sent')->count())->toBe(1);
+        ->and($message->deliveries()->where('channel', 'booking-created')->where('status', 'sent')->count())->toBe(1)
+        ->and($message->deliveries()->where('channel', 'booking-created')->value('idempotency_key'))->toBe('booking.created:'.$booking->id)
+        ->and($message->deliveries()->where('channel', 'booking-created')->value('attempts'))->toBe(1);
 });
 
 it('checks in a paid ticket once inside the configured screening window', function (): void {

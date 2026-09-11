@@ -1,5 +1,3 @@
-const localeLabels = { vi: 'Tiếng Việt', en: 'English' };
-
 export const initLanguageMenus = () => {
     const menus = [...document.querySelectorAll('[data-language-menu]')];
     const closers = [];
@@ -9,11 +7,12 @@ export const initLanguageMenus = () => {
         const options = menu.querySelector('[data-language-options]');
         const label = menu.querySelector('[data-language-label]');
         if (!trigger || !options || !label) return;
+        const locales = [...menu.querySelectorAll('[data-language-option]')].map((option) => option.dataset.locale).filter(Boolean);
         const stored = window.localStorage.getItem('app-locale');
-        const current = localeLabels[stored] ? stored : (localeLabels[menu.dataset.locale] ? menu.dataset.locale : 'en');
+        const current = locales.includes(stored) ? stored : menu.dataset.locale;
         const setLocale = (locale) => {
             menu.querySelectorAll('[data-language-option]').forEach((option) => option.querySelector('[data-language-check]')?.classList.toggle('hidden', option.dataset.locale !== locale));
-            label.textContent = localeLabels[locale];
+            label.textContent = menu.querySelector(`[data-language-option][data-locale="${locale}"]`)?.dataset.label ?? locale;
         };
         const close = () => {
             options.hidden = true;

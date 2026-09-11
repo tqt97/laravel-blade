@@ -46,6 +46,10 @@ return [
     // Check-in opens this many minutes before the screening starts.
     'check_in_open_minutes' => (int) env('BOOKING_CHECK_IN_OPEN_MINUTES', 120),
 
+    'ticket' => [
+        'verification_grace_hours' => (int) env('BOOKING_TICKET_VERIFICATION_GRACE_HOURS', 24),
+    ],
+
     'payment' => [
         // Currency and provider used by booking/payment snapshots.
         'currency' => env('BOOKING_CURRENCY', 'USD'),
@@ -53,8 +57,19 @@ return [
         // Explicit provider selection. Fake is only valid in local/testing;
         // production must fail closed when Stripe is not configured.
         'provider' => env('BOOKING_PAYMENT_PROVIDER', 'stripe'),
+        'attempt_key_prefix' => env('BOOKING_PAYMENT_ATTEMPT_KEY_PREFIX', 'booking-payment-'),
+        'webhook_tries' => (int) env('BOOKING_PAYMENT_WEBHOOK_TRIES', 10),
+        'webhook_backoff_seconds' => [5, 10, 20, 30, 60],
+        'webhook_signature_tolerance_seconds' => (int) env('BOOKING_PAYMENT_WEBHOOK_SIGNATURE_TOLERANCE_SECONDS', 300),
         // Maximum time a payment may remain in a processing state.
         'processing_timeout_minutes' => (int) env('BOOKING_PAYMENT_PROCESSING_TIMEOUT_MINUTES', 15),
+        'reconciliation_tries' => (int) env('BOOKING_PAYMENT_RECONCILIATION_TRIES', 10),
+        'reconciliation_backoff_seconds' => [5, 10, 20, 30, 60],
+        'refund_idempotency_key_prefix' => env('BOOKING_PAYMENT_REFUND_IDEMPOTENCY_KEY_PREFIX', 'booking-refund-'),
+        'status_poll_interval_ms' => (int) env('BOOKING_PAYMENT_STATUS_POLL_INTERVAL_MS', 3000),
+        'status_error_retry_interval_ms' => (int) env('BOOKING_PAYMENT_STATUS_ERROR_RETRY_INTERVAL_MS', 5000),
+        'status_max_unknown_attempts' => (int) env('BOOKING_PAYMENT_STATUS_MAX_UNKNOWN_ATTEMPTS', 20),
+        'status_delayed_notice_ms' => (int) env('BOOKING_PAYMENT_STATUS_DELAYED_NOTICE_MS', 45000),
     ],
 
     'observability' => [
@@ -65,6 +80,8 @@ return [
     // A delivery lease can be reclaimed when a queue worker dies mid-send.
     'outbox' => [
         'delivery_lease_minutes' => (int) env('BOOKING_OUTBOX_DELIVERY_LEASE_MINUTES', 60),
+        'tries' => (int) env('BOOKING_OUTBOX_TRIES', 3),
+        'unique_for_seconds' => (int) env('BOOKING_OUTBOX_UNIQUE_FOR_SECONDS', 3600),
     ],
 
     // Default cinema operating hours. Values use 24-hour HH:MM notation.

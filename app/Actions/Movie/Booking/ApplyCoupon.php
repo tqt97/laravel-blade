@@ -2,36 +2,53 @@
 
 namespace App\Actions\Movie\Booking;
 
-use App\Enums\Movie\Booking\BookingStatus;
 use App\Enums\Movie\Booking\CouponReservationStatus;
 use App\Enums\Movie\Booking\CouponType;
 use App\Models\Movie\Booking;
 use App\Models\Movie\Coupon;
 use App\Models\Movie\CouponReservation;
+use App\Support\Booking\BookingMutationGuard;
 use App\Support\Booking\Exceptions\BookingOperationFailed;
 use App\Support\Time\BookingClock;
 use Illuminate\Support\Facades\DB;
 
 final class ApplyCoupon
 {
+    public function __construct(private readonly BookingMutationGuard $mutationGuard) {}
+
     public function execute(Booking $booking, string $code): Booking
     {
         return DB::transaction(function () use ($booking, $code): Booking {
-            $booking = Booking::query()->whereKey($booking->getKey())->lockForUpdate()->firstOrFail();
+            $booking = Booking::query()
+                ->whereKey($booking->getKey())
+                ->lockForUpdate()
+                ->firstOrFail();
 
-            if ($booking->getRawOriginal('status') !== BookingStatus::Held->value) {
-                throw new BookingOperationFailed(__('booking.messages.coupon_locked'));
-            }
+            $this->mutationGuard->assertHeldAndBookable($booking, 'booking.messages.coupon_locked');
 
-            $coupon = Coupon::query()->whereRaw('upper(code) = ?', [strtoupper(trim($code))])->lockForUpdate()->first();
+            $coupon = Coupon::query()
+                ->whereRaw('upper(code) = ?', [strtoupper(trim($code))])
+                ->lockForUpdate()
+                ->first();
+
             $startsAt = $coupon?->getRawOriginal('starts_at');
             $endsAt = $coupon?->getRawOriginal('ends_at');
 
-            if ($coupon === null || ! (bool) $coupon->getAttribute('is_active') || ($startsAt !== null && BookingClock::parseStored((string) $startsAt)?->isFuture()) || ($endsAt !== null && BookingClock::parseStored((string) $endsAt)?->isPast())) {
+            if (
+                $coupon === null ||
+                ! (bool) $coupon->getAttribute('is_active') ||
+                ($startsAt !== null &&
+                    BookingClock::parseStored((string) $startsAt)?->isFuture()) ||
+                ($endsAt !== null &&
+                    BookingClock::parseStored((string) $endsAt)?->isPast())
+            ) {
                 throw new BookingOperationFailed(__('booking.messages.coupon_invalid'));
             }
 
-            if ($coupon->currency !== null && strtoupper($coupon->currency) !== strtoupper((string) $booking->currency)) {
+            if (
+                $coupon->currency !== null &&
+                strtoupper($coupon->currency) !== strtoupper((string) $booking->currency)
+            ) {
                 throw new BookingOperationFailed(__('booking.messages.currency_mismatch'));
             }
 
@@ -39,7 +56,11 @@ final class ApplyCoupon
                 throw new BookingOperationFailed(__('booking.messages.coupon_unavailable'));
             }
 
-            $existing = CouponReservation::query()->where('booking_id', $booking->getKey())->where('status', CouponReservationStatus::Reserved)->lockForUpdate()->first();
+            $existing = CouponReservation::query()
+                ->where('booking_id', $booking->getKey())
+                ->where('status', CouponReservationStatus::Reserved)->lockForUpdate()
+                ->first();
+
             $targetReservation = CouponReservation::query()
                 ->where('booking_id', $booking->getKey())
                 ->where('coupon_id', $coupon->getKey())
@@ -47,7 +68,11 @@ final class ApplyCoupon
                 ->first();
 
             if ($existing !== null && $existing->coupon_id !== $coupon->getKey()) {
-                $existingCoupon = Coupon::query()->whereKey($existing->coupon_id)->lockForUpdate()->first();
+                $existingCoupon = Coupon::query()
+                    ->whereKey($existing->coupon_id)
+                    ->lockForUpdate()
+                    ->first();
+
                 if ($existingCoupon !== null && $existingCoupon->used_count > 0) {
                     $existingCoupon->decrement('used_count');
                 }
@@ -57,6 +82,7 @@ final class ApplyCoupon
             $gross = (int) $booking->subtotal_minor_units;
             $couponType = CouponType::from((string) $coupon->getRawOriginal('type'));
             $couponValue = (int) $coupon->getAttribute('value');
+
             $discount = $couponType === CouponType::Percentage
                 ? intdiv($gross * min(100, $couponValue), 100)
                 : $couponValue;

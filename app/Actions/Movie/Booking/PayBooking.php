@@ -6,16 +6,18 @@ use App\Actions\Movie\Concessions\AddConcessions;
 use App\Contracts\PaymentGateway;
 use App\Enums\Movie\Booking\BookingStatus;
 use App\Enums\Payment\PaymentAttemptStatus;
+use App\Enums\Payment\PaymentProvider;
 use App\Enums\Payment\PaymentStatus;
 use App\Models\Movie\Booking;
 use App\Models\Payments\Payment;
 use App\Models\Payments\PaymentAttempt;
 use App\Support\Booking\Exceptions\BookingExpired;
+use App\Support\Booking\Exceptions\BookingOperationFailed;
 use App\Support\Payment\PaymentResult;
 use App\Support\Payment\PaymentStateMachine;
 use App\Support\Time\BookingClock;
 use Illuminate\Support\Facades\DB;
-use RuntimeException;
+use Illuminate\Support\Str;
 use Throwable;
 
 final class PayBooking
@@ -40,23 +42,27 @@ final class PayBooking
                     'payable_type' => Booking::class,
                     'payable_id' => $booking->id,
                 ])->first();
+
                 if ($payment === null) {
-                    throw new RuntimeException(__('booking.messages.payment_not_found'));
+                    throw new BookingOperationFailed(__('booking.messages.payment_not_found'));
                 }
 
                 return ['payment' => $payment, 'should_charge' => false, 'attempt' => null];
             }
-            if (! in_array($status, [BookingStatus::Held, BookingStatus::PendingPayment], true)) {
-                throw new RuntimeException(__('booking.messages.booking_cannot_be_paid'));
+
+            if (! $status->isPayable()) {
+                throw new BookingOperationFailed(__('booking.messages.booking_cannot_be_paid'));
             }
+
             if ($booking->expires_at !== null && BookingClock::parseStored($booking->getRawOriginal('expires_at'))?->lessThanOrEqualTo(BookingClock::now())) {
                 throw new BookingExpired(__('booking.messages.booking_expired'));
             }
+
             $payment = Payment::query()->firstOrCreate([
                 'payable_type' => Booking::class,
                 'payable_id' => $booking->id,
             ], [
-                'provider' => config('booking.payment.provider', 'fake'),
+                'provider' => PaymentProvider::configured()->value,
                 'status' => PaymentStatus::Pending,
                 'amount_minor_units' => $booking->amount_minor_units,
                 'currency' => $booking->currency,
@@ -79,6 +85,7 @@ final class PayBooking
 
             if ($status === BookingStatus::Held && $quantitiesByConcession !== []) {
                 $booking = $this->addConcessions->executeForLockedBooking($booking, $quantitiesByConcession);
+
                 $payment->forceFill([
                     'amount_minor_units' => $booking->amount_minor_units,
                     'currency' => $booking->currency,
@@ -87,24 +94,33 @@ final class PayBooking
 
             $nextAttempt = ((int) $payment->attempts) + 1;
             $attempt = $payment->attempts()->create([
-                'attempt_key' => 'booking-payment-'.$payment->id.'-'.$nextAttempt,
+                // A provider idempotency key must identify one immutable
+                // charge attempt. It must not depend on a counter that can
+                // drift after a retry or a partially persisted transition.
+                'attempt_key' => config('booking.payment.attempt_key_prefix', 'booking-payment-').Str::uuid(),
                 'status' => PaymentAttemptStatus::Processing,
                 'amount_minor_units' => $payment->amount_minor_units,
                 'currency' => $payment->currency,
                 'started_at' => BookingClock::now(),
             ]);
+
             $payment->forceFill([
                 'status' => PaymentStatus::Processing,
                 'attempts' => $nextAttempt,
                 'processing_started_at' => BookingClock::now(),
                 'last_attempt_at' => BookingClock::now(),
             ])->save();
+
             if ($status === BookingStatus::Held) {
                 $booking->transitionTo(BookingStatus::PendingPayment);
                 $booking->save();
             }
 
-            return ['payment' => $payment->refresh(), 'should_charge' => true, 'attempt' => $attempt];
+            return [
+                'payment' => $payment->refresh(),
+                'should_charge' => true,
+                'attempt' => $attempt,
+            ];
         }, 3);
         $payment = $claim['payment'];
         if (! $claim['should_charge']) {
@@ -113,6 +129,7 @@ final class PayBooking
 
         if ($paymentMethodId !== null) {
             $metadata = $payment->getAttribute('metadata');
+
             $payment->setAttribute('metadata', array_merge(is_array($metadata) ? $metadata : [], ['payment_method_id' => $paymentMethodId]));
             $payment->save();
         }

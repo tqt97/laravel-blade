@@ -19,10 +19,24 @@ class ReconcilePayment implements ShouldQueue
 {
     use Queueable;
 
+    public int $tries;
+
+    /** @return array<int, int> */
+    public function backoff(): array
+    {
+        /** @var array<int, int> $backoff */
+        $backoff = config('booking.payment.reconciliation_backoff_seconds', []);
+
+        return $backoff;
+    }
+
     /**
      * Create a new job instance.
      */
-    public function __construct(public readonly int $paymentId) {}
+    public function __construct(public readonly int $paymentId)
+    {
+        $this->tries = (int) config('booking.payment.reconciliation_tries', 10);
+    }
 
     /**
      * Execute the job.
@@ -55,7 +69,14 @@ class ReconcilePayment implements ShouldQueue
         } else {
             $providerStatus = $retriever->retrieve((string) $payment->provider_payment_id);
         }
-        if ($providerStatus->status !== 'unknown' && ! $this->matchesPayment($payment, $providerStatus)) {
+        if ($providerStatus->status === 'unknown') {
+            if ($this->attempts() < $this->tries) {
+                $this->release($this->backoff()[min($this->attempts(), count($this->backoff()) - 1)]);
+            }
+
+            return;
+        }
+        if (! $this->matchesPayment($payment, $providerStatus)) {
             DB::transaction(function () use ($payment): void {
                 $locked = Payment::query()->whereKey($payment->getKey())->lockForUpdate()->firstOrFail();
                 $locked->forceFill([
@@ -91,13 +112,11 @@ class ReconcilePayment implements ShouldQueue
                 'processing_started_at' => $status === PaymentStatus::Succeeded || $status === PaymentStatus::Failed ? null : $locked->processing_started_at,
                 'paid_at' => $status === PaymentStatus::Succeeded ? now() : $locked->paid_at,
             ])->save();
-            $locked->syncLatestAttempt(match ($status) {
-                PaymentStatus::Succeeded => PaymentAttemptStatus::Succeeded,
-                PaymentStatus::RequiresAction => PaymentAttemptStatus::RequiresAction,
-                PaymentStatus::Pending => PaymentAttemptStatus::Processing,
-                PaymentStatus::Failed => PaymentAttemptStatus::Failed,
-                default => PaymentAttemptStatus::Unknown,
-            }, $providerStatus->providerPaymentId, $providerStatus->failureMessage);
+            $locked->syncLatestAttempt(
+                PaymentAttemptStatus::fromPaymentStatus($status),
+                $providerStatus->providerPaymentId,
+                $providerStatus->failureMessage,
+            );
 
             return $locked->refresh();
         }, 3);

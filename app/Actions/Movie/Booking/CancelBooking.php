@@ -29,9 +29,10 @@ final class CancelBooking
             $booking->transitionTo(BookingStatus::Cancelled);
             $booking->expires_at = null;
             $booking->cancellation_reason = $reason;
+
             $booking->save();
 
-            if (in_array($status, [BookingStatus::Held, BookingStatus::PendingPayment], true)) {
+            if ($status->isPayable()) {
                 $this->resourceReleaser->execute($booking);
             }
 

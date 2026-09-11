@@ -8,6 +8,7 @@ use App\Models\Payments\Payment;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 final class StripePaymentGateway implements PaymentGateway, PaymentStatusRetriever
 {
@@ -16,7 +17,7 @@ final class StripePaymentGateway implements PaymentGateway, PaymentStatusRetriev
         $metadata = $payment->getAttribute('metadata');
         $metadata = is_array($metadata) ? $metadata : [];
         $attemptKey = $payment->attempts()->latest('id')->value('attempt_key')
-            ?: 'booking-payment-'.$payment->id;
+            ?: config('booking.payment.attempt_key_prefix', 'booking-payment-').Str::uuid();
         $hasPaymentMethod = filled($metadata['payment_method_id'] ?? null);
         $parameters = [
             'amount' => $payment->amount_minor_units,
@@ -33,7 +34,8 @@ final class StripePaymentGateway implements PaymentGateway, PaymentStatusRetriev
         }
 
         $response = Http::asForm()->withBasicAuth((string) config('services.stripe.secret'), '')
-            ->timeout(10)->withHeaders(['Idempotency-Key' => (string) $attemptKey])
+            ->timeout((int) config('services.stripe.timeout_seconds', 10))
+            ->withHeaders(['Idempotency-Key' => (string) $attemptKey])
             ->post('https://api.stripe.com/v1/payment_intents', $parameters);
 
         if ($response->failed()) {
@@ -59,7 +61,8 @@ final class StripePaymentGateway implements PaymentGateway, PaymentStatusRetriev
     public function refund(Payment $payment): PaymentResult
     {
         $response = Http::asForm()->withBasicAuth((string) config('services.stripe.secret'), '')
-            ->timeout(10)->withHeaders(['Idempotency-Key' => 'booking-refund-'.$payment->id])
+            ->timeout((int) config('services.stripe.timeout_seconds', 10))
+            ->withHeaders(['Idempotency-Key' => config('booking.payment.refund_idempotency_key_prefix', 'booking-refund-').$payment->id])
             ->post('https://api.stripe.com/v1/refunds', ['payment_intent' => $payment->provider_payment_id]);
 
         if ($response->successful()) {
@@ -74,7 +77,7 @@ final class StripePaymentGateway implements PaymentGateway, PaymentStatusRetriev
     public function retrieve(string $providerPaymentId): ProviderPaymentStatus
     {
         $response = Http::withBasicAuth((string) config('services.stripe.secret'), '')
-            ->timeout(10)
+            ->timeout((int) config('services.stripe.timeout_seconds', 10))
             ->get('https://api.stripe.com/v1/payment_intents/'.urlencode($providerPaymentId));
         if ($response->failed()) {
             $this->logProviderError('payment_intent_retrieve', $response);
@@ -88,7 +91,7 @@ final class StripePaymentGateway implements PaymentGateway, PaymentStatusRetriev
     public function retrieveByAttemptKey(string $attemptKey): ProviderPaymentStatus
     {
         $response = Http::withBasicAuth((string) config('services.stripe.secret'), '')
-            ->timeout(10)
+            ->timeout((int) config('services.stripe.timeout_seconds', 10))
             ->get('https://api.stripe.com/v1/payment_intents/search', [
                 'query' => "metadata['attempt_key']:'".addslashes($attemptKey)."'",
                 'limit' => 1,

@@ -1,16 +1,21 @@
 const poll = (root) => {
     const statusUrl = root.dataset.statusUrl;
     let timer;
-    const terminalStatuses = new Set(['failed', 'refunded', 'requires_refund', 'canceled']);
+    let attempts = 0;
+    const terminalStatuses = new Set((root.dataset.terminalStatuses ?? '').split(',').filter(Boolean));
+    const pollInterval = Number(root.dataset.pollIntervalMs ?? 3000);
+    const errorRetryInterval = Number(root.dataset.errorRetryIntervalMs ?? 5000);
+    const maxUnknownAttempts = Number(root.dataset.maxUnknownAttempts ?? 20);
 
     const check = async () => {
         try {
             const response = await fetch(statusUrl, { headers: { Accept: 'application/json' } });
             if (!response.ok) {
-                timer = window.setTimeout(check, 5000);
+                timer = window.setTimeout(check, errorRetryInterval);
                 return;
             }
             const data = await response.json();
+            attempts += 1;
             if (data.redirect) {
                 window.location.assign(data.redirect);
                 return;
@@ -19,9 +24,15 @@ const poll = (root) => {
                 root.dispatchEvent(new CustomEvent('payment:terminal', { detail: data.status }));
                 return;
             }
-            timer = window.setTimeout(check, 3000);
+            // Unknown is intentionally not terminal, but the browser must
+            // not spin forever when the queue/provider is unavailable.
+            if (data.status === 'unknown' && attempts >= maxUnknownAttempts) {
+                root.dispatchEvent(new CustomEvent('payment:stalled'));
+                return;
+            }
+            timer = window.setTimeout(check, pollInterval);
         } catch {
-            timer = window.setTimeout(check, 5000);
+            timer = window.setTimeout(check, errorRetryInterval);
         }
     };
 
@@ -68,13 +79,18 @@ export const initPaymentStatus = () => {
             if (isProcessing && processingDelayed) {
                 delayedTimer = window.setTimeout(() => {
                     processingDelayed.classList.remove('hidden');
-                }, 45000);
+                }, Number(root.dataset.delayedNoticeMs ?? 45000));
             }
         };
         root.addEventListener('payment:terminal', () => {
             setSubmitting(false);
             setProcessing(false);
             showError(root.dataset.errorLabel ?? '');
+        }, { once: true });
+        root.addEventListener('payment:stalled', () => {
+            setSubmitting(false);
+            setProcessing(false);
+            showError(root.dataset.unknownStalledLabel ?? root.dataset.errorLabel ?? '');
         }, { once: true });
 
         try {

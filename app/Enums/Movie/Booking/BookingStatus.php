@@ -17,6 +17,21 @@ enum BookingStatus: string
         return in_array($this, [self::Held, self::PendingPayment, self::Confirmed], true);
     }
 
+    public function isPayable(): bool
+    {
+        return in_array($this, [self::Held, self::PendingPayment], true);
+    }
+
+    public function isTicketAccessible(): bool
+    {
+        return in_array($this, [self::Confirmed, self::Completed], true);
+    }
+
+    public function isClosed(): bool
+    {
+        return in_array($this, [self::Cancelled, self::Expired, self::NoShow], true);
+    }
+
     public function canTransitionTo(self $target): bool
     {
         return match ($this) {

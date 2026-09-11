@@ -20,6 +20,7 @@ class RetryUnknownRefunds extends Command
     public function handle(): int
     {
         $limit = max(1, (int) $this->option('limit'));
+
         $attempts = RefundAttempt::query()
             ->where('status', RefundAttemptStatus::Unknown)
             ->whereHas('payment', fn ($query) => $query->where('payable_type', Booking::class))
@@ -30,6 +31,7 @@ class RetryUnknownRefunds extends Command
 
         foreach ($attempts as $attempt) {
             $bookingId = $attempt->payment?->getAttribute('payable_id');
+
             if ($bookingId !== null) {
                 RetryUnknownRefund::dispatch((int) $bookingId);
             }

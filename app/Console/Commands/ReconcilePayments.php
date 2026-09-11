@@ -2,10 +2,13 @@
 
 namespace App\Console\Commands;
 
+use App\Enums\Payment\PaymentProvider;
 use App\Enums\Payment\PaymentStatus;
+use App\Jobs\ProcessStripeWebhook;
 use App\Jobs\ReconcilePayment;
 use App\Models\Payments\Payment;
 use App\Models\Payments\PaymentAttempt;
+use App\Models\Payments\PaymentWebhookEvent;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
@@ -20,7 +23,7 @@ class ReconcilePayments extends Command
     public function handle(): int
     {
         $payments = Payment::query()
-            ->whereIn('status', [PaymentStatus::Processing, PaymentStatus::Pending, PaymentStatus::RequiresAction, PaymentStatus::Unknown])
+            ->whereIn('status', PaymentStatus::reconciliationCandidates())
             ->whereNotNull('provider_payment_id')
             ->oldest('updated_at')
             ->limit((int) $this->option('limit'))
@@ -29,7 +32,7 @@ class ReconcilePayments extends Command
         $orphanedPaymentIds = PaymentAttempt::query()
             ->whereNotNull('provider_payment_id')
             ->whereHas('payment', fn ($query) => $query
-                ->whereIn('status', [PaymentStatus::Processing, PaymentStatus::Pending, PaymentStatus::RequiresAction, PaymentStatus::Unknown])
+                ->whereIn('status', PaymentStatus::reconciliationCandidates())
                 ->whereNull('provider_payment_id'))
             ->pluck('payment_id');
 
@@ -39,7 +42,20 @@ class ReconcilePayments extends Command
             ReconcilePayment::dispatch((int) $paymentId);
         }
 
-        $this->info("Dispatched {$payments->count()} payment reconciliation job(s).");
+        $orphanEvents = PaymentWebhookEvent::query()
+            ->forProvider(PaymentProvider::Stripe)
+            ->whereNull('processed_at')
+            ->whereNull('failed_at')
+            ->whereNotNull('provider_payment_id')
+            ->oldest('id')
+            ->limit((int) $this->option('limit'))
+            ->pluck('event_id');
+
+        foreach ($orphanEvents as $eventId) {
+            ProcessStripeWebhook::dispatch((string) $eventId);
+        }
+
+        $this->info("Dispatched {$payments->count()} payment reconciliation job(s) and {$orphanEvents->count()} webhook reconciliation job(s).");
 
         return self::SUCCESS;
     }
