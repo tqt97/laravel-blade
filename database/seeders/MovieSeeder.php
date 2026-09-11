@@ -34,7 +34,22 @@ class MovieSeeder extends Seeder
             ['title' => 'Paper Moons', 'synopsis' => 'A young photographer follows a trail of mysterious postcards across the city.', 'duration_minutes' => 111, 'rating' => 'PG', 'poster_path' => 'https://images.unsplash.com/photo-1485846234645-a62644f84728?auto=format&fit=crop&w=900&q=85', 'release_date' => now()->subDays(3)->toDateString()],
             ['title' => 'After the Rain', 'synopsis' => 'When the storm clears, an old theater reveals one final unfinished performance.', 'duration_minutes' => 118, 'rating' => 'PG-13', 'poster_path' => 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?auto=format&fit=crop&w=900&q=85&sat=-35', 'release_date' => now()->subDays(1)->toDateString()],
             ['title' => 'Echoes of Tomorrow', 'synopsis' => 'A sound designer uncovers a message from the future hidden inside an old recording.', 'duration_minutes' => 105, 'rating' => 'PG-13', 'poster_path' => 'https://images.unsplash.com/photo-1516280440614-37939bbacd81?auto=format&fit=crop&w=900&q=85', 'release_date' => now()->subDays(6)->toDateString()],
-        ])->map(function (array $attributes): Movie {
+        ])->merge(collect([
+            'The Glass Garden', 'Northbound', 'Velvet Skies', 'The Silent Code', 'Wildflower Season',
+            'Gravity of Us', 'The Art of Leaving', 'Blue Hour', 'Signal Fires', 'The Cartographer',
+            'Sunset Archive', 'A Thousand Mornings', 'The Hidden Room', 'Parallel Lines', 'Golden Hour',
+            'River of Light', 'The Long Way Home', 'Small Wonders', 'Chasing Monsoon', 'The Final Reel',
+            'Constellation Road',
+        ])->values()->map(function (string $title, int $index): array {
+            return [
+                'title' => $title,
+                'synopsis' => 'A new story unfolds when an ordinary life takes an unexpected turn.',
+                'duration_minutes' => 98 + ($index % 7) * 5,
+                'rating' => ['G', 'PG', 'PG-13'][$index % 3],
+                'poster_path' => 'https://picsum.photos/seed/cinepass-movie-'.($index + 10).'/900/1350',
+                'release_date' => now()->subDays(7 + $index)->toDateString(),
+            ];
+        }))->map(function (array $attributes): Movie {
             $attributes['slug'] = Str::slug($attributes['title']);
             $attributes['genre'] = match ($attributes['title']) {
                 'Little Comets' => 'Animation · Family',
@@ -63,7 +78,9 @@ class MovieSeeder extends Seeder
             ['name' => 'Cosmos Hall', 'code' => 'COSMOS', 'timezone' => 'Asia/Ho_Chi_Minh'],
             ['name' => 'Galaxy Hall', 'code' => 'GALAXY', 'timezone' => 'Asia/Ho_Chi_Minh'],
             ['name' => 'Eclipse Hall', 'code' => 'ECLIPSE', 'timezone' => 'Asia/Ho_Chi_Minh'],
-        ])->map(function (array $attributes): ScreeningRoom {
+        ])->merge(collect(range(1, 21))->map(function (int $number): array {
+            return ['name' => 'Studio '.str_pad((string) $number, 2, '0', STR_PAD_LEFT), 'code' => 'STUDIO-'.str_pad((string) $number, 2, '0', STR_PAD_LEFT), 'timezone' => 'Asia/Ho_Chi_Minh'];
+        }))->map(function (array $attributes): ScreeningRoom {
             $room = ScreeningRoom::query()->updateOrCreate(['code' => $attributes['code']], $attributes + ['is_active' => true]);
             for ($row = 0; $row < 6; $row++) {
                 for ($number = 1; $number <= 12; $number++) {
@@ -75,11 +92,7 @@ class MovieSeeder extends Seeder
         });
 
         $screenings = collect();
-        $dailyShowtimes = [
-            [9, 14, 19],
-            [10, 15, 20],
-            [11, 16, 21],
-        ];
+        $dailyShowtimes = [[9, 14, 19], [10, 15, 20], [11, 16, 21]];
         foreach ($movies as $movieIndex => $movie) {
             $room = $rooms[$movieIndex];
             foreach ([0, 1, 2] as $dayOffset) {

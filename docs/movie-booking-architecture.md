@@ -235,7 +235,7 @@ php artisan app:outbox-publish
 php artisan schedule:work
 ```
 
-`MovieSeeder` tạo 9 phim, 9 phòng, ghế thường/VIP, 3 suất chiếu mỗi ngày trong 3 ngày liên tiếp cho từng phim (81 screening rows), combo, order paid có QR và order held. Các khung giờ được xoay theo ngày để dữ liệu UI đa dạng nhưng vẫn deterministic khi chạy lại. Seeder dùng `updateOrCreate`, nhưng dữ liệu order demo chỉ tạo một lần cho user `user@gmail.com`.
+`MovieSeeder` tạo 30 phim, 30 phòng, ghế thường/VIP, 3 suất chiếu mỗi ngày trong 3 ngày liên tiếp cho từng phim (270 screening rows), combo, order paid có QR và order held. Các khung giờ được xoay theo ngày để dữ liệu UI đa dạng nhưng vẫn deterministic khi chạy lại. Mỗi phim dùng một phòng demo riêng để 3 suất trong ngày không bị conflict. Seeder dùng `updateOrCreate`, nhưng dữ liệu order demo chỉ tạo một lần cho user `user@gmail.com`.
 
 Production cần Redis/SQS cho queue, shared cache cho scheduler, Stripe webhook secret, worker outbox, alert dead-letter, structured logs và metrics cho hold conflict, payment failure, refund, check-in, queue lag và booking latency.
 
@@ -2194,7 +2194,7 @@ screening_seats  0.414 ms/query
 bookings         0.437 ms/query
 ```
 
-`EXPLAIN` cho thấy `screenings` đang dùng `screenings_status_index` và `Using filesort`; `bookings` đang dùng unique index theo `user_id` nhưng vẫn `Using filesort`. Dataset seed hiện có 81 screening rows, vẫn chưa đủ để kết luận production cần index mới. Khi dữ liệu lớn, cần benchmark lại và cân nhắc index phủ cho pattern lọc/sắp xếp thực tế.
+`EXPLAIN` cho thấy `screenings` đang dùng `screenings_status_index` và `Using filesort`; `bookings` đang dùng unique index theo `user_id` nhưng vẫn `Using filesort`. Dataset seed hiện có 270 screening rows, vẫn chưa đủ để kết luận production cần index mới. Khi dữ liệu lớn, cần benchmark lại và cân nhắc index phủ cho pattern lọc/sắp xếp thực tế.
 
 Availability seat hiện dùng composite index `screening_id, status, held_until` theo đúng access pattern. Kết quả local chưa đại diện cho tải production.
 
