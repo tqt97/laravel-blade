@@ -4,6 +4,7 @@ import { initLanguageMenus } from './modules/language-menus.js';
 import { initUserSelection } from './modules/user-selection.js';
 import { initUserShell } from './modules/user-shell.js';
 import { initNotificationBells } from './modules/notification-bell.js';
+import { initUserMenus } from './modules/user-menu.js';
 
 initTheme();
 initPasswordControls();
@@ -14,6 +15,7 @@ initModals();
 initUserSelection();
 initToasts();
 initNotificationBells();
+initUserMenus();
 if (document.querySelector('[data-seat-picker]')) {
     import('./modules/seat-picker.js').then(({ initSeatPickers }) => initSeatPickers());
 }

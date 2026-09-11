@@ -1,5 +1,5 @@
 <x-layouts.movie :title="$screening->movie->title" :description="__('cinema.public.choose_seats') . ' · ' . $screening->movie->title">
-    <div class="mx-auto max-w-5xl space-y-8 px-5 py-12 sm:px-8">
+    <div class="mx-auto max-w-6xl space-y-8 px-5 py-12 sm:px-8">
         <x-cinema.booking-stepper current="seats" />
         <div>
             <a href="{{ route('cinema.movies.show', $screening->movie) }}"

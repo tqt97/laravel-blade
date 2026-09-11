@@ -56,6 +56,13 @@ class MovieSeeder extends Seeder
         $rooms = collect([
             ['name' => 'Aurora Hall', 'code' => 'AURORA', 'timezone' => 'Asia/Ho_Chi_Minh'],
             ['name' => 'Starlight Hall', 'code' => 'STARLIGHT', 'timezone' => 'Asia/Ho_Chi_Minh'],
+            ['name' => 'Moonlight Hall', 'code' => 'MOONLIGHT', 'timezone' => 'Asia/Ho_Chi_Minh'],
+            ['name' => 'Nova Hall', 'code' => 'NOVA', 'timezone' => 'Asia/Ho_Chi_Minh'],
+            ['name' => 'Orbit Hall', 'code' => 'ORBIT', 'timezone' => 'Asia/Ho_Chi_Minh'],
+            ['name' => 'Stellar Hall', 'code' => 'STELLAR', 'timezone' => 'Asia/Ho_Chi_Minh'],
+            ['name' => 'Cosmos Hall', 'code' => 'COSMOS', 'timezone' => 'Asia/Ho_Chi_Minh'],
+            ['name' => 'Galaxy Hall', 'code' => 'GALAXY', 'timezone' => 'Asia/Ho_Chi_Minh'],
+            ['name' => 'Eclipse Hall', 'code' => 'ECLIPSE', 'timezone' => 'Asia/Ho_Chi_Minh'],
         ])->map(function (array $attributes): ScreeningRoom {
             $room = ScreeningRoom::query()->updateOrCreate(['code' => $attributes['code']], $attributes + ['is_active' => true]);
             for ($row = 0; $row < 6; $row++) {
@@ -68,15 +75,35 @@ class MovieSeeder extends Seeder
         });
 
         $screenings = collect();
+        $dailyShowtimes = [
+            [9, 14, 19],
+            [10, 15, 20],
+            [11, 16, 21],
+        ];
         foreach ($movies as $movieIndex => $movie) {
-            $room = $rooms[$movieIndex % $rooms->count()];
-            foreach ([11, 15, 19] as $hour) {
-                $startsAt = CarbonImmutable::tomorrow($room->timezone)->addDays($movieIndex)->setTime($hour, 0);
-                $screening = Screening::query()->where('movie_id', $movie->id)->where('screening_room_id', $room->id)->where('starts_at', $startsAt)->first();
-                if ($screening === null) {
-                    $screening = app(CreateScreening::class)->execute($movie, $room, $startsAt->toDateTimeString(), $startsAt->addMinutes($movie->duration_minutes + 20)->toDateTimeString(), 100000, 'VND', ['vip' => 150000]);
+            $room = $rooms[$movieIndex];
+            foreach ([0, 1, 2] as $dayOffset) {
+                $hours = $dailyShowtimes[($movieIndex + $dayOffset) % count($dailyShowtimes)];
+                foreach ($hours as $hour) {
+                    $startsAt = CarbonImmutable::tomorrow($room->timezone)->addDays($dayOffset)->setTime($hour, 0);
+                    $screening = Screening::query()
+                        ->where('movie_id', $movie->id)
+                        ->where('screening_room_id', $room->id)
+                        ->where('starts_at', $startsAt)
+                        ->first();
+                    if ($screening === null) {
+                        $screening = app(CreateScreening::class)->execute(
+                            $movie,
+                            $room,
+                            $startsAt->toDateTimeString(),
+                            $startsAt->addMinutes($movie->duration_minutes + 20)->toDateTimeString(),
+                            100000,
+                            'VND',
+                            ['vip' => 150000],
+                        );
+                    }
+                    $screenings->push($screening);
                 }
-                $screenings->push($screening);
             }
         }
 
