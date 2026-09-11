@@ -2,8 +2,11 @@
 
 namespace App\Actions\Movie\Booking;
 
+use App\Enums\Infrastructure\OutboxEventType;
+use App\Enums\Movie\Booking\BookingStatus;
 use App\Enums\Movie\Seating\ScreeningSeatStatus;
 use App\Enums\Movie\Ticketing\TicketStatus;
+use App\Models\Infrastructure\OutboxMessage;
 use App\Models\Movie\Booking;
 use App\Models\Movie\Screening;
 use App\Models\Movie\ScreeningSeat;
@@ -18,7 +21,7 @@ final class HoldSeats
     /**
      * @param  list<int>  $seatIds
      */
-    public function execute(User $user, Screening $screening, array $seatIds, string $idempotencyKey): Booking
+    public function execute(User $user, Screening $screening, array $seatIds, string $idempotencyKey, bool $manageTransaction = true): Booking
     {
         $seatIds = array_values(array_unique(array_map(static fn (int|string $id): int => (int) $id, $seatIds)));
         sort($seatIds);
@@ -33,7 +36,7 @@ final class HoldSeats
             ]));
         }
 
-        return DB::transaction(function () use ($user, $screening, $seatIds, $idempotencyKey): Booking {
+        $operation = function () use ($user, $screening, $seatIds, $idempotencyKey): Booking {
             User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
 
             $hash = hash('sha256', $screening->id.'|'.implode(',', $seatIds));
@@ -57,6 +60,14 @@ final class HoldSeats
 
             if (! $screening->isBookable()) {
                 throw new SeatHoldConflict(__('booking.messages.screening_outside_window'));
+            }
+
+            if (Booking::query()
+                ->where('user_id', $user->id)
+                ->where('screening_id', $screening->id)
+                ->activeHold()
+                ->exists()) {
+                throw new SeatHoldConflict(__('booking.messages.active_hold_exists'));
             }
 
             $rows = ScreeningSeat::query()
@@ -102,6 +113,17 @@ final class HoldSeats
                 'pricing_currency' => $screening->getAttribute('currency'),
             ]);
 
+            OutboxMessage::query()->create([
+                'aggregate_type' => Booking::class,
+                'aggregate_id' => $booking->getKey(),
+                'event_type' => OutboxEventType::BookingCreated,
+                'payload' => [
+                    'booking_id' => $booking->getKey(),
+                    'status' => BookingStatus::Held->value,
+                    'locale' => app()->getLocale(),
+                ],
+            ]);
+
             foreach ($rows as $row) {
                 $row->forceFill([
                     'status' => ScreeningSeatStatus::Held,
@@ -115,7 +137,7 @@ final class HoldSeats
                     'ticket_code' => 'HOLD-'.$booking->id.'-'.$row->seat_id,
                     'price_minor_units' => $row->getAttribute('price_minor_units'),
                     'currency' => $row->getAttribute('currency'),
-                    'status' => TicketStatus::Issued,
+                    'status' => TicketStatus::Reserved,
                 ]);
             }
 
@@ -124,6 +146,8 @@ final class HoldSeats
                 'screening.movie',
                 'screening.room',
             ]);
-        }, 3);
+        };
+
+        return $manageTransaction ? DB::transaction($operation, 3) : $operation();
     }
 }

@@ -3,6 +3,7 @@
 namespace App\Actions\Movie\Booking;
 
 use App\Enums\Inventory\InventoryMovementType;
+use App\Enums\Inventory\InventoryStockMode;
 use App\Enums\Movie\Booking\CouponReservationStatus;
 use App\Enums\Movie\Seating\ScreeningSeatStatus;
 use App\Enums\Movie\Ticketing\TicketStatus;
@@ -11,6 +12,7 @@ use App\Models\Movie\Booking;
 use App\Models\Movie\Concession;
 use App\Models\Movie\Coupon;
 use App\Models\Movie\CouponReservation;
+use App\Models\Movie\CouponUserUsage;
 use App\Models\Movie\ScreeningSeat;
 
 final class ReleaseBookingResources
@@ -64,6 +66,7 @@ final class ReleaseBookingResources
                     'concession_id' => $concession->getKey(),
                     'booking_id' => $booking->getKey(),
                     'type' => InventoryMovementType::Release,
+                    'stock_mode' => InventoryStockMode::Finite,
                     'quantity_delta' => (int) $line->getAttribute('quantity'),
                     'stock_before' => $stockBefore,
                     'stock_after' => $stockBefore + (int) $line->getAttribute('quantity'),
@@ -87,9 +90,16 @@ final class ReleaseBookingResources
 
             if ($coupon !== null && $coupon->used_count > 0) {
                 $coupon->decrement('used_count');
+                $coupon->decrement('reserved_count');
             }
 
             $reservation->update(['status' => CouponReservationStatus::Released]);
+            CouponUserUsage::query()
+                ->where('coupon_id', $reservation->coupon_id)
+                ->where('user_id', $booking->user_id)
+                ->where('booking_id', $booking->getKey())
+                ->where('status', CouponReservationStatus::Reserved)
+                ->update(['status' => CouponReservationStatus::Released]);
         }
     }
 }

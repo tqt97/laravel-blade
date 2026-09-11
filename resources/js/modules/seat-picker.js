@@ -174,7 +174,10 @@ export const initSeatPickers = () => {
                 const response = await fetch(url, { headers: { Accept: 'application/json' }, cache: 'no-store', signal });
                 if (!response.ok) return;
                 const data = await response.json();
+                if (data.availability_version && data.availability_version === lastAvailabilityVersion) return;
+                lastAvailabilityVersion = data.availability_version;
                 let changed = false;
+                const lostSeatLabels = [];
                 buttons.forEach((button) => {
                     const state = data.seats?.[button.dataset.seatId];
                     const available = typeof state === 'boolean' ? state : state?.available === true;
@@ -182,6 +185,7 @@ export const initSeatPickers = () => {
                     button.dataset.seatOwnHold = String(ownedByCurrentBooking);
                     const selectable = available || ownedByCurrentBooking;
                     if (!selectable && button.dataset.selected === 'true') {
+                        lostSeatLabels.push(button.dataset.seatLabel ?? button.getAttribute('title') ?? '');
                         button.dataset.selected = 'false';
                         changed = true;
                     }
@@ -196,7 +200,7 @@ export const initSeatPickers = () => {
                     const notice = document.createElement('p');
                     notice.className = 'rounded-xl bg-warning-soft p-4 text-sm text-warning-foreground';
                     notice.setAttribute('role', 'alert');
-                    notice.textContent = picker.dataset.seatConflictLabel ?? '';
+                    notice.textContent = (picker.dataset.seatConflictLabel ?? '').replace(':seats', lostSeatLabels.filter(Boolean).join(', '));
                     picker.before(notice);
                     window.setTimeout(() => notice.remove(), 6000);
                 }
@@ -454,6 +458,7 @@ export const initSeatPickers = () => {
 
         let availabilityTimer;
         let availabilityController;
+        let lastAvailabilityVersion;
         const refresh = async () => {
             availabilityController?.abort();
             availabilityController = new AbortController();

@@ -68,7 +68,7 @@ return [
     ],
     'seats' => [
         'vip' => 'VIP seat',
-        'availability_changed' => 'Seat availability changed. Please review your selection.',
+        'availability_changed' => 'Seat availability changed. These seats are no longer available: :seats.',
         'suggest' => 'Suggest good seats',
         'screen' => 'Screen',
         'available' => 'Available',

@@ -15,7 +15,7 @@ enum StripeWebhookEventType: string
         return match ($this) {
             self::Succeeded => PaymentStatus::Succeeded,
             self::PaymentFailed, self::Canceled => PaymentStatus::Failed,
-            self::Processing => PaymentStatus::Pending,
+            self::Processing => PaymentStatus::Processing,
             self::RequiresAction => PaymentStatus::RequiresAction,
         };
     }

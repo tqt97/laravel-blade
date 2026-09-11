@@ -20,6 +20,10 @@ const poll = (root) => {
                 window.location.assign(data.redirect);
                 return;
             }
+            if (data.status === 'requires_payment_method') {
+                root.dispatchEvent(new CustomEvent('payment:method-required'));
+                return;
+            }
             if (terminalStatuses.has(data.status)) {
                 root.dispatchEvent(new CustomEvent('payment:terminal', { detail: data.status }));
                 return;
@@ -91,6 +95,10 @@ export const initPaymentStatus = () => {
             setSubmitting(false);
             setProcessing(false);
             showError(root.dataset.unknownStalledLabel ?? root.dataset.errorLabel ?? '');
+        }, { once: true });
+        root.addEventListener('payment:method-required', () => {
+            setSubmitting(false);
+            setProcessing(false);
         }, { once: true });
 
         try {

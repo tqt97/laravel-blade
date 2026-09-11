@@ -3,6 +3,7 @@
 namespace App\Models\Inventory;
 
 use App\Enums\Inventory\InventoryMovementType;
+use App\Enums\Inventory\InventoryStockMode;
 use App\Models\Movie\Booking;
 use App\Models\Movie\Concession;
 use App\Models\User;
@@ -10,7 +11,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['concession_id', 'booking_id', 'actor_id', 'type', 'quantity_delta', 'stock_before', 'stock_after', 'reference', 'idempotency_key', 'metadata'])]
+#[Fillable(['concession_id', 'booking_id', 'actor_id', 'type', 'stock_mode', 'quantity_delta', 'stock_before', 'stock_after', 'reference', 'idempotency_key', 'metadata'])]
 class InventoryMovement extends Model
 {
     protected $table = 'concession_inventory_movements';
@@ -34,6 +35,7 @@ class InventoryMovement extends Model
     {
         return [
             'type' => InventoryMovementType::class,
+            'stock_mode' => InventoryStockMode::class,
             'quantity_delta' => 'integer',
             'stock_before' => 'integer',
             'stock_after' => 'integer',

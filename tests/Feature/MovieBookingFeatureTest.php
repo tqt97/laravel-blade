@@ -8,11 +8,15 @@ use App\Actions\Movie\Booking\FinalizeSuccessfulPayment;
 use App\Actions\Movie\Booking\HoldSeats;
 use App\Actions\Movie\Booking\PayBooking;
 use App\Actions\Movie\Booking\RefundBooking;
+use App\Actions\Movie\Booking\TransitionBooking;
 use App\Actions\Movie\Catalog\CreateScreening;
 use App\Actions\Movie\Concessions\AddConcessions;
 use App\Actions\Movie\Ticketing\CheckInTicket;
+use App\Actions\Payment\TransitionPayment;
 use App\Contracts\PaymentGateway;
 use App\Enums\Infrastructure\OutboxEventType;
+use App\Enums\Inventory\InventoryMovementType;
+use App\Enums\Inventory\InventoryStockMode;
 use App\Enums\Movie\Booking\BookingStatus;
 use App\Enums\Movie\Seating\ScreeningSeatStatus;
 use App\Enums\Movie\Ticketing\TicketStatus;
@@ -48,6 +52,59 @@ use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
 
 uses(RefreshDatabase::class);
+
+it('records booking transition effects only through the transition action', function (): void {
+    $room = ScreeningRoom::factory()->create();
+    $seat = Seat::factory()->for($room, 'room')->create();
+    $screening = app(CreateScreening::class)->execute(Movie::factory()->create(), $room, now()->addDay()->toDateTimeString(), now()->addDay()->addHours(2)->toDateTimeString(), 100000);
+    $booking = app(HoldSeats::class)->execute(User::factory()->create(), $screening, [$seat->id], 'transition-boundary');
+
+    expect($booking->transitionAudits()->count())->toBe(0);
+
+    app(TransitionBooking::class)->execute($booking, BookingStatus::PendingPayment);
+
+    expect($booking->refresh()->status)->toBe(BookingStatus::PendingPayment)
+        ->and($booking->transitionAudits()->where('from_status', BookingStatus::Held->value)->where('to_status', BookingStatus::PendingPayment->value)->count())->toBe(1)
+        ->and(OutboxMessage::query()->where('aggregate_id', $booking->id)->where('event_type', OutboxEventType::BookingStatusChanged)->count())->toBe(1);
+});
+
+it('does not emit booking transition effects for an unrelated model save or mass update', function (): void {
+    $room = ScreeningRoom::factory()->create();
+    $seat = Seat::factory()->for($room, 'room')->create();
+    $screening = app(CreateScreening::class)->execute(Movie::factory()->create(), $room, now()->addDay()->toDateTimeString(), now()->addDay()->addHours(2)->toDateTimeString(), 100000);
+    $booking = app(HoldSeats::class)->execute(User::factory()->create(), $screening, [$seat->id], 'transition-no-observer');
+    $outboxCount = OutboxMessage::query()->where('aggregate_id', $booking->id)->count();
+
+    $booking->update(['cancellation_reason' => 'admin note']);
+    Booking::query()->whereKey($booking->id)->update(['cancellation_reason' => 'imported note']);
+
+    expect($booking->transitionAudits()->count())->toBe(0)
+        ->and(OutboxMessage::query()->where('aggregate_id', $booking->id)->count())->toBe($outboxCount);
+});
+
+it('transitions payment and its open attempt together', function (): void {
+    $payment = Payment::query()->create([
+        'payable_type' => Booking::class,
+        'payable_id' => 999999,
+        'provider' => 'fake',
+        'status' => PaymentStatus::Processing,
+        'amount_minor_units' => 100000,
+        'currency' => 'VND',
+    ]);
+    $payment->attempts()->create([
+        'attempt_key' => 'transition-payment-attempt',
+        'status' => PaymentAttemptStatus::Processing,
+        'amount_minor_units' => $payment->amount_minor_units,
+        'currency' => $payment->currency,
+        'started_at' => now(),
+    ]);
+
+    app(TransitionPayment::class)->execute($payment, PaymentAttemptStatus::Succeeded, 'pi_transition', targetStatus: PaymentStatus::Succeeded);
+
+    expect($payment->refresh()->status)->toBe(PaymentStatus::Succeeded)
+        ->and($payment->attempts()->latest('id')->firstOrFail()->status)->toBe(PaymentAttemptStatus::Succeeded)
+        ->and($payment->attempts()->latest('id')->firstOrFail()->provider_payment_id)->toBe('pi_transition');
+});
 
 it('lets guests browse movies and seats before requiring authentication to hold them', function (): void {
     $room = ScreeningRoom::factory()->create();
@@ -154,6 +211,35 @@ it('returns the same booking for a repeated idempotent hold request', function (
     $second = app(HoldSeats::class)->execute($user, $screening, [$seat->id], 'same-request');
 
     expect($second->is($first))->toBeTrue()->and(Booking::query()->where('user_id', $user->id)->count())->toBe(1);
+});
+
+it('allows only one active hold per user and screening', function (): void {
+    $room = ScreeningRoom::factory()->create();
+    $seat = Seat::factory()->for($room, 'room')->create();
+    $screening = app(CreateScreening::class)->execute(Movie::factory()->create(), $room, now()->addDay()->toDateTimeString(), now()->addDay()->addHours(2)->toDateTimeString(), 100000);
+    $user = User::factory()->create();
+
+    $booking = app(HoldSeats::class)->execute($user, $screening, [$seat->id], 'first-screening-hold');
+
+    expect(fn () => app(HoldSeats::class)->execute($user, $screening, [$seat->id], 'second-screening-hold'))
+        ->toThrow(SeatHoldConflict::class)
+        ->and($booking->items()->firstOrFail()->status)->toBe(TicketStatus::Reserved);
+});
+
+it('records combo reservations with explicit finite or unlimited stock semantics', function (): void {
+    $room = ScreeningRoom::factory()->create();
+    $seat = Seat::factory()->for($room, 'room')->create();
+    $screening = app(CreateScreening::class)->execute(Movie::factory()->create(), $room, now()->addDay()->toDateTimeString(), now()->addDay()->addHours(2)->toDateTimeString(), 100000);
+    $booking = app(HoldSeats::class)->execute(User::factory()->create(), $screening, [$seat->id], 'inventory-mode');
+    $finite = Concession::query()->create(['name' => 'Finite Combo', 'sku' => 'FINITE-MODE', 'price_minor_units' => 50000, 'currency' => 'VND', 'stock' => 3, 'is_active' => true]);
+    $unlimited = Concession::query()->create(['name' => 'Unlimited Combo', 'sku' => 'UNLIMITED-MODE', 'price_minor_units' => 50000, 'currency' => 'VND', 'stock' => null, 'is_active' => true]);
+
+    app(AddConcessions::class)->execute($booking, [$finite->id => 1, $unlimited->id => 1]);
+
+    expect(InventoryMovement::query()->where('booking_id', $booking->id)->where('type', InventoryMovementType::Reserve)->where('stock_mode', InventoryStockMode::Finite)->count())->toBe(1)
+        ->and(InventoryMovement::query()->where('booking_id', $booking->id)->where('type', InventoryMovementType::Reserve)->where('stock_mode', InventoryStockMode::Unlimited)->count())->toBe(1)
+        ->and(InventoryMovement::query()->where('booking_id', $booking->id)->where('stock_mode', InventoryStockMode::Unlimited)->firstOrFail()->stock_before)->toBeNull()
+        ->and(InventoryMovement::query()->where('booking_id', $booking->id)->where('stock_mode', InventoryStockMode::Unlimited)->firstOrFail()->stock_after)->toBeNull();
 });
 
 it('replaces a held booking when the user edits the selected seats', function (): void {
@@ -469,7 +555,7 @@ it('does not allow combo changes after payment has started', function (): void {
     $seat = Seat::factory()->for($room, 'room')->create();
     $screening = app(CreateScreening::class)->execute(Movie::factory()->create(), $room, now()->addDay()->toDateTimeString(), now()->addDay()->addHours(2)->toDateTimeString(), 100000);
     $booking = app(HoldSeats::class)->execute(User::factory()->create(), $screening, [$seat->id], 'combo-pending-1');
-    $booking->transitionTo(BookingStatus::PendingPayment);
+    app(TransitionBooking::class)->execute($booking, BookingStatus::PendingPayment);
     $booking->save();
     $concession = Concession::query()->create(['name' => 'Combo', 'sku' => 'COMBO-PENDING', 'price_minor_units' => 50000, 'currency' => 'VND', 'stock' => 3, 'is_active' => true]);
 
@@ -799,7 +885,7 @@ it('creates an in-app notification when a booking payment succeeds', function ()
 
     app(PublishOutboxMessage::class, ['outboxMessageId' => $message->id])->handle();
 
-    Mail::assertSent(BookingConfirmationMail::class);
+    Mail::assertSent(BookingConfirmationMail::class, fn (BookingConfirmationMail $mail): bool => $mail->headers()->messageId === 'booking-confirmation-'.$booking->id.'@'.parse_url((string) config('app.url'), PHP_URL_HOST));
 
     expect($user->notifications()->count())->toBe(1)
         ->and($user->notifications()->firstOrFail()->data['event'])->toBe('booking_confirmed');

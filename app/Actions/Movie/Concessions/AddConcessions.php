@@ -3,6 +3,8 @@
 namespace App\Actions\Movie\Concessions;
 
 use App\Enums\Inventory\InventoryMovementType;
+use App\Enums\Inventory\InventoryStockMode;
+use App\Enums\Movie\Booking\CouponPricingScope;
 use App\Enums\Movie\Booking\CouponType;
 use App\Models\Inventory\InventoryMovement;
 use App\Models\Movie\Booking;
@@ -146,11 +148,19 @@ final class AddConcessions
             InventoryMovement::query()->create([
                 'concession_id' => $concession->getKey(),
                 'booking_id' => $booking->getKey(),
-                'type' => $quantityDelta > 0 ? InventoryMovementType::SaleReserve : InventoryMovementType::Release,
+                'type' => $quantityDelta > 0 ? InventoryMovementType::Reserve : InventoryMovementType::Release,
+                'stock_mode' => $stock === null ? InventoryStockMode::Unlimited : InventoryStockMode::Finite,
                 'quantity_delta' => -$quantityDelta,
                 'stock_before' => $stockBefore,
                 'stock_after' => $stock === null ? null : (int) $concession->fresh()->stock,
                 'reference' => 'booking-'.$booking->getKey(),
+                'idempotency_key' => sprintf(
+                    'booking:%d:concession:%d:from:%d:to:%d',
+                    $booking->getKey(),
+                    $concession->getKey(),
+                    $currentQuantity,
+                    $desiredQuantity,
+                ),
             ]);
 
             $totalDelta += $newTotal - $currentTotal;
@@ -161,17 +171,23 @@ final class AddConcessions
         if ($booking->coupon_id !== null) {
             $coupon = Coupon::query()->whereKey($booking->coupon_id)->first();
             if ($coupon !== null) {
+                $scope = CouponPricingScope::tryFrom((string) $coupon->getRawOriginal('pricing_scope')) ?? CouponPricingScope::All;
+                $discountBase = match ($scope) {
+                    CouponPricingScope::All => $newSubtotal,
+                    CouponPricingScope::TicketsOnly => (int) $booking->items()->sum('price_minor_units'),
+                    CouponPricingScope::ConcessionsOnly => (int) $booking->concessions()->sum('total_minor_units'),
+                };
                 $couponType = CouponType::from((string) $coupon->getRawOriginal('type'));
                 $couponValue = (int) $coupon->getAttribute('value');
                 $discount = $couponType === CouponType::Percentage
-                    ? intdiv($newSubtotal * min(100, $couponValue), 100)
+                    ? intdiv($discountBase * min(100, $couponValue), 100)
                     : $couponValue;
 
                 if ($coupon->maximum_discount_minor_units !== null) {
                     $discount = min($discount, $coupon->maximum_discount_minor_units);
                 }
 
-                $discount = min($discount, $newSubtotal);
+                $discount = min($discount, $discountBase);
             }
         }
         $booking->forceFill([

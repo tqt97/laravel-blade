@@ -25,6 +25,7 @@ class ReconcilePayments extends Command
         $payments = Payment::query()
             ->whereIn('status', PaymentStatus::reconciliationCandidates())
             ->whereNotNull('provider_payment_id')
+            ->where(fn ($query) => $query->whereNull('next_reconcile_at')->orWhere('next_reconcile_at', '<=', now()))
             ->oldest('updated_at')
             ->limit((int) $this->option('limit'))
             ->pluck('id');

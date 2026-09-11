@@ -101,7 +101,7 @@
                         <div class="flex items-start justify-between gap-3">
                             <div>
                                 <p class="text-xs font-semibold uppercase tracking-[0.16em] text-primary">
-                                    {{ __('booking.checkout.total') }}</p>
+                                    {{ __('booking.checkout.subtotal') }}</p>
                                 <h2 class="mt-1 text-lg font-semibold">{{ __('booking.checkout.price_summary') }}</h2>
                             </div><span
                                 class="rounded-full bg-card px-2.5 py-1 text-xs font-semibold text-primary">{{ $currency }}</span>
@@ -127,7 +127,7 @@
                             @endif
                         </dl>
                         <div class="mt-5 flex items-end justify-between gap-4 border-t border-primary/20 pt-5"><span
-                                class="text-sm font-semibold">{{ __('booking.checkout.total') }}</span><strong
+                                class="text-sm font-semibold">{{ __('booking.checkout.subtotal') }}</span><strong
                                 data-checkout-grand-total data-grand-total="{{ (int) $booking->total_minor_units }}"
                                 class="text-xl text-primary">{{ \App\Support\Money\Money::fromMinorUnits((int) $booking->total_minor_units, $currency)->format() }}</strong>
                         </div>
@@ -171,7 +171,7 @@
                 role="region" aria-label="{{ __('booking.checkout.price_summary') }}">
                 <div class="mx-auto flex max-w-6xl items-center gap-3">
                     <div class="min-w-0 flex-1">
-                        <p class="text-xs text-muted-foreground">{{ __('booking.checkout.total') }}</p>
+                        <p class="text-xs text-muted-foreground">{{ __('booking.checkout.subtotal') }}</p>
                         <p class="truncate text-base font-bold text-primary" data-mobile-checkout-total>
                             {{ \App\Support\Money\Money::fromMinorUnits((int) $booking->total_minor_units, $currency)->format() }}
                         </p>

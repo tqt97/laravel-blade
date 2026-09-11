@@ -14,11 +14,11 @@ final class StripePaymentGateway implements PaymentGateway, PaymentStatusRetriev
 {
     public function charge(Payment $payment): PaymentResult
     {
-        $metadata = $payment->getAttribute('metadata');
-        $metadata = is_array($metadata) ? $metadata : [];
+        $attempt = $payment->attempts()->latest('id')->first();
         $attemptKey = $payment->attempts()->latest('id')->value('attempt_key')
             ?: config('booking.payment.attempt_key_prefix', 'booking-payment-').Str::uuid();
-        $hasPaymentMethod = filled($metadata['payment_method_id'] ?? null);
+        $paymentMethodReference = $attempt?->getAttribute('payment_method_reference');
+        $hasPaymentMethod = filled($paymentMethodReference);
         $parameters = [
             'amount' => $payment->amount_minor_units,
             'currency' => strtolower($payment->currency),
@@ -30,7 +30,7 @@ final class StripePaymentGateway implements PaymentGateway, PaymentStatusRetriev
 
         if ($hasPaymentMethod) {
             $parameters['confirm'] = 'true';
-            $parameters['payment_method'] = $metadata['payment_method_id'];
+            $parameters['payment_method'] = $paymentMethodReference;
         }
 
         $response = Http::asForm()->withBasicAuth((string) config('services.stripe.secret'), '')
@@ -46,7 +46,8 @@ final class StripePaymentGateway implements PaymentGateway, PaymentStatusRetriev
 
         $status = match ($response->json('status')) {
             'succeeded' => 'succeeded',
-            'requires_action', 'requires_confirmation', 'requires_payment_method' => 'requires_action',
+            'requires_action', 'requires_confirmation' => 'requires_action',
+            'requires_payment_method' => 'requires_payment_method',
             'processing' => 'processing',
             default => 'failed',
         };
@@ -119,7 +120,8 @@ final class StripePaymentGateway implements PaymentGateway, PaymentStatusRetriev
     {
         return match ($status) {
             'succeeded' => 'succeeded',
-            'requires_action', 'requires_confirmation', 'requires_payment_method' => 'requires_action',
+            'requires_action', 'requires_confirmation' => 'requires_action',
+            'requires_payment_method' => 'requires_payment_method',
             'processing' => 'processing',
             'canceled' => 'canceled',
             default => 'failed',

@@ -4,7 +4,11 @@
 
 use App\Http\Controllers\Movie\PublicMovieController;
 use App\Http\Controllers\RedirectToMovieCatalogueController;
+use App\Http\Controllers\User\BookingCancellationController;
+use App\Http\Controllers\User\BookingConcessionController;
 use App\Http\Controllers\User\BookingController;
+use App\Http\Controllers\User\BookingCouponController;
+use App\Http\Controllers\User\BookingPaymentController;
 use App\Http\Controllers\User\DashboardController;
 use App\Http\Controllers\User\NotificationController;
 use App\Http\Controllers\User\ScreeningController;
@@ -33,11 +37,11 @@ Route::get('/bookings', [BookingController::class, 'index'])->name('bookings.ind
 Route::get('/bookings/{booking}', [BookingController::class, 'show'])->name('bookings.show');
 Route::get('/bookings/{booking}/checkout', [BookingController::class, 'checkout'])->name('bookings.checkout');
 Route::get('/bookings/{booking}/success', [BookingController::class, 'success'])->name('bookings.success');
-Route::get('/bookings/{booking}/payment-action', [BookingController::class, 'paymentAction'])->name('bookings.payment-action');
-Route::get('/bookings/{booking}/payment-status', [BookingController::class, 'paymentStatus'])->name('bookings.payment-status');
-Route::get('/bookings/{booking}/combo-availability', [BookingController::class, 'comboAvailability'])->middleware('throttle:availability')->name('bookings.combo-availability');
-Route::get('/bookings/{booking}/combos', [BookingController::class, 'combos'])->name('bookings.combos');
-Route::post('/bookings/{booking}/combos', [BookingController::class, 'addCombos'])->middleware('throttle:booking-mutations')->name('bookings.combos.store');
-Route::post('/bookings/{booking}/pay', [BookingController::class, 'pay'])->middleware('throttle:booking-mutations')->name('bookings.pay');
-Route::post('/bookings/{booking}/coupon', [BookingController::class, 'applyCoupon'])->middleware('throttle:booking-mutations')->name('bookings.coupon.apply');
-Route::patch('/bookings/{booking}/cancel', [BookingController::class, 'cancel'])->middleware('throttle:booking-mutations')->name('bookings.cancel');
+Route::get('/bookings/{booking}/payment-action', [BookingPaymentController::class, 'action'])->name('bookings.payment-action');
+Route::get('/bookings/{booking}/payment-status', [BookingPaymentController::class, 'status'])->name('bookings.payment-status');
+Route::get('/bookings/{booking}/combo-availability', [BookingConcessionController::class, 'availability'])->middleware('throttle:availability')->name('bookings.combo-availability');
+Route::get('/bookings/{booking}/combos', [BookingConcessionController::class, 'index'])->name('bookings.combos');
+Route::post('/bookings/{booking}/combos', [BookingConcessionController::class, 'store'])->middleware('throttle:booking-mutations')->name('bookings.combos.store');
+Route::post('/bookings/{booking}/pay', [BookingPaymentController::class, 'pay'])->middleware('throttle:booking-mutations')->name('bookings.pay');
+Route::post('/bookings/{booking}/coupon', [BookingCouponController::class, 'store'])->middleware('throttle:booking-mutations')->name('bookings.coupon.apply');
+Route::patch('/bookings/{booking}/cancel', BookingCancellationController::class)->middleware('throttle:booking-mutations')->name('bookings.cancel');

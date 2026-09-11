@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Actions\Movie\Booking\CancelBooking;
 use App\Actions\Movie\Booking\RefundBooking;
 use App\Http\Controllers\Controller;
-use App\Http\Requests\User\CancelBookingRequest;
+use App\Http\Requests\Admin\CancelBookingRequest;
 use App\Models\Movie\Booking;
 use App\Support\Booking\Exceptions\BookingOperationFailed;
 use App\Support\Booking\Exceptions\InvalidBookingTransition;
@@ -38,6 +38,8 @@ class BookingController extends Controller
 
     public function cancel(CancelBookingRequest $request, Booking $booking, CancelBooking $cancelBooking): RedirectResponse
     {
+        $this->authorize('cancel', $booking);
+
         try {
             $cancelBooking->execute($booking, $request->validated('reason'));
         } catch (InvalidBookingTransition $exception) {
@@ -49,6 +51,8 @@ class BookingController extends Controller
 
     public function refund(Booking $booking, RefundBooking $refundBooking): RedirectResponse
     {
+        $this->authorize('refund', $booking);
+
         try {
             $refundBooking->execute($booking);
         } catch (BookingOperationFailed $exception) {

@@ -5,7 +5,6 @@ namespace App\Models\Movie;
 use App\Enums\Movie\Booking\BookingStatus;
 use App\Models\Payments\Payment;
 use App\Models\User;
-use App\Support\Booking\Exceptions\InvalidBookingTransition;
 use App\Support\Time\BookingClock;
 use Carbon\CarbonImmutable;
 use Database\Factories\Movie\BookingFactory;
@@ -82,17 +81,6 @@ class Booking extends Model
     public function couponReservations(): HasMany
     {
         return $this->hasMany(CouponReservation::class);
-    }
-
-    public function transitionTo(BookingStatus $target): void
-    {
-        $current = BookingStatus::tryFrom((string) $this->getRawOriginal('status'));
-
-        if ($current === null || ! $current->canTransitionTo($target)) {
-            throw new InvalidBookingTransition(__('booking.messages.invalid_transition'));
-        }
-
-        $this->setAttribute('status', $target);
     }
 
     public function scopeActiveHold(Builder $query, ?CarbonImmutable $now = null): void

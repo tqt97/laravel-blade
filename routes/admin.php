@@ -16,26 +16,34 @@ Route::view('/samples', 'admin.samples')->name('samples');
 Route::view('/blank', 'admin.blank')->name('blank');
 
 // Booking operations and reports.
-Route::get('/bookings', [BookingController::class, 'index'])->name('bookings.index');
-Route::get('/reports', BookingReportController::class)->name('reports.index');
+Route::middleware('can:view-bookings')->group(function (): void {
+    Route::get('/bookings', [BookingController::class, 'index'])->name('bookings.index');
+    Route::get('/reports', BookingReportController::class)->name('reports.index');
+});
 
 // Cinema catalogue, rooms, screenings and concessions.
-Route::get('/cinema', [MovieController::class, 'index'])->name('cinema.index');
-Route::get('/cinema/concessions', [MovieController::class, 'concessions'])->name('cinema.concessions.index');
-Route::get('/cinema/coupons', [MovieController::class, 'coupons'])->name('cinema.coupons.index');
-Route::post('/cinema/movies', [MovieController::class, 'storeMovie'])->name('cinema.movies.store');
-Route::post('/cinema/rooms', [MovieController::class, 'storeRoom'])->name('cinema.rooms.store');
-Route::post('/cinema/screenings', [MovieController::class, 'storeScreening'])->name('cinema.screenings.store');
-Route::post('/cinema/concessions', [MovieController::class, 'storeConcession'])->name('cinema.concessions.store');
-Route::post('/cinema/coupons', [MovieController::class, 'storeCoupon'])->name('cinema.coupons.store');
-Route::patch('/cinema/concessions/{concession}', [MovieController::class, 'updateConcession'])->name('cinema.concessions.update');
+Route::middleware('can:manage-cinema')->group(function (): void {
+    Route::get('/cinema', [MovieController::class, 'index'])->name('cinema.index');
+    Route::get('/cinema/coupons', [MovieController::class, 'coupons'])->name('cinema.coupons.index');
+    Route::post('/cinema/movies', [MovieController::class, 'storeMovie'])->name('cinema.movies.store');
+    Route::post('/cinema/rooms', [MovieController::class, 'storeRoom'])->name('cinema.rooms.store');
+    Route::post('/cinema/screenings', [MovieController::class, 'storeScreening'])->name('cinema.screenings.store');
+    Route::post('/cinema/coupons', [MovieController::class, 'storeCoupon'])->name('cinema.coupons.store');
+});
+Route::middleware('can:manage-inventory')->group(function (): void {
+    Route::get('/cinema/concessions', [MovieController::class, 'concessions'])->name('cinema.concessions.index');
+    Route::post('/cinema/concessions', [MovieController::class, 'storeConcession'])->name('cinema.concessions.store');
+    Route::patch('/cinema/concessions/{concession}', [MovieController::class, 'updateConcession'])->name('cinema.concessions.update');
+});
 
 // Booking cancellation/refund operations.
-Route::patch('/bookings/{booking}/cancel', [BookingController::class, 'cancel'])->middleware('throttle:booking-mutations')->name('bookings.cancel');
-Route::post('/bookings/{booking}/refund', [BookingController::class, 'refund'])->middleware('throttle:booking-mutations')->name('bookings.refund');
+Route::middleware(['can:refund-bookings', 'throttle:booking-mutations'])->group(function (): void {
+    Route::patch('/bookings/{booking}/cancel', [BookingController::class, 'cancel'])->name('bookings.cancel');
+    Route::post('/bookings/{booking}/refund', [BookingController::class, 'refund'])->name('bookings.refund');
+});
 
 // Ticket operations and protected settings.
-Route::post('/tickets/check-in', TicketController::class)->middleware('throttle:booking-mutations')->name('tickets.check-in');
+Route::post('/tickets/check-in', TicketController::class)->middleware(['can:check-in-tickets', 'throttle:booking-mutations'])->name('tickets.check-in');
 Route::view('/settings/security', 'admin.settings.security')
     ->middleware('password.confirm')
     ->name('settings.security');

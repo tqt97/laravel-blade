@@ -35,6 +35,9 @@ final class EditBookingSelection
     public function execute(User $user, Screening $screening, array $seatIds, string $idempotencyKey, array $quantities = []): Booking
     {
         return DB::transaction(function () use ($user, $screening, $seatIds, $idempotencyKey, $quantities): Booking {
+            User::query()->whereKey($user->getKey())->lockForUpdate()->firstOrFail();
+            $screening = Screening::query()->whereKey($screening->getKey())->lockForUpdate()->firstOrFail();
+
             $activeHold = Booking::query()
                 ->where('user_id', $user->getKey())
                 ->where('screening_id', $screening->getKey())
@@ -68,17 +71,17 @@ final class EditBookingSelection
                     ->first();
 
                 if ($expiredHold !== null) {
-                    $this->cancelBooking->execute($expiredHold, 'expired_hold_replaced');
+                    $this->cancelBooking->execute($expiredHold, 'expired_hold_replaced', false);
                     $idempotencyKey = (string) Str::uuid();
                 }
             }
 
             if ($activeHold !== null) {
-                $this->cancelBooking->execute($activeHold, 'seat_selection_edited');
+                $this->cancelBooking->execute($activeHold, 'seat_selection_edited', false);
                 $idempotencyKey = (string) Str::uuid();
             }
 
-            $booking = $this->holdSeats->execute($user, $screening, $seatIds, $idempotencyKey);
+            $booking = $this->holdSeats->execute($user, $screening, $seatIds, $idempotencyKey, false);
             if ($quantities !== []) {
                 $this->addConcessions->executeForLockedBooking($booking, $quantities);
             }

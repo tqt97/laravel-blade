@@ -5,9 +5,9 @@ namespace App\Actions\Movie\Ticketing;
 use App\Enums\Movie\Booking\BookingStatus;
 use App\Enums\Movie\Ticketing\TicketStatus;
 use App\Enums\Payment\PaymentStatus;
-use App\Enums\Payment\RefundAttemptStatus;
 use App\Models\Movie\BookingItem;
 use App\Models\Movie\Screening;
+use App\Models\Payments\RefundAttempt;
 use App\Support\Booking\Exceptions\BookingOperationFailed;
 use App\Support\Time\BookingClock;
 use Illuminate\Support\Facades\DB;
@@ -39,7 +39,7 @@ final class CheckInTicket
 
             if (
                 $payment?->getRawOriginal('status') === PaymentStatus::Refunding->value
-                || $payment?->refundAttempts()->whereIn('status', [RefundAttemptStatus::Processing, RefundAttemptStatus::Unknown])->exists()
+                || ($payment !== null && RefundAttempt::query()->where('payment_id', $payment->getKey())->open()->exists())
             ) {
                 throw new BookingOperationFailed(__('booking.messages.refund_in_progress'));
             }

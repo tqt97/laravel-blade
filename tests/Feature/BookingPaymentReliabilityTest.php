@@ -59,8 +59,8 @@ it('does not charge a payment again while a previous attempt is pending', functi
     };
     app()->instance(PaymentGateway::class, $gateway);
 
-    expect(app(PayBooking::class)->execute($booking)->status)->toBe(PaymentStatus::Pending)
-        ->and(app(PayBooking::class)->execute($booking)->status)->toBe(PaymentStatus::Pending)
+    expect(app(PayBooking::class)->execute($booking)->status)->toBe(PaymentStatus::Processing)
+        ->and(app(PayBooking::class)->execute($booking)->status)->toBe(PaymentStatus::Processing)
         ->and($gateway->charges)->toBe(1)
         ->and($booking->payment->attempts()->firstOrFail()->status)->toBe(PaymentAttemptStatus::Processing);
 });
@@ -116,7 +116,7 @@ it('does not finalize a provider success that has no provider payment id', funct
 
     expect($payment->status)->toBe(PaymentStatus::Unknown)
         ->and($booking->refresh()->status)->toBe(BookingStatus::PendingPayment)
-        ->and($booking->items()->firstOrFail()->status)->toBe(TicketStatus::Issued)
+        ->and($booking->items()->firstOrFail()->status)->toBe(TicketStatus::Reserved)
         ->and($payment->attempts()->latest('id')->firstOrFail()->status)->toBe(PaymentAttemptStatus::Unknown);
 });
 
@@ -144,7 +144,7 @@ it('restores an orphaned provider id and dispatches reconciliation', function ()
 
     expect(app(RecoverStuckPayment::class)->execute($payment))->toBeTrue()
         ->and($payment->refresh()->provider_payment_id)->toBe($attempt->provider_payment_id)
-        ->and($payment->status)->toBe(PaymentStatus::Pending);
+        ->and($payment->status)->toBe(PaymentStatus::Processing);
     Queue::assertPushed(ReconcilePayment::class, fn (ReconcilePayment $job): bool => $job->paymentId === $payment->id);
 });
 
@@ -210,6 +210,45 @@ it('marks reconciliation unknown when provider amount or metadata does not match
         ->and($payment->attempts()->latest('id')->firstOrFail()->status)->toBe(PaymentAttemptStatus::Unknown);
 });
 
+it('moves an unavailable reconciliation to manual review after its deadline', function (): void {
+    $payment = Payment::query()->create([
+        'payable_type' => Booking::class,
+        'payable_id' => 999999,
+        'provider' => 'stripe',
+        'provider_payment_id' => null,
+        'status' => PaymentStatus::Processing,
+        'amount_minor_units' => 100000,
+        'currency' => 'VND',
+        'reconciliation_deadline' => now()->subMinute(),
+        'next_reconcile_at' => now()->subMinute(),
+    ]);
+    $payment->attempts()->create([
+        'attempt_key' => 'deadline-reconciliation-attempt',
+        'status' => PaymentAttemptStatus::Unknown,
+        'amount_minor_units' => $payment->amount_minor_units,
+        'currency' => $payment->currency,
+    ]);
+    $retriever = new class implements PaymentStatusRetriever
+    {
+        public function retrieve(string $providerPaymentId): ProviderPaymentStatus
+        {
+            return new ProviderPaymentStatus('unknown', $providerPaymentId, failureMessage: 'Stripe search is eventually consistent.');
+        }
+
+        public function retrieveByAttemptKey(string $attemptKey): ProviderPaymentStatus
+        {
+            return new ProviderPaymentStatus('unknown', failureMessage: 'Stripe search is eventually consistent.');
+        }
+    };
+
+    (new ReconcilePayment($payment->id))->handle($retriever, app(FinalizeSuccessfulPayment::class));
+
+    expect($payment->refresh()->status)->toBe(PaymentStatus::Unknown)
+        ->and($payment->failure_message)->toContain('Manual review')
+        ->and($payment->next_reconcile_at)->toBeNull()
+        ->and($payment->last_reconciliation_error)->toBe('Stripe search is eventually consistent.');
+});
+
 it('recovers a payment claim that never received a provider id', function (): void {
     $payment = Payment::query()->create([
         'payable_type' => Booking::class,
@@ -231,7 +270,7 @@ it('recovers a payment claim that never received a provider id', function (): vo
 
     expect(app(RecoverStuckPayment::class)->execute($payment))->toBeTrue()
         ->and($payment->refresh()->status)->toBe(PaymentStatus::Processing)
-        ->and($payment->refresh()->reconciliation_attempts)->toBe(1);
+        ->and($payment->refresh()->reconciliation_attempts)->toBe(2);
 });
 
 it('does not charge again when the first gateway response times out', function (): void {
@@ -315,7 +354,7 @@ it('creates a Payment Element intent with a durable reconciliation key', functio
 
     $result = app(StripePaymentGateway::class)->charge($payment);
 
-    expect($result->status)->toBe('requires_action')
+    expect($result->status)->toBe('requires_payment_method')
         ->and($result->metadata['client_secret'])->toBe('pi_payment_element_secret');
     Http::assertSent(function ($request) use ($attemptKey): bool {
         $body = $request->body();
@@ -362,7 +401,7 @@ it('reconciles a timeout payment by searching Stripe with its attempt key', func
     (new ReconcilePayment($payment->id))->handle(new StripePaymentGateway, app(FinalizeSuccessfulPayment::class));
 
     expect($payment->refresh()->provider_payment_id)->toBe('pi_recovered')
-        ->and($payment->status)->toBe(PaymentStatus::Pending);
+        ->and($payment->status)->toBe(PaymentStatus::Processing);
 });
 
 it('rejects a Stripe webhook when amount or currency does not match', function (): void {

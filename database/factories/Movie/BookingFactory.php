@@ -38,7 +38,7 @@ class BookingFactory extends Factory
     public function confirmed(): static
     {
         return $this->afterCreating(function (Booking $booking): void {
-            $booking->transitionTo(BookingStatus::Confirmed);
+            $booking->setAttribute('status', BookingStatus::Confirmed);
             $booking->saveQuietly();
         });
     }
@@ -46,7 +46,7 @@ class BookingFactory extends Factory
     public function expired(): static
     {
         return $this->afterCreating(function (Booking $booking): void {
-            $booking->transitionTo(BookingStatus::Expired);
+            $booking->setAttribute('status', BookingStatus::Expired);
             $booking->saveQuietly();
         });
     }

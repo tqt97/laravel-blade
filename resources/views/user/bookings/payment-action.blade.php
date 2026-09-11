@@ -1,4 +1,19 @@
 <x-layouts.movie :title="__('booking.checkout.payment_action_title')">
+    @php($paymentStatus = $payment->status)
+    @php($paymentTitle = match ($paymentStatus) {
+        \App\Enums\Payment\PaymentStatus::RequiresPaymentMethod => __('booking.checkout.payment_method_title'),
+        \App\Enums\Payment\PaymentStatus::RequiresAction => __('booking.checkout.payment_action_title'),
+        \App\Enums\Payment\PaymentStatus::Processing, \App\Enums\Payment\PaymentStatus::Pending => __('booking.checkout.payment_processing_title'),
+        \App\Enums\Payment\PaymentStatus::RequiresRefund => __('booking.checkout.payment_refund_title'),
+        default => __('booking.checkout.payment_unknown_title'),
+    })
+    @php($paymentDescription = match ($paymentStatus) {
+        \App\Enums\Payment\PaymentStatus::RequiresPaymentMethod => __('booking.checkout.payment_method_description'),
+        \App\Enums\Payment\PaymentStatus::RequiresAction => __('booking.checkout.payment_action_description'),
+        \App\Enums\Payment\PaymentStatus::Processing, \App\Enums\Payment\PaymentStatus::Pending => __('booking.checkout.payment_processing_description'),
+        \App\Enums\Payment\PaymentStatus::RequiresRefund => __('booking.checkout.payment_refund_description'),
+        default => __('booking.checkout.payment_unknown_description'),
+    })
     <div class="mx-auto max-w-6xl space-y-6 px-5 py-10 sm:px-8 lg:py-14" data-payment-status
         data-terminal-statuses="{{ implode(',', \App\Enums\Payment\PaymentStatus::browserTerminalValues()) }}"
         data-poll-interval-ms="{{ config('booking.payment.status_poll_interval_ms') }}"
@@ -45,11 +60,9 @@
         <section class="rounded-2xl border border-border bg-card p-4 text-center shadow-sm sm:p-5">
             <div class="mx-auto grid size-10 place-items-center rounded-full bg-warning-soft text-warning-foreground">!
             </div>
-            <h1 class="mt-3 text-xl font-semibold tracking-tight sm:text-2xl">
-                {{ $payment->status === \App\Enums\Payment\PaymentStatus::Unknown ? __('booking.checkout.payment_unknown_title') : ($payment->status === \App\Enums\Payment\PaymentStatus::RequiresAction ? __('booking.checkout.payment_action_title') : __('booking.checkout.payment_pending_title')) }}
-            </h1>
+            <h1 class="mt-3 text-xl font-semibold tracking-tight sm:text-2xl">{{ $paymentTitle }}</h1>
             <p class="mx-auto mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-                {{ $payment->status === \App\Enums\Payment\PaymentStatus::Unknown ? __('booking.checkout.payment_unknown_description') : ($payment->status === \App\Enums\Payment\PaymentStatus::RequiresAction ? __('booking.checkout.payment_action_description') : __('booking.checkout.payment_pending_description')) }}
+                {{ $paymentDescription }}
             </p>
             <p class="mx-auto mt-4 max-w-3xl rounded-xl bg-muted/50 p-3 text-sm leading-6 text-muted-foreground">
                 {{ __('booking.checkout.payment_test_mode_hint') }}

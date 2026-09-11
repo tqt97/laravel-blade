@@ -2,6 +2,11 @@
 
 namespace App\Enums\Infrastructure;
 
+use App\Actions\Infrastructure\Outbox\BookingExpiredDelivery;
+use App\Actions\Infrastructure\Outbox\BookingPaymentSucceededDelivery;
+use App\Actions\Infrastructure\Outbox\BookingReminderDelivery;
+use App\Contracts\OutboxDeliveryHandler;
+
 enum OutboxEventType: string
 {
     case BookingCreated = 'booking.created';
@@ -24,5 +29,16 @@ enum OutboxEventType: string
     public function shouldDispatch(): bool
     {
         return $this->channel() !== null;
+    }
+
+    /** @return class-string<OutboxDeliveryHandler>|null */
+    public function deliveryHandler(): ?string
+    {
+        return match ($this) {
+            self::BookingPaymentSucceeded => BookingPaymentSucceededDelivery::class,
+            self::BookingReminderDue => BookingReminderDelivery::class,
+            self::BookingExpired => BookingExpiredDelivery::class,
+            self::BookingCreated, self::BookingStatusChanged => null,
+        };
     }
 }

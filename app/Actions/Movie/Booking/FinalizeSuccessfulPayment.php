@@ -10,7 +10,9 @@ use App\Enums\Movie\Ticketing\TicketStatus;
 use App\Enums\Payment\PaymentStatus;
 use App\Models\Infrastructure\OutboxMessage;
 use App\Models\Movie\Booking;
+use App\Models\Movie\Coupon;
 use App\Models\Movie\CouponReservation;
+use App\Models\Movie\CouponUserUsage;
 use App\Models\Movie\ScreeningSeat;
 use App\Models\Payments\Payment;
 use App\Support\Payment\PaymentStateMachine;
@@ -97,9 +99,8 @@ final class FinalizeSuccessfulPayment
 
             $wasPending = $bookingStatus->isPayable();
             if ($wasPending) {
-                $booking->transitionTo(BookingStatus::Confirmed);
                 $booking->expires_at = null;
-                $booking->save();
+                app(TransitionBooking::class)->execute($booking, BookingStatus::Confirmed);
             }
 
             foreach ($seats as [$item, $seat]) {
@@ -122,10 +123,22 @@ final class FinalizeSuccessfulPayment
             }
 
             if ($wasPending) {
-                CouponReservation::query()
+                $redeemedReservations = CouponReservation::query()
                     ->where('booking_id', $booking->getKey())
                     ->where('status', CouponReservationStatus::Reserved)
-                    ->update(['status' => CouponReservationStatus::Redeemed]);
+                    ->lockForUpdate()
+                    ->get();
+                foreach ($redeemedReservations as $reservation) {
+                    $reservation->update(['status' => CouponReservationStatus::Redeemed]);
+                    $coupon = Coupon::query()->whereKey($reservation->coupon_id)->lockForUpdate()->first();
+                    $coupon?->increment('redeemed_count');
+                    $coupon?->decrement('reserved_count');
+                    CouponUserUsage::query()
+                        ->where('coupon_id', $reservation->coupon_id)
+                        ->where('booking_id', $booking->getKey())
+                        ->where('status', CouponReservationStatus::Reserved)
+                        ->update(['status' => CouponReservationStatus::Redeemed]);
+                }
 
                 OutboxMessage::query()->create([
                     'aggregate_type' => Booking::class,
@@ -172,8 +185,7 @@ final class FinalizeSuccessfulPayment
     private function expireAndReleaseBooking(Booking $booking): void
     {
         if (BookingStatus::from((string) $booking->getRawOriginal('status'))->isPayable()) {
-            $booking->transitionTo(BookingStatus::Expired);
-            $booking->save();
+            app(TransitionBooking::class)->execute($booking, BookingStatus::Expired);
             $this->releaseBookingResources($booking);
         }
     }

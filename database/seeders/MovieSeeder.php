@@ -225,13 +225,23 @@ class MovieSeeder extends Seeder
             return;
         }
         $screening->load('screeningSeats');
-        $seats = $screening->screeningSeats->take(3);
-        if ($seats->count() < 3 || Booking::query()->where('user_id', $user->id)->where('screening_id', $screening->id)->exists()) {
+        $seats = $screening->screeningSeats->take(2);
+        $heldScreening = Screening::query()
+            ->where('id', '!=', $screening->getKey())
+            ->where('starts_at', '>', now())
+            ->orderBy('id')
+            ->first();
+
+        if ($seats->count() < 2 || $heldScreening === null || Booking::query()->where('user_id', $user->id)->where('screening_id', $screening->id)->exists()) {
             return;
         }
         $paid = app(HoldSeats::class)->execute($user, $screening, [(int) $seats[0]->getAttribute('seat_id'), (int) $seats[1]->getAttribute('seat_id')], 'seed-paid-'.$screening->id);
         app(AddConcessions::class)->execute($paid, [$concessions->first()->id => 2, $concessions->get(2)->id => 1]);
         app(PayBooking::class)->execute($paid);
-        app(HoldSeats::class)->execute($user, $screening, [(int) $seats[2]->getAttribute('seat_id')], 'seed-held-'.$screening->id);
+        $heldScreening->load('screeningSeats');
+        $heldSeat = $heldScreening->screeningSeats->first();
+        if ($heldSeat !== null && ! Booking::query()->where('user_id', $user->id)->where('screening_id', $heldScreening->id)->exists()) {
+            app(HoldSeats::class)->execute($user, $heldScreening, [(int) $heldSeat->getAttribute('seat_id')], 'seed-held-'.$heldScreening->id);
+        }
     }
 }

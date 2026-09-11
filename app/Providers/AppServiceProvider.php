@@ -7,7 +7,6 @@ use App\Contracts\PaymentStatusRetriever;
 use App\Enums\Payment\PaymentProvider;
 use App\Models\Movie\Booking;
 use App\Models\User;
-use App\Observers\Movie\BookingObserver;
 use App\Policies\Movie\BookingPolicy;
 use App\Support\Payment\FakePaymentGateway;
 use App\Support\Payment\StripePaymentGateway;
@@ -56,8 +55,11 @@ class AppServiceProvider extends ServiceProvider
         Model::preventLazyLoading(! app()->isProduction());
 
         Gate::define('manage-users', fn (User $user): bool => $user->is_admin);
+        Gate::define('admin.access', fn (User $user): bool => $user->is_admin);
+        foreach (['view-bookings', 'manage-cinema', 'manage-inventory', 'refund-bookings', 'check-in-tickets'] as $ability) {
+            Gate::define($ability, fn (User $user): bool => $user->is_admin);
+        }
         Gate::policy(Booking::class, BookingPolicy::class);
-        Booking::observe(BookingObserver::class);
         RateLimiter::for('booking-mutations', function (Request $request): Limit {
             $user = $request->user();
 

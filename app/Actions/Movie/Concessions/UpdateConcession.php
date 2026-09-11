@@ -3,6 +3,7 @@
 namespace App\Actions\Movie\Concessions;
 
 use App\Enums\Inventory\InventoryMovementType;
+use App\Enums\Inventory\InventoryStockMode;
 use App\Models\Inventory\InventoryMovement;
 use App\Models\Inventory\StockAdjustmentAudit;
 use App\Models\Movie\Concession;
@@ -43,6 +44,7 @@ final class UpdateConcession
                     'concession_id' => $locked->getKey(),
                     'actor_id' => $actor->getKey(),
                     'type' => InventoryMovementType::Adjustment,
+                    'stock_mode' => $newStock === null ? InventoryStockMode::Unlimited : InventoryStockMode::Finite,
                     'quantity_delta' => $stockDelta,
                     'stock_before' => $stockBefore,
                     'stock_after' => $newStock,

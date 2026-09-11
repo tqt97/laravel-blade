@@ -2,7 +2,6 @@
 
 namespace App\Models\Payments;
 
-use App\Enums\Payment\PaymentAttemptStatus;
 use App\Enums\Payment\PaymentProvider;
 use App\Enums\Payment\PaymentStatus;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -10,9 +9,8 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
-use Illuminate\Support\Str;
 
-#[Fillable(['payable_type', 'payable_id', 'provider', 'provider_payment_id', 'status', 'attempts', 'processing_started_at', 'last_attempt_at', 'reconciliation_attempted_at', 'reconciliation_attempts', 'amount_minor_units', 'currency', 'metadata', 'paid_at', 'refunded_at', 'failure_message'])]
+#[Fillable(['payable_type', 'payable_id', 'provider', 'provider_payment_id', 'provider_status', 'status', 'attempts', 'processing_started_at', 'last_attempt_at', 'reconciliation_attempted_at', 'reconciliation_attempts', 'next_reconcile_at', 'reconciliation_deadline', 'last_reconciliation_error', 'amount_minor_units', 'currency', 'metadata', 'provider_metadata', 'client_secret', 'paid_at', 'refunded_at', 'failure_message'])]
 class Payment extends Model
 {
     public function scopeForProvider(Builder $query, PaymentProvider|string $provider): void
@@ -37,40 +35,6 @@ class Payment extends Model
         return $this->hasMany(RefundAttempt::class);
     }
 
-    public function syncLatestAttempt(PaymentAttemptStatus $status, ?string $providerPaymentId = null, ?string $failureMessage = null): void
-    {
-        $attempt = $this->attempts()->latest('id')->first();
-        if ($attempt === null) {
-            $attemptNumber = ((int) $this->getAttribute('attempts')) + 1;
-
-            $this->attempts()->create([
-                'attempt_key' => config('booking.payment.attempt_key_prefix', 'booking-payment-').Str::uuid(),
-                'status' => $status,
-                'provider_payment_id' => $providerPaymentId,
-                'amount_minor_units' => $this->getAttribute('amount_minor_units'),
-                'currency' => $this->getAttribute('currency'),
-                'failure_message' => $failureMessage,
-                'started_at' => now(),
-                'completed_at' => $status === PaymentAttemptStatus::Processing ? null : now(),
-            ]);
-            $this->setAttribute('attempts', $attemptNumber);
-
-            $this->save();
-
-            return;
-        }
-        if (! PaymentAttemptStatus::tryFrom((string) $attempt->getRawOriginal('status'))?->isOpen() === true) {
-            return;
-        }
-
-        $attempt->forceFill([
-            'status' => $status,
-            'provider_payment_id' => $providerPaymentId ?? $attempt->getAttribute('provider_payment_id'),
-            'failure_message' => $failureMessage,
-            'completed_at' => $status === PaymentAttemptStatus::Processing ? null : now(),
-        ])->save();
-    }
-
     protected function casts(): array
     {
         return [
@@ -80,7 +44,11 @@ class Payment extends Model
             'last_attempt_at' => 'immutable_datetime',
             'reconciliation_attempted_at' => 'immutable_datetime',
             'reconciliation_attempts' => 'integer',
+            'next_reconcile_at' => 'immutable_datetime',
+            'reconciliation_deadline' => 'immutable_datetime',
             'metadata' => 'array',
+            'provider_metadata' => 'array',
+            'client_secret' => 'encrypted',
             'paid_at' => 'immutable_datetime',
             'refunded_at' => 'immutable_datetime',
         ];

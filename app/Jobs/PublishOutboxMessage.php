@@ -2,20 +2,17 @@
 
 namespace App\Jobs;
 
+use App\Contracts\OutboxDeliveryHandler;
 use App\Enums\Infrastructure\OutboxDeliveryStatus;
 use App\Enums\Infrastructure\OutboxEventType;
-use App\Mail\BookingConfirmationMail;
-use App\Mail\BookingReminderMail;
 use App\Models\Infrastructure\OutboxDelivery;
 use App\Models\Infrastructure\OutboxMessage;
 use App\Models\Movie\Booking;
 use App\Models\User;
-use App\Notifications\MovieBookingNotification;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Mail;
 use Throwable;
 
 class PublishOutboxMessage implements ShouldBeUnique, ShouldQueue
@@ -111,12 +108,12 @@ class PublishOutboxMessage implements ShouldBeUnique, ShouldQueue
             $previousLocale = app()->getLocale();
             app()->setLocale($locale);
             try {
-                match ($eventType) {
-                    OutboxEventType::BookingCreated => null,
-                    OutboxEventType::BookingPaymentSucceeded => $this->sendPaymentSuccessDelivery($user, $booking),
-                    OutboxEventType::BookingReminderDue => $this->sendReminderDelivery($user, $booking),
-                    OutboxEventType::BookingExpired => $this->sendExpiredDelivery($user, $booking),
-                };
+                $handlerClass = $eventType->deliveryHandler();
+                if ($handlerClass !== null) {
+                    /** @var OutboxDeliveryHandler $handler */
+                    $handler = app($handlerClass);
+                    $handler->execute($user, $booking);
+                }
             } finally {
                 app()->setLocale($previousLocale);
             }
@@ -147,33 +144,6 @@ class PublishOutboxMessage implements ShouldBeUnique, ShouldQueue
             'published_at' => now(),
             'claimed_at' => null,
         ])->save();
-    }
-
-    private function sendPaymentSuccessDelivery(User $user, Booking $booking): void
-    {
-        $this->notifyOnce($user, $booking, 'booking_confirmed');
-        Mail::to($user)->send(new BookingConfirmationMail($booking));
-    }
-
-    private function sendReminderDelivery(User $user, Booking $booking): void
-    {
-        $this->notifyOnce($user, $booking, 'booking_reminder');
-        Mail::to($user)->send(new BookingReminderMail($booking));
-    }
-
-    private function sendExpiredDelivery(User $user, Booking $booking): void
-    {
-        $this->notifyOnce($user, $booking, 'booking_expired');
-    }
-
-    private function notifyOnce(User $user, Booking $booking, string $event): void
-    {
-        $key = $event.':'.$booking->getKey();
-        if ($user->notifications()->where('data->key', $key)->exists()) {
-            return;
-        }
-
-        $user->notify(new MovieBookingNotification($booking, $event));
     }
 
     public function failed(Throwable $exception): void

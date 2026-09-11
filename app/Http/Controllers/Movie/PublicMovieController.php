@@ -149,17 +149,22 @@ final class PublicMovieController extends Controller
             $ownedSeatIds = array_map('strval', $bookingContext->ownedSeatIds($user, $screening));
         }
 
+        $seats = ScreeningSeat::query()
+            ->where('screening_id', $screening->getKey())
+            ->get(['seat_id', 'status', 'held_until'])
+            ->mapWithKeys(function (ScreeningSeat $seat) use ($ownedSeatIds): array {
+                return [(string) $seat->seat_id => [
+                    'available' => $seat->isAvailableForSelection(),
+                    'owned_by_current_booking' => in_array((string) $seat->seat_id, $ownedSeatIds, true),
+                ]];
+            })->all();
+        $serverNow = now();
+
         return response()->json([
-            'seats' => ScreeningSeat::query()
-                ->where('screening_id', $screening->getKey())
-                ->get(['seat_id', 'status', 'held_until'])
-                ->mapWithKeys(function (ScreeningSeat $seat) use ($ownedSeatIds): array {
-                    return [(string) $seat->seat_id => [
-                        'available' => $seat->isAvailableForSelection(),
-                        'owned_by_current_booking' => in_array((string) $seat->seat_id, $ownedSeatIds, true),
-                    ]];
-                })->all(),
-            'updated_at' => now()->toIso8601String(),
+            'seats' => $seats,
+            'availability_version' => hash('sha256', json_encode($seats, JSON_THROW_ON_ERROR)),
+            'updated_at' => $serverNow->toIso8601String(),
+            'server_now' => $serverNow->toIso8601String(),
         ])->header('Cache-Control', 'no-store');
     }
 

@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Actions\Movie\Booking\FinalizeSuccessfulPayment;
+use App\Actions\Payment\TransitionPayment;
 use App\Enums\Payment\PaymentAttemptStatus;
 use App\Enums\Payment\PaymentProvider;
 use App\Enums\Payment\PaymentStatus;
@@ -100,10 +101,10 @@ class ProcessStripeWebhook implements ShouldQueue
                 return ['status' => StripeWebhookProcessingResult::Done];
             }
 
-            $metadata = $payment->getAttribute('metadata');
-            $metadata = is_array($metadata) ? $metadata : [];
+            $providerMetadata = $payment->getAttribute('provider_metadata');
+            $providerMetadata = is_array($providerMetadata) ? $providerMetadata : [];
             if (isset($payload['created']) && is_numeric($payload['created'])) {
-                $metadata['stripe_last_event_created'] = (int) $payload['created'];
+                $providerMetadata['stripe_last_event_created'] = (int) $payload['created'];
             }
             $target = $webhookEventType?->paymentStatus();
             $current = PaymentStatus::from((string) $payment->getRawOriginal('status'));
@@ -111,7 +112,8 @@ class ProcessStripeWebhook implements ShouldQueue
 
             if ($shouldApply) {
                 $payment->setAttribute('status', $target);
-                $payment->setAttribute('metadata', $metadata);
+                $payment->setAttribute('provider_status', (string) ($object['status'] ?? $target->value));
+                $payment->setAttribute('provider_metadata', $providerMetadata);
                 $payment->setAttribute('provider_payment_id', $providerPaymentId);
 
                 if ($target === PaymentStatus::Succeeded) {
@@ -123,19 +125,21 @@ class ProcessStripeWebhook implements ShouldQueue
                     $payment->setAttribute('processing_started_at', null);
                 }
 
-                if ($target === PaymentStatus::Pending) {
+                if (in_array($target, [PaymentStatus::Pending, PaymentStatus::Processing], true)) {
                     $payment->setAttribute('processing_started_at', $payment->processing_started_at ?? now());
                 }
 
-                if ($target === PaymentStatus::RequiresAction) {
-                    $payment->setAttribute('metadata', array_merge($metadata, ['client_secret' => data_get($object, 'client_secret')]));
+                if (in_array($target, [PaymentStatus::RequiresAction, PaymentStatus::RequiresPaymentMethod], true)) {
+                    $payment->setAttribute('client_secret', data_get($object, 'client_secret'));
                     $payment->setAttribute('processing_started_at', null);
                 }
 
-                $payment->syncLatestAttempt(
+                app(TransitionPayment::class)->execute(
+                    $payment,
                     PaymentAttemptStatus::fromPaymentStatus($target),
                     $providerPaymentId,
                     $payment->failure_message,
+                    $target,
                 );
 
                 $payment->save();
@@ -156,6 +160,10 @@ class ProcessStripeWebhook implements ShouldQueue
         if ($result['status'] === StripeWebhookProcessingResult::Orphan) {
             if ($this->attempts() < $this->tries) {
                 $this->release($this->backoff()[min($this->attempts(), count($this->backoff()) - 1)]);
+            } else {
+                PaymentWebhookEvent::query()->forProvider(PaymentProvider::Stripe)
+                    ->where('event_id', $this->eventId)
+                    ->update(['failed_at' => now(), 'failure_message' => 'Stripe webhook orphan retry limit exhausted. Manual replay or reconciliation is required.']);
             }
 
             return;
@@ -176,7 +184,7 @@ class ProcessStripeWebhook implements ShouldQueue
 
     private function shouldApplyTransition(Payment $payment, PaymentStatus $target, int $created): bool
     {
-        $metadata = $payment->getAttribute('metadata');
+        $metadata = $payment->getAttribute('provider_metadata');
         $lastCreated = is_array($metadata) ? (int) ($metadata['stripe_last_event_created'] ?? 0) : 0;
         if ($created > 0 && $lastCreated > $created) {
             return false;

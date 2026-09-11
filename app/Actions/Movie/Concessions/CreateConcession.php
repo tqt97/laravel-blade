@@ -3,6 +3,7 @@
 namespace App\Actions\Movie\Concessions;
 
 use App\Enums\Inventory\InventoryMovementType;
+use App\Enums\Inventory\InventoryStockMode;
 use App\Models\Inventory\InventoryMovement;
 use App\Models\Movie\Concession;
 use App\Models\User;
@@ -21,6 +22,7 @@ final class CreateConcession
                     'concession_id' => $concession->getKey(),
                     'actor_id' => $actor->getKey(),
                     'type' => InventoryMovementType::Initial,
+                    'stock_mode' => InventoryStockMode::Finite,
                     'quantity_delta' => (int) $concession->stock,
                     'stock_before' => null,
                     'stock_after' => (int) $concession->stock,

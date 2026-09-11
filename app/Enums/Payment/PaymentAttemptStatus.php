@@ -9,6 +9,7 @@ enum PaymentAttemptStatus: string
     case Succeeded = 'succeeded';
     case Failed = 'failed';
     case RequiresAction = 'requires_action';
+    case RequiresPaymentMethod = 'requires_payment_method';
     case Unknown = 'unknown';
 
     public static function fromPaymentStatus(PaymentStatus $status): self
@@ -16,8 +17,9 @@ enum PaymentAttemptStatus: string
         return match ($status) {
             PaymentStatus::Succeeded => self::Succeeded,
             PaymentStatus::Failed => self::Failed,
-            PaymentStatus::Pending => self::Processing,
+            PaymentStatus::Pending, PaymentStatus::Processing => self::Processing,
             PaymentStatus::RequiresAction => self::RequiresAction,
+            PaymentStatus::RequiresPaymentMethod => self::RequiresPaymentMethod,
             default => self::Unknown,
         };
     }

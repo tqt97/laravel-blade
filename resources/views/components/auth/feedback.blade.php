@@ -10,7 +10,7 @@
 @endif
 
 @if ($errors->any())
-    <div class="mb-6 rounded-2xl border border-destructive/25 bg-destructive/10 p-4 text-sm text-destructive" role="alert">
+    <div class="mb-6 rounded-2xl border border-destructive/25 bg-destructive/10 p-4 text-sm text-destructive" role="alert" tabindex="-1" data-error-summary>
         <p class="font-semibold">{{ __('ui.feedback.check_information') }}</p>
         <ul class="mt-2 list-disc space-y-1 pl-5 text-destructive">
             @foreach ($errors->all() as $error)

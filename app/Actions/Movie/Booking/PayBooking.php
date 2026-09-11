@@ -3,6 +3,7 @@
 namespace App\Actions\Movie\Booking;
 
 use App\Actions\Movie\Concessions\AddConcessions;
+use App\Actions\Payment\TransitionPayment;
 use App\Contracts\PaymentGateway;
 use App\Enums\Movie\Booking\BookingStatus;
 use App\Enums\Payment\PaymentAttemptStatus;
@@ -33,7 +34,7 @@ final class PayBooking
     public function execute(Booking $booking, ?string $paymentMethodId = null, array $quantitiesByConcession = []): Payment
     {
         /** @var array{payment: Payment, should_charge: bool, attempt: ?PaymentAttempt} $claim */
-        $claim = DB::transaction(function () use ($booking, $quantitiesByConcession): array {
+        $claim = DB::transaction(function () use ($booking, $paymentMethodId, $quantitiesByConcession): array {
             $booking = Booking::query()->whereKey($booking->id)->lockForUpdate()->firstOrFail();
 
             $status = BookingStatus::from((string) $booking->getRawOriginal('status'));
@@ -101,6 +102,8 @@ final class PayBooking
                 'status' => PaymentAttemptStatus::Processing,
                 'amount_minor_units' => $payment->amount_minor_units,
                 'currency' => $payment->currency,
+                'payment_method_reference' => $paymentMethodId,
+                'request_metadata' => ['payment_method_supplied' => $paymentMethodId !== null],
                 'started_at' => BookingClock::now(),
             ]);
 
@@ -112,8 +115,7 @@ final class PayBooking
             ])->save();
 
             if ($status === BookingStatus::Held) {
-                $booking->transitionTo(BookingStatus::PendingPayment);
-                $booking->save();
+                app(TransitionBooking::class)->execute($booking, BookingStatus::PendingPayment);
             }
 
             return [
@@ -127,13 +129,6 @@ final class PayBooking
             return $payment;
         }
 
-        if ($paymentMethodId !== null) {
-            $metadata = $payment->getAttribute('metadata');
-
-            $payment->setAttribute('metadata', array_merge(is_array($metadata) ? $metadata : [], ['payment_method_id' => $paymentMethodId]));
-            $payment->save();
-        }
-
         try {
             $result = $this->gateway->charge($payment);
         } catch (Throwable $exception) {
@@ -142,7 +137,11 @@ final class PayBooking
                 'failure_message' => 'Payment provider response was unknown.',
             ])->save();
 
-            $payment->syncLatestAttempt(PaymentAttemptStatus::Unknown, null, 'Payment provider response was unknown.');
+            app(TransitionPayment::class)->execute(
+                $payment,
+                PaymentAttemptStatus::Unknown,
+                failureMessage: 'Payment provider response was unknown.',
+            );
 
             $payment->forceFill([
                 // Keep the claim processing so a retry cannot create a
@@ -167,6 +166,8 @@ final class PayBooking
     {
         return DB::transaction(function () use ($payment, $result, $attemptId): Payment {
             $payment = Payment::query()->whereKey($payment->id)->lockForUpdate()->firstOrFail();
+            $providerMetadata = $result->metadata;
+            unset($providerMetadata['client_secret']);
 
             $attempt = $attemptId === null
                 ? null
@@ -175,7 +176,8 @@ final class PayBooking
             $status = match ($result->status) {
                 'succeeded' => PaymentStatus::Succeeded,
                 'requires_action' => PaymentStatus::RequiresAction,
-                'pending', 'processing' => PaymentStatus::Pending,
+                'pending', 'processing' => PaymentStatus::Processing,
+                'requires_payment_method' => PaymentStatus::RequiresPaymentMethod,
                 default => PaymentStatus::Failed,
             };
 
@@ -189,24 +191,29 @@ final class PayBooking
             }
 
             $payment->setAttribute('status', $status);
+            $payment->setAttribute('provider_status', $result->status);
+            $payment->setAttribute('provider_metadata', $providerMetadata);
+            $payment->setAttribute('client_secret', data_get($result->metadata, 'client_secret'));
             if (filled($result->providerPaymentId)) {
                 $payment->setAttribute('provider_payment_id', $result->providerPaymentId);
             }
-            $payment->setAttribute('metadata', $result->metadata);
             $payment->setAttribute('failure_message', $status === PaymentStatus::Unknown
                 ? 'Payment succeeded without a provider payment ID. Reconciliation is required.'
                 : $result->failureMessage);
             $payment->setAttribute('processing_started_at', null);
-            $payment->syncLatestAttempt(
+            app(TransitionPayment::class)->execute(
+                $payment,
                 match ($status) {
                     PaymentStatus::Succeeded => PaymentAttemptStatus::Succeeded,
                     PaymentStatus::RequiresAction => PaymentAttemptStatus::RequiresAction,
-                    PaymentStatus::Pending => PaymentAttemptStatus::Processing,
+                    PaymentStatus::RequiresPaymentMethod => PaymentAttemptStatus::RequiresPaymentMethod,
+                    PaymentStatus::Processing => PaymentAttemptStatus::Processing,
                     PaymentStatus::Unknown => PaymentAttemptStatus::Unknown,
                     default => PaymentAttemptStatus::Failed,
                 },
                 $result->providerPaymentId,
                 $result->failureMessage,
+                $status,
             );
 
             if ($status === PaymentStatus::Succeeded) {
@@ -218,14 +225,15 @@ final class PayBooking
                     'status' => match ($status) {
                         PaymentStatus::Succeeded => PaymentAttemptStatus::Succeeded,
                         PaymentStatus::RequiresAction => PaymentAttemptStatus::RequiresAction,
-                        PaymentStatus::Pending => PaymentAttemptStatus::Processing,
+                        PaymentStatus::RequiresPaymentMethod => PaymentAttemptStatus::RequiresPaymentMethod,
+                        PaymentStatus::Processing => PaymentAttemptStatus::Processing,
                         PaymentStatus::Unknown => PaymentAttemptStatus::Unknown,
                         default => PaymentAttemptStatus::Failed,
                     },
                     'provider_payment_id' => $result->providerPaymentId,
-                    'metadata' => $result->metadata,
+                    'response_metadata' => $providerMetadata,
                     'failure_message' => $payment->failure_message,
-                    'completed_at' => $status === PaymentStatus::Pending ? null : now(),
+                    'completed_at' => in_array($status, [PaymentStatus::Pending, PaymentStatus::Processing], true) ? null : now(),
                 ])->save();
             }
             $payment->save();

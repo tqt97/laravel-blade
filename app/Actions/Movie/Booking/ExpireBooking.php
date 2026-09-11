@@ -38,9 +38,7 @@ final class ExpireBooking
                 return false;
             }
 
-            $booking->transitionTo(BookingStatus::Expired);
-
-            $booking->save();
+            app(TransitionBooking::class)->execute($booking, BookingStatus::Expired);
 
             $this->resourceReleaser->execute($booking);
 

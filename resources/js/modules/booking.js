@@ -12,7 +12,9 @@ export const initBookingCheckout = () => {
 
         let timer;
         const tick = () => {
-            const seconds = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
+            const serverNow = Date.parse(checkout.dataset.serverNow ?? '');
+            const serverClockOffsetMs = Number.isNaN(serverNow) ? 0 : serverNow - Date.now();
+            const seconds = Math.max(0, Math.ceil((expiresAt - (Date.now() + serverClockOffsetMs)) / 1000));
             if (checkout.dataset.countdownMode === 'showtime') {
                 const days = Math.floor(seconds / 86400);
                 const hours = Math.floor((seconds % 86400) / 3600);
@@ -107,6 +109,7 @@ export const initComboTotals = () => {
         const availabilityUrl = checkout?.dataset.comboAvailabilityUrl;
         let availabilityTimer;
         let availabilityController;
+        let lastComboAvailabilityVersion;
         const refreshAvailability = async () => {
             if (!availabilityUrl || document.hidden) return;
             availabilityController?.abort();
@@ -115,6 +118,9 @@ export const initComboTotals = () => {
                 const response = await fetch(availabilityUrl, {headers: {Accept: 'application/json'}, cache: 'no-store', signal: availabilityController.signal});
                 if (!response.ok) return;
                 const payload = await response.json();
+                if (payload.server_now) checkout.dataset.serverNow = payload.server_now;
+                if (payload.availability_version && payload.availability_version === lastComboAvailabilityVersion) return;
+                lastComboAvailabilityVersion = payload.availability_version;
                 Object.entries(payload.concessions ?? {}).forEach(([id, availability]) => {
                     const input = form.querySelector(`input[name="quantities[${id}]"]`);
                     if (!input) return;

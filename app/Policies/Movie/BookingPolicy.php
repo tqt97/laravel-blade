@@ -68,4 +68,9 @@ final class BookingPolicy
 
         return BookingClock::parseStored((string) $rawStartAt)?->isAfter(BookingClock::now()->addMinutes($deadlineMinutes)) ?? false;
     }
+
+    public function refund(User $user, Booking $booking): bool
+    {
+        return $user->is_admin && $booking->payment()->exists();
+    }
 }

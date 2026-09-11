@@ -51,11 +51,11 @@
             data-seat-confirm-room="{{ $screening->room->name }}"
             data-seat-confirm-seats="{{ __('booking.checkout.seats') }}"
             data-seat-confirm-combos="{{ __('booking.checkout.combos') }}"
-            data-seat-confirm-total="{{ __('cinema.seats.total') }}"
+            data-seat-confirm-total="{{ __('booking.checkout.subtotal') }}"
             data-seat-confirm-label="{{ __('cinema.public.confirm_seats') }}"
             data-seat-confirm-cancel="{{ __('ui.actions.cancel') }}"
             data-seat-availability-url="{{ route('cinema.screenings.availability', [$screening->movie, $screening]) }}"
-            data-seat-conflict-label="{{ __('cinema.seats.availability_changed') }}">
+            data-seat-conflict-label="{{ __('cinema.seats.availability_changed', ['seats' => ':seats']) }}">
             @csrf
             <input type="hidden" name="idempotency_key"
                 value="{{ old('idempotency_key', $activeHold?->idempotency_key ?? (string) Str::uuid()) }}">
@@ -290,7 +290,7 @@
                     </div>
                     <div class="flex items-end justify-between border-t border-primary/20 pt-4">
                         <span class="text-sm text-muted-foreground">
-                            {{ __('cinema.seats.total') }}
+                            {{ __('booking.checkout.subtotal') }}
                         </span>
                         <strong data-seat-summary-total
                             class="text-xl text-primary">{{ \App\Support\Money\Money::fromMinorUnits($initialSeatTotal + $initialComboTotal, strtoupper((string) $screening->currency))->format() }}</strong>

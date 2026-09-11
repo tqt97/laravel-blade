@@ -16,6 +16,7 @@ initUserSelection();
 initToasts();
 initNotificationBells();
 initUserMenus();
+document.querySelector('[data-error-summary]')?.focus();
 if (document.querySelector('[data-seat-picker]')) {
     import('./modules/seat-picker.js').then(({ initSeatPickers }) => initSeatPickers());
 }

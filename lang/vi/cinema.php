@@ -68,7 +68,7 @@ return [
     ],
     'seats' => [
         'vip' => 'Ghế VIP',
-        'availability_changed' => 'Tình trạng ghế đã thay đổi. Vui lòng kiểm tra lại lựa chọn.',
+        'availability_changed' => 'Tình trạng ghế đã thay đổi. Các ghế sau không còn khả dụng: :seats.',
         'suggest' => 'Gợi ý ghế tốt',
         'screen' => 'Màn hình',
         'available' => 'Còn trống',

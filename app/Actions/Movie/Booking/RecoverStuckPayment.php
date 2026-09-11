@@ -37,6 +37,14 @@ final class RecoverStuckPayment
                 return false;
             }
 
+            $nextReconcileAt = BookingClock::parseStored($locked->getRawOriginal('next_reconcile_at'));
+            if ($nextReconcileAt?->isAfter(BookingClock::now())) {
+                return false;
+            }
+
+            $reconciliationDeadline = BookingClock::parseStored($locked->getRawOriginal('reconciliation_deadline'))
+                ?? BookingClock::now()->addMinutes((int) config('booking.payment.reconciliation_deadline_minutes', 30));
+
             if (blank($locked->getRawOriginal('provider_payment_id'))) {
                 /** @var PaymentAttempt|null $orphanedAttempt */
                 $orphanedAttempt = $locked->attempts()
@@ -47,11 +55,13 @@ final class RecoverStuckPayment
                 if ($orphanedAttempt !== null) {
                     $locked->forceFill([
                         'provider_payment_id' => $orphanedAttempt->provider_payment_id,
-                        'status' => PaymentStatus::Pending,
+                        'status' => PaymentStatus::Processing,
                         'processing_started_at' => null,
-                        'metadata' => $orphanedAttempt->metadata,
+                        'provider_metadata' => $orphanedAttempt->response_metadata ?? $orphanedAttempt->metadata,
                         'reconciliation_attempted_at' => BookingClock::now(),
                         'reconciliation_attempts' => ((int) $locked->reconciliation_attempts) + 1,
+                        'next_reconcile_at' => BookingClock::now(),
+                        'reconciliation_deadline' => $reconciliationDeadline,
                     ])->save();
 
                     ReconcilePayment::dispatch($locked->getKey())->afterCommit();
@@ -67,6 +77,8 @@ final class RecoverStuckPayment
             $locked->forceFill([
                 'reconciliation_attempted_at' => BookingClock::now(),
                 'reconciliation_attempts' => ((int) $locked->reconciliation_attempts) + 1,
+                'next_reconcile_at' => BookingClock::now(),
+                'reconciliation_deadline' => $reconciliationDeadline,
                 'failure_message' => 'Payment provider response was unknown. Reconciliation is in progress.',
             ])->save();
 

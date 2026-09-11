@@ -4,12 +4,22 @@ namespace App\Models\Payments;
 
 use App\Enums\Payment\RefundAttemptStatus;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 #[Fillable(['payment_id', 'attempt_key', 'status', 'provider_refund_id', 'metadata', 'failure_message', 'started_at', 'completed_at'])]
 class RefundAttempt extends Model
 {
+    /** @param Builder<self> $query */
+    public function scopeOpen(Builder $query): void
+    {
+        $query->whereIn('status', [
+            RefundAttemptStatus::Processing,
+            RefundAttemptStatus::Unknown,
+        ]);
+    }
+
     public function payment(): BelongsTo
     {
         return $this->belongsTo(Payment::class);
