@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Actions\Booking\Checkout\EditBookingSelection;
+use App\DTO\Booking\BookingSelectionData;
 use App\Enums\Booking\BookingStatus;
 use App\Exceptions\Booking\BookingOperationFailed;
 use App\Exceptions\Booking\SeatHoldConflict;
@@ -12,7 +13,7 @@ use App\Models\Catalog\Movie;
 use App\Models\Catalog\Screening;
 use App\Models\User;
 use App\Queries\Booking\ScreeningBookingContextQuery;
-use App\Queries\Commerce\AvailableConcessionsQuery;
+use App\Queries\Catalog\ScreeningPageQuery;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -50,7 +51,9 @@ final class MovieController extends Controller
             ->with(['screenings' => fn ($query) => $query->bookable()->orderBy('starts_at')])
             ->get();
 
-        return response()->view('seo.sitemap', compact('movies'))->header('Content-Type', 'application/xml');
+        return response()
+            ->view('seo.sitemap', compact('movies'))
+            ->header('Content-Type', 'application/xml');
     }
 
     public function show(Movie $movie): View
@@ -80,35 +83,19 @@ final class MovieController extends Controller
         return view('cinema.movies.show', compact('movie', 'screeningSummaries'));
     }
 
-    public function screening(Request $request, Movie $movie, Screening $screening, ScreeningBookingContextQuery $bookingContext, AvailableConcessionsQuery $concessionsQuery): View|RedirectResponse
+    public function screening(Request $request, Movie $movie, Screening $screening, ScreeningPageQuery $screeningPage): View|RedirectResponse
     {
         abort_unless($screening->movie_id === $movie->id, 404);
         abort_unless($screening->isBookable(), 404);
 
-        $screening->load(['movie', 'room', 'screeningSeats.seat']);
+        $page = $screeningPage->execute($screening, $request->user());
+        $activeHold = $page['activeHold'];
 
-        $seatSummary = $this->seatSummary($screening);
-        $activeHold = null;
-        $activeHoldSeatIds = [];
-
-        if ($request->user() !== null) {
-            /** @var User $user */
-            $user = $request->user();
-            $activeHold = $bookingContext->activeHold($user, $screening);
-
-            if ($activeHold?->getRawOriginal('status') === BookingStatus::PendingPayment->value) {
-                return to_route('user.bookings.checkout', $activeHold);
-            }
-
-            $activeHold?->load(['concessions', 'items.screeningSeat.seat']);
-            $activeHoldSeatIds = $activeHold?->getRawOriginal('status') === BookingStatus::Held->value
-                ? $bookingContext->seatIds($activeHold)
-                : [];
+        if ($activeHold?->getRawOriginal('status') === BookingStatus::PendingPayment->value) {
+            return to_route('user.bookings.checkout', $activeHold);
         }
 
-        $concessions = $concessionsQuery->get((string) $screening->currency);
-
-        return view('cinema.screenings.show', compact('screening', 'seatSummary', 'activeHold', 'activeHoldSeatIds', 'concessions'));
+        return view('cinema.screenings.show', ['screening' => $screening, ...$page]);
     }
 
     public function hold(HoldSeatsRequest $request, Movie $movie, Screening $screening, EditBookingSelection $editBookingSelection): RedirectResponse
@@ -116,12 +103,14 @@ final class MovieController extends Controller
         abort_unless($screening->movie_id === $movie->id, 404);
 
         if ($request->user() === null) {
+            $selection = BookingSelectionData::fromArray($request->validated());
             $request->session()->put('cinema.pending_hold', [
                 'screening_id' => $screening->id,
-                'seat_ids' => array_values($request->validated('seat_ids')),
-                'idempotency_key' => $request->validated('idempotency_key'),
-                'quantities' => $request->validated('quantities', []),
+                'seat_ids' => $selection->seatIds,
+                'idempotency_key' => $selection->idempotencyKey,
+                'quantities' => $selection->quantities,
             ]);
+
             $request->session()->put('url.intended', route('user.cinema.hold.resume'));
 
             return redirect()->route('login');
@@ -129,9 +118,16 @@ final class MovieController extends Controller
 
         /** @var User $user */
         $user = $request->user();
+        $selection = BookingSelectionData::fromArray($request->validated());
 
         try {
-            $booking = $editBookingSelection->execute($user, $screening, $request->validated('seat_ids'), $request->validated('idempotency_key'), $request->validated('quantities', []));
+            $booking = $editBookingSelection->execute(
+                $user,
+                $screening,
+                $selection->seatIds,
+                $selection->idempotencyKey,
+                $selection->quantities,
+            );
         } catch (SeatHoldConflict $exception) {
             throw ValidationException::withMessages(['seat_ids' => $exception->getMessage()]);
         } catch (BookingOperationFailed $exception) {
@@ -161,7 +157,9 @@ final class MovieController extends Controller
                     'available' => $seat->isAvailableForSelection(),
                     'owned_by_current_booking' => in_array((string) $seat->seat_id, $ownedSeatIds, true),
                 ]];
-            })->all();
+            })
+            ->all();
+
         $serverNow = now();
 
         return response()->json([
@@ -187,9 +185,10 @@ final class MovieController extends Controller
         $screening->load('movie');
         /** @var User $user */
         $user = $request->user();
+        $selection = BookingSelectionData::fromArray($pending);
 
         try {
-            $booking = $editBookingSelection->execute($user, $screening, (array) $pending['seat_ids'], (string) $pending['idempotency_key'], (array) ($pending['quantities'] ?? []));
+            $booking = $editBookingSelection->execute($user, $screening, $selection->seatIds, $selection->idempotencyKey, $selection->quantities);
         } catch (SeatHoldConflict $exception) {
             $request->session()->put('cinema.pending_hold', $pending);
 
@@ -205,13 +204,5 @@ final class MovieController extends Controller
         $request->session()->forget('cinema.pending_hold');
 
         return to_route('cinema.screenings.show', [$screening->movie, $screening])->with('booking_resume', true);
-    }
-
-    /** @return array{available:int, total:int} */
-    private function seatSummary(Screening $screening): array
-    {
-        $seats = $screening->screeningSeats;
-
-        return ['available' => $seats->filter(fn ($seat): bool => $seat instanceof ScreeningSeat && $seat->isAvailableForSelection())->count(), 'total' => $seats->count()];
     }
 }

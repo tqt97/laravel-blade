@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\User;
 
 use App\Actions\Booking\Checkout\EditBookingSelection;
+use App\DTO\Booking\BookingSelectionData;
 use App\Exceptions\Booking\BookingOperationFailed;
 use App\Exceptions\Booking\SeatHoldConflict;
 use App\Http\Controllers\Controller;
@@ -32,13 +33,15 @@ final class ScreeningController extends Controller
 
     public function hold(HoldSeatsRequest $request, Screening $screening, EditBookingSelection $editBookingSelection): RedirectResponse
     {
+        $selection = BookingSelectionData::fromArray($request->validated());
+
         try {
             $booking = $editBookingSelection->execute(
                 $request->user(),
                 $screening,
-                $request->validated('seat_ids'),
-                $request->validated('idempotency_key'),
-                $request->validated('quantities', [])
+                $selection->seatIds,
+                $selection->idempotencyKey,
+                $selection->quantities,
             );
         } catch (SeatHoldConflict $exception) {
             throw ValidationException::withMessages(['seat_ids' => $exception->getMessage()]);

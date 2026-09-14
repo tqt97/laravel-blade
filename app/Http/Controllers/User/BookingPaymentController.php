@@ -2,8 +2,8 @@
 
 namespace App\Http\Controllers\User;
 
-use App\Actions\Booking\Checkout\PayBooking;
-use App\Actions\Booking\Lifecycle\ExpireBooking;
+use App\Actions\Booking\Payment\ProcessBookingPayment;
+use App\DTO\Booking\PayBookingData;
 use App\Enums\Booking\BookingStatus;
 use App\Enums\Payment\PaymentStatus;
 use App\Exceptions\Booking\BookingExpired;
@@ -77,14 +77,13 @@ final class BookingPaymentController extends Controller
         return $this->status($booking->refresh());
     }
 
-    public function pay(PayBookingRequest $request, Booking $booking, PayBooking $payBooking, ExpireBooking $expireBooking): RedirectResponse
+    public function pay(PayBookingRequest $request, Booking $booking, ProcessBookingPayment $processBookingPayment): RedirectResponse
     {
         $this->authorize('pay', $booking);
 
         try {
-            $payment = $payBooking->execute($booking, $request->validated('payment_method_id'), $request->validated('quantities', []));
+            $payment = $processBookingPayment->execute($booking, PayBookingData::fromArray($request->validated()));
         } catch (BookingExpired $exception) {
-            $expireBooking->execute($booking);
             throw ValidationException::withMessages(['booking' => $exception->getMessage()]);
         } catch (BookingOperationFailed $exception) {
             throw ValidationException::withMessages(['quantities' => $exception->getMessage()]);

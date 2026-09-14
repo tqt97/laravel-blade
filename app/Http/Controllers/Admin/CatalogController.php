@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Actions\Catalog\CreateMovie;
 use App\Actions\Catalog\CreateScreening;
 use App\Actions\Catalog\CreateScreeningRoom;
+use App\DTO\Catalog\CreateScreeningData;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\StoreMovieRequest;
 use App\Http\Requests\Admin\StoreScreeningRequest;
@@ -33,7 +34,9 @@ class CatalogController extends Controller
                 ->withCount('seats')
                 ->latest()
                 ->paginate((int) config('booking.listing.admin_page_size'), pageName: 'rooms_page'),
-            'screenings' => Screening::query()->with(['movie:id,title', 'room:id,name'])->latest('starts_at')->paginate((int) config('booking.listing.admin_page_size')),
+            'screenings' => Screening::query()->with(['movie:id,title', 'room:id,name'])
+                ->latest('starts_at')
+                ->paginate((int) config('booking.listing.admin_page_size')),
         ]);
     }
 
@@ -53,15 +56,15 @@ class CatalogController extends Controller
 
     public function storeScreening(StoreScreeningRequest $request, CreateScreening $createScreening): RedirectResponse
     {
-        $data = $request->validated();
+        $data = CreateScreeningData::fromArray($request->validated());
 
         $createScreening->execute(
-            Movie::query()->findOrFail($data['movie_id']),
-            ScreeningRoom::query()->findOrFail($data['screening_room_id']),
-            $data['starts_at'],
-            $data['ends_at'],
-            $data['base_price_minor_units'],
-            strtoupper($data['currency'])
+            Movie::query()->findOrFail($data->movieId),
+            ScreeningRoom::query()->findOrFail($data->screeningRoomId),
+            $data->startsAt,
+            $data->endsAt,
+            $data->basePriceMinorUnits,
+            $data->currency,
         );
 
         return back()->with('status', 'cinema.admin.screening_created');
