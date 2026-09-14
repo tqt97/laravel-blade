@@ -417,7 +417,30 @@ Mỗi endpoint có signing secret riêng. Không dùng secret local cho producti
 [ ] Đã tách key test/live
 ```
 
-## 12. Tóm tắt lệnh
+## 12. Chạy toàn bộ môi trường development
+
+Laravel `artisan dev` đã chạy web server, Vite, queue worker và scheduler. Repository này đã thêm Stripe CLI vào cùng process group, vì vậy chỉ cần:
+
+```bash
+composer run dev
+```
+
+Lệnh trên tương đương với việc chạy đồng thời:
+
+```text
+php artisan dev
+npm run dev:stripe
+```
+
+Trong đó `npm run dev:stripe` chạy `stripe listen --forward-to http://127.0.0.1:8000/webhooks/stripe`. Khi process dừng, cả app stack và Stripe listener dừng cùng nhau. Nếu báo `stripe: command not found`, hãy cài Stripe CLI; nếu báo cần đăng nhập, chạy `stripe login`. Secret được Stripe CLI in ra phải được đặt vào `STRIPE_WEBHOOK_SECRET` trong `.env`, rồi khởi động lại `composer run dev`.
+
+Nếu chỉ cần frontend/backend mà không test thanh toán webhook, chạy riêng:
+
+```bash
+php artisan dev
+```
+
+### Tóm tắt lệnh Stripe
 
 ```bash
 brew install stripe/stripe-cli/stripe

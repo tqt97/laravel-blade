@@ -5,6 +5,8 @@
     "scripts": {
         "build": "vite build",
         "dev": "vite",
+        "dev:stripe": "stripe listen --forward-to http://127.0.0.1:8000/webhooks/stripe",
+        "dev:stack": "concurrently --kill-others-on-fail --names app,stripe \"php artisan dev\" \"npm run dev:stripe\"",
         "lint": "eslint resources/js",
         "test:frontend": "node --test tests/frontend/*.test.js",
         "check": "npm run lint && npm run build"

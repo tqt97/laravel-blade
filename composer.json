@@ -51,7 +51,7 @@
         "dev": [
             "Composer\\Config::disableProcessTimeout",
             "@php artisan config:clear --ansi",
-            "@php artisan dev"
+            "npm run dev:stack"
         ],
         "analyse": "@php vendor/bin/phpstan analyse --no-progress --debug",
         "format": "@php vendor/bin/pint --dirty --format agent",
