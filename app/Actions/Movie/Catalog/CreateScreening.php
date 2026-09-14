@@ -21,7 +21,10 @@ final class CreateScreening
         return DB::transaction(function () use ($movie, $room, $startsAt, $endsAt, $basePriceMinorUnits, $currency, $pricesBySeatType): Screening {
             // Lock the room before checking overlap and materializing its seats;
             // concurrent admins must not create overlapping screening inventories.
-            $room = ScreeningRoom::query()->whereKey($room->getKey())->lockForUpdate()->firstOrFail();
+            $room = ScreeningRoom::query()
+                ->whereKey($room->getKey())
+                ->lockForUpdate()
+                ->firstOrFail();
 
             $starts = CarbonImmutable::parse($startsAt, BookingClock::timezone());
             $ends = CarbonImmutable::parse($endsAt, BookingClock::timezone());

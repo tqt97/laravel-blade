@@ -22,8 +22,16 @@ final class FinalizeRefund
     public function execute(Payment $payment, ?array $metadata = null): Payment
     {
         return DB::transaction(function () use ($payment, $metadata): Payment {
-            $booking = Booking::query()->whereKey($payment->getAttribute('payable_id'))->lockForUpdate()->firstOrFail();
-            $payment = Payment::query()->whereKey($payment->getKey())->lockForUpdate()->firstOrFail();
+            $booking = Booking::query()
+                ->whereKey($payment->getAttribute('payable_id'))
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $payment = Payment::query()
+                ->whereKey($payment->getKey())
+                ->lockForUpdate()
+                ->firstOrFail();
+
             $items = $booking->items()->lockForUpdate()->get();
 
             if ($items->contains(fn ($item): bool => $item->getAttribute('status') === TicketStatus::CheckedIn)) {
@@ -45,7 +53,10 @@ final class FinalizeRefund
                     ->first();
 
                 if ($seat !== null && $seat->getAttribute('status') === ScreeningSeatStatus::Sold) {
-                    $seat->forceFill(['status' => ScreeningSeatStatus::Available, 'sold_at' => null])->save();
+                    $seat->forceFill([
+                        'status' => ScreeningSeatStatus::Available,
+                        'sold_at' => null,
+                    ])->save();
                 }
 
                 if ($item->getAttribute('status') !== TicketStatus::Refunded) {
@@ -89,6 +100,7 @@ final class FinalizeRefund
             $bookingStatus = BookingStatus::from((string) $booking->getRawOriginal('status'));
             if ($bookingStatus->canTransitionTo(BookingStatus::Cancelled)) {
                 $booking->setAttribute('cancellation_reason', __('booking.messages.payment_refunded_reason'));
+
                 app(TransitionBooking::class)->execute($booking, BookingStatus::Cancelled, $booking->cancellation_reason);
             }
 

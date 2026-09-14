@@ -17,7 +17,10 @@ final class UpdateConcession
     public function execute(Concession $concession, array $attributes, User $actor): Concession
     {
         return DB::transaction(function () use ($concession, $attributes, $actor): Concession {
-            $locked = Concession::query()->whereKey($concession->getKey())->lockForUpdate()->firstOrFail();
+            $locked = Concession::query()
+                ->whereKey($concession->getKey())
+                ->lockForUpdate()
+                ->firstOrFail();
 
             $stockBefore = $locked->stock;
             $newStock = array_key_exists('stock', $attributes)

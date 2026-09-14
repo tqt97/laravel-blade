@@ -27,9 +27,16 @@ final class RefundBooking
     {
         /** @var array{payment: Payment, attempt: ?RefundAttempt, provider_already_refunded: bool} $claim */
         $claim = DB::transaction(function () use ($booking): array {
-            $booking = Booking::query()->whereKey($booking->getKey())->lockForUpdate()->firstOrFail();
+            $booking = Booking::query()
+                ->whereKey($booking->getKey())
+                ->lockForUpdate()
+                ->firstOrFail();
 
-            $payment = Payment::query()->where('payable_type', Booking::class)->where('payable_id', $booking->getKey())->lockForUpdate()->firstOrFail();
+            $payment = Payment::query()
+                ->where('payable_type', Booking::class)
+                ->where('payable_id', $booking->getKey())
+                ->lockForUpdate()
+                ->firstOrFail();
 
             $paymentStatus = PaymentStatus::from((string) $payment->getRawOriginal('status'));
             if ($paymentStatus === PaymentStatus::Refunded) {

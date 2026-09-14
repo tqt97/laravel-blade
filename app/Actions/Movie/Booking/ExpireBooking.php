@@ -16,7 +16,6 @@ final class ExpireBooking
     {
         return DB::transaction(function () use ($booking): bool {
             $booking = Booking::query()->whereKey($booking->id)->lockForUpdate()->firstOrFail();
-
             $status = BookingStatus::from((string) $booking->getRawOriginal('status'));
             $expiresAt = $booking->getRawOriginal('expires_at') !== null
                 ? BookingClock::parseStored((string) $booking->getRawOriginal('expires_at'))

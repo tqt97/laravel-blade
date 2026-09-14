@@ -30,8 +30,15 @@ final class FinalizeSuccessfulPayment
     public function execute(Payment $payment): Payment
     {
         return DB::transaction(function () use ($payment): Payment {
-            $booking = Booking::query()->whereKey($payment->getAttribute('payable_id'))->lockForUpdate()->firstOrFail();
-            $payment = Payment::query()->whereKey($payment->getKey())->lockForUpdate()->firstOrFail();
+            $booking = Booking::query()
+                ->whereKey($payment->getAttribute('payable_id'))
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $payment = Payment::query()
+                ->whereKey($payment->getKey())
+                ->lockForUpdate()
+                ->firstOrFail();
 
             if ($payment->getRawOriginal('status') !== PaymentStatus::Succeeded->value) {
                 return $payment;
@@ -78,18 +85,23 @@ final class FinalizeSuccessfulPayment
             // preserves the shared lock order used by hold/edit/refund flows.
             foreach ($items as $item) {
                 $seat = ScreeningSeat::query()
-                    ->whereKey($item->getAttribute('screening_seat_id'))->lockForUpdate()
+                    ->whereKey($item->getAttribute('screening_seat_id'))
+                    ->lockForUpdate()
                     ->firstOrFail();
                 $seats[] = [$item, $seat];
             }
 
             foreach ($seats as [, $seat]) {
-                if ($seat->getAttribute('status') !== ScreeningSeatStatus::Held || (int) $seat->getAttribute('held_by_booking_id') !== $booking->getKey()) {
+                if (
+                    $seat->getAttribute('status') !== ScreeningSeatStatus::Held ||
+                    (int) $seat->getAttribute('held_by_booking_id') !== $booking->getKey()
+                ) {
                     $this->expireAndReleaseBooking($booking);
 
                     return $this->markRequiresRefund($payment, 'A booking seat was released before payment finalization.');
                 }
                 $heldUntil = $seat->getRawOriginal('held_until');
+
                 if ($heldUntil === null || BookingClock::parseStored((string) $heldUntil)?->lessThanOrEqualTo(BookingClock::now()) !== false) {
                     $this->expireAndReleaseBooking($booking);
 
@@ -186,6 +198,7 @@ final class FinalizeSuccessfulPayment
     {
         if (BookingStatus::from((string) $booking->getRawOriginal('status'))->isPayable()) {
             app(TransitionBooking::class)->execute($booking, BookingStatus::Expired);
+
             $this->releaseBookingResources($booking);
         }
     }

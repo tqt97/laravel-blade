@@ -170,6 +170,7 @@ final class AddConcessions
 
         if ($booking->coupon_id !== null) {
             $coupon = Coupon::query()->whereKey($booking->coupon_id)->first();
+
             if ($coupon !== null) {
                 $scope = CouponPricingScope::tryFrom((string) $coupon->getRawOriginal('pricing_scope')) ?? CouponPricingScope::All;
                 $discountBase = match ($scope) {
@@ -190,6 +191,7 @@ final class AddConcessions
                 $discount = min($discount, $discountBase);
             }
         }
+
         $booking->forceFill([
             'subtotal_minor_units' => $newSubtotal,
             'discount_minor_units' => $discount,

@@ -168,7 +168,11 @@ final class PayBooking
     private function applyResult(Payment $payment, PaymentResult $result, ?int $attemptId): Payment
     {
         return DB::transaction(function () use ($payment, $result, $attemptId): Payment {
-            $payment = Payment::query()->whereKey($payment->id)->lockForUpdate()->firstOrFail();
+            $payment = Payment::query()
+                ->whereKey($payment->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
             $providerMetadata = $result->metadata;
             unset($providerMetadata['client_secret']);
 
@@ -189,6 +193,7 @@ final class PayBooking
             }
 
             $currentStatus = PaymentStatus::from((string) $payment->getRawOriginal('status'));
+
             if (! $this->stateMachine->canTransition($currentStatus, $status)) {
                 return $payment;
             }
@@ -197,13 +202,17 @@ final class PayBooking
             $payment->setAttribute('provider_status', $result->status);
             $payment->setAttribute('provider_metadata', $providerMetadata);
             $payment->setAttribute('client_secret', data_get($result->metadata, 'client_secret'));
+
             if (filled($result->providerPaymentId)) {
                 $payment->setAttribute('provider_payment_id', $result->providerPaymentId);
             }
+
             $payment->setAttribute('failure_message', $status === PaymentStatus::Unknown
                 ? 'Payment succeeded without a provider payment ID. Reconciliation is required.'
                 : $result->failureMessage);
+
             $payment->setAttribute('processing_started_at', null);
+
             app(TransitionPayment::class)->execute(
                 $payment,
                 match ($status) {

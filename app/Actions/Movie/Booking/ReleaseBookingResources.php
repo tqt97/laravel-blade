@@ -56,7 +56,11 @@ final class ReleaseBookingResources
 
             $idempotencyKey = 'booking-release-'.$booking->getKey().'-'.$line->getAttribute('concession_id');
 
-            if ($concession !== null && $concession->getAttribute('stock') !== null && ! InventoryMovement::query()->where('idempotency_key', $idempotencyKey)->exists()) {
+            if (
+                $concession !== null &&
+                $concession->getAttribute('stock') !== null &&
+                ! InventoryMovement::query()->where('idempotency_key', $idempotencyKey)->exists()
+            ) {
                 $stockBefore = (int) $concession->stock;
                 $concession->increment('stock', (int) $line->getAttribute('quantity'));
 
