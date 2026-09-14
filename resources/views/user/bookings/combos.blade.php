@@ -31,7 +31,7 @@
                     @endif
                     <span class="min-w-0 flex-1"><span
                             class="block truncate font-semibold">{{ $concession->name }}</span><span
-                            class="mt-1 block text-sm text-muted-foreground">{{ \App\Support\Money\Money::fromMinorUnits((int) $concession->price_minor_units, strtoupper((string) $concession->currency))->format() }}
+                            class="mt-1 block text-sm text-muted-foreground">{{ \App\ValueObjects\Money::fromMinorUnits((int) $concession->price_minor_units, strtoupper((string) $concession->currency))->format() }}
                             ·
                             {{ $concession->stock === null ? __('booking.combos.unlimited') : __('booking.combos.stock', ['count' => $concession->stock]) }}</span><span
                             class="mt-1 block text-xs text-primary" data-combo-quantity-status

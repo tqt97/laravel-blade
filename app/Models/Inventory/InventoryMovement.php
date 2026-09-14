@@ -4,8 +4,8 @@ namespace App\Models\Inventory;
 
 use App\Enums\Inventory\InventoryMovementType;
 use App\Enums\Inventory\InventoryStockMode;
-use App\Models\Movie\Booking;
-use App\Models\Movie\Concession;
+use App\Models\Booking\Booking;
+use App\Models\Commerce\Concession;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;

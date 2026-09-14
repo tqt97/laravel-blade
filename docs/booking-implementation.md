@@ -6,9 +6,9 @@ Không sử dụng lại flow `BookableResource` hoặc booking theo period; m�
 
 ## Domain map
 
-- Movie: `app/Actions/Movie`, `app/Models/Movie`, `app/Enums/Movie`, `app/Policies/Movie`, `app/Queries/Movie`.
+- Booking/Catalog/Commerce: `app/Actions/{Booking,Catalog,Commerce}`, `app/Models/{Booking,Catalog,Commerce}`, `app/Enums/{Booking,Catalog,Commerce}`, `app/Policies/Booking`, `app/Queries/{Booking,Commerce}`.
 - Inventory: `app/Models/Inventory`, `app/Enums/Inventory`, migration `2026_09_10_130002_create_inventory_domain_schema.php`.
-- Payments: `app/Models/Payments`, `app/Enums/Payment`, migration `2026_09_10_130003_create_payment_domain_schema.php`.
+- Payment: `app/Models/Payment`, `app/Enums/Payment`, migration `2026_09_10_130003_create_payment_domain_schema.php`.
 - Infrastructure: `app/Models/Infrastructure`, `app/Enums/Infrastructure`, migration `2026_09_10_130004_create_infrastructure_domain_schema.php`.
 
 Read/query boundary:
@@ -19,7 +19,7 @@ Read/query boundary:
 
 Mutation boundary:
 
-- `EditBookingSelection`, `HoldSeats`, `AddConcessions`, `PayBooking`, `FinalizeSuccessfulPayment`, `CancelBooking`, `ExpireBooking` và `RefundBooking` sở hữu các invariant booking.
+- `EditBookingSelection`, `HoldSeats`, `SyncBookingConcessions`, `PayBooking`, `FinalizeSuccessfulPayment`, `CancelBooking`, `ExpireBooking` và `RefundBooking` sở hữu các invariant booking.
 - `CreateConcession` và `UpdateConcession` sở hữu transaction inventory ledger/audit khi admin tạo hoặc điều chỉnh combo.
 - Controller chỉ authorize, nhận dữ liệu đã validate, gọi boundary phù hợp và trả response.
 

@@ -6,9 +6,9 @@ use App\Contracts\PaymentGateway;
 use App\Contracts\PaymentStatusRetriever;
 use App\Contracts\RefundStatusRetriever;
 use App\Enums\Payment\PaymentProvider;
-use App\Models\Movie\Booking;
+use App\Models\Booking\Booking;
 use App\Models\User;
-use App\Policies\Movie\BookingPolicy;
+use App\Policies\Booking\BookingPolicy;
 use App\Support\Payment\FakePaymentGateway;
 use App\Support\Payment\StripePaymentGateway;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -58,20 +58,24 @@ class AppServiceProvider extends ServiceProvider
 
         Gate::define('manage-users', fn (User $user): bool => $user->is_admin);
         Gate::define('admin.access', fn (User $user): bool => $user->is_admin);
+
         foreach (['view-bookings', 'manage-cinema', 'manage-inventory', 'refund-bookings', 'check-in-tickets'] as $ability) {
             Gate::define($ability, fn (User $user): bool => $user->is_admin);
         }
         Gate::policy(Booking::class, BookingPolicy::class);
+
         RateLimiter::for('booking-mutations', function (Request $request): Limit {
             $user = $request->user();
 
             return Limit::perMinute(30)->by((string) ($user !== null ? $user->id : $request->ip()));
         });
+
         RateLimiter::for('availability', function (Request $request): Limit {
             $user = $request->user();
 
             return Limit::perMinute(120)->by((string) ($user !== null ? $user->id : $request->ip()));
         });
+
         $slowQueryThreshold = (int) config('booking.observability.slow_query_ms', 0);
         if ($slowQueryThreshold > 0) {
             DB::listen(function (QueryExecuted $query) use ($slowQueryThreshold): void {

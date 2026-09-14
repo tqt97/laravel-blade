@@ -5,7 +5,7 @@ namespace App\Support\Payment;
 use App\Contracts\PaymentGateway;
 use App\Contracts\PaymentStatusRetriever;
 use App\Contracts\RefundStatusRetriever;
-use App\Models\Payments\Payment;
+use App\Models\Payment\Payment;
 
 final class FakePaymentGateway implements PaymentGateway, PaymentStatusRetriever, RefundStatusRetriever
 {

@@ -2,8 +2,8 @@
 
 namespace App\Http\Requests\Admin;
 
-use App\Enums\Movie\Booking\CouponType;
-use App\Support\Money\Currency;
+use App\Enums\Commerce\CouponType;
+use App\ValueObjects\Currency;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;

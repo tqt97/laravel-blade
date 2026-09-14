@@ -30,7 +30,7 @@
                             {{ __('booking.bookings.seats') }}:
                             {{ $upcomingBooking->items_count }} · {{ __('booking.bookings.combos') }}:
                             {{ $upcomingBooking->concessions_count }} ·
-                            {{ \App\Support\Money\Money::fromMinorUnits((int) $upcomingBooking->total_minor_units, strtoupper((string) ($upcomingBooking->pricing_currency ?? config('booking.payment.currency'))))->format() }}
+                            {{ \App\ValueObjects\Money::fromMinorUnits((int) $upcomingBooking->total_minor_units, strtoupper((string) ($upcomingBooking->pricing_currency ?? config('booking.payment.currency'))))->format() }}
                         </p>
                     </div>
                     <div class="text-left sm:text-right">
@@ -74,7 +74,7 @@
                                 · {{ $recentBooking->items_count }} {{ __('booking.bookings.seats') }} ·
                                 {{ $recentBooking->concessions_count }}
                                 {{ __('booking.bookings.combos') }}</span><span
-                                class="mt-2 block font-semibold text-primary">{{ \App\Support\Money\Money::fromMinorUnits((int) $recentBooking->total_minor_units, strtoupper((string) ($recentBooking->pricing_currency ?? config('booking.payment.currency'))))->format() }}</span></a>
+                                class="mt-2 block font-semibold text-primary">{{ \App\ValueObjects\Money::fromMinorUnits((int) $recentBooking->total_minor_units, strtoupper((string) ($recentBooking->pricing_currency ?? config('booking.payment.currency'))))->format() }}</span></a>
                     @endforeach
                 </div>
             </section>

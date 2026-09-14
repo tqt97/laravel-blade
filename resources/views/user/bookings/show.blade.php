@@ -42,7 +42,7 @@
                     </dd>
                 </div>
             </dl>
-            @if ($booking->status === \App\Enums\Movie\Booking\BookingStatus::Held)
+            @if ($booking->status === \App\Enums\Booking\BookingStatus::Held)
                 <p class="rounded-xl bg-warning-soft p-4 text-sm text-warning-foreground">
                     {{ __('booking.bookings.hold_hint', ['minutes' => config('booking.limits.hold_minutes')]) }}
                 </p>
@@ -71,24 +71,24 @@
                     <div class="flex justify-between gap-4">
                         <dt class="text-muted-foreground">{{ __('booking.bookings.seats') }}</dt>
                         <dd class="font-semibold">
-                            {{ \App\Support\Money\Money::fromMinorUnits($seatTotal, $currency)->format() }}</dd>
+                            {{ \App\ValueObjects\Money::fromMinorUnits($seatTotal, $currency)->format() }}</dd>
                     </div>
                     <div class="flex justify-between gap-4">
                         <dt class="text-muted-foreground">{{ __('booking.bookings.combos') }}</dt>
                         <dd class="font-semibold">
-                            {{ \App\Support\Money\Money::fromMinorUnits($comboTotal, $currency)->format() }}</dd>
+                            {{ \App\ValueObjects\Money::fromMinorUnits($comboTotal, $currency)->format() }}</dd>
                     </div>
                     @if ((int) $booking->discount_minor_units > 0)
                         <div class="flex justify-between gap-4 text-success">
                             <dt>{{ __('booking.checkout.discount') }}</dt>
-                            <dd>-{{ \App\Support\Money\Money::fromMinorUnits((int) $booking->discount_minor_units, $currency)->format() }}
+                            <dd>-{{ \App\ValueObjects\Money::fromMinorUnits((int) $booking->discount_minor_units, $currency)->format() }}
                             </dd>
                         </div>
                     @endif
                     <div class="flex justify-between gap-4 border-t border-border pt-3 text-base">
                         <dt class="font-semibold">{{ __('booking.bookings.total') }}</dt>
                         <dd class="font-bold text-primary">
-                            {{ \App\Support\Money\Money::fromMinorUnits((int) $booking->total_minor_units, $currency)->format() }}
+                            {{ \App\ValueObjects\Money::fromMinorUnits((int) $booking->total_minor_units, $currency)->format() }}
                         </dd>
                     </div>
                 </dl>
@@ -101,16 +101,13 @@
                             <div class="flex items-center justify-between gap-4 rounded-lg bg-muted p-3 text-sm">
                                 <span><span class="font-semibold">{{ $line->concession?->name ?? '—' }}</span><span
                                         class="ml-2 text-muted-foreground">× {{ $line->quantity }}</span></span><span
-                                    class="font-semibold">{{ \App\Support\Money\Money::fromMinorUnits((int) $line->total_minor_units, $currency)->format() }}</span>
+                                    class="font-semibold">{{ \App\ValueObjects\Money::fromMinorUnits((int) $line->total_minor_units, $currency)->format() }}</span>
                             </div>
                         @endforeach
                     </div>
                 </div>
             @endif
-            @if (in_array(
-                    $booking->status,
-                    [\App\Enums\Movie\Booking\BookingStatus::Confirmed, \App\Enums\Movie\Booking\BookingStatus::Completed],
-                    true) && $booking->items->isNotEmpty())
+            @if ($booking->status->isTicketAccessible() && $booking->items->isNotEmpty())
                 <div class="border-t border-border pt-6">
                     <h3 class="text-sm font-semibold">{{ __('cinema.tickets.title') }}</h3>
                     <div class="mt-3 grid gap-2 sm:grid-cols-2">
@@ -128,18 +125,12 @@
                 </div>
             @endif
             <div class="flex flex-col gap-3 border-t border-border pt-6 sm:flex-row sm:justify-end">
-                @if (in_array(
-                        $booking->status,
-                        [\App\Enums\Movie\Booking\BookingStatus::Held, \App\Enums\Movie\Booking\BookingStatus::PendingPayment],
-                        true))
+                @if ($booking->status->isPayable())
                     <x-admin.button :href="route('user.bookings.checkout', $booking)" icon="arrow-right">
                         {{ __('booking.bookings.pay') }}
                     </x-admin.button>
                 @endif
-                @if (in_array(
-                        $booking->status,
-                        [\App\Enums\Movie\Booking\BookingStatus::Held, \App\Enums\Movie\Booking\BookingStatus::PendingPayment],
-                        true) && auth()->user()->can('cancel', $booking))
+                @if ($booking->status->isCancellable() && auth()->user()->can('cancel', $booking))
                     <button type="button" data-modal-open="cancel-booking-modal"
                         data-modal-action="{{ route('user.bookings.cancel', $booking) }}" data-modal-method="PATCH"
                         class="ui-action inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-destructive px-3.5 py-2 text-sm font-semibold text-destructive-foreground shadow-sm transition hover:brightness-95">{{ __('booking.bookings.cancel') }}

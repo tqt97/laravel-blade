@@ -2,7 +2,9 @@
 
 use App\Http\Controllers\Admin\BookingController;
 use App\Http\Controllers\Admin\BookingReportController;
-use App\Http\Controllers\Admin\MovieController;
+use App\Http\Controllers\Admin\CatalogController;
+use App\Http\Controllers\Admin\ConcessionController;
+use App\Http\Controllers\Admin\CouponController;
 use App\Http\Controllers\Admin\RedirectToDashboardController;
 use App\Http\Controllers\Admin\TicketController;
 use App\Http\Controllers\Admin\UserController;
@@ -21,19 +23,21 @@ Route::middleware('can:view-bookings')->group(function (): void {
     Route::get('/reports', BookingReportController::class)->name('reports.index');
 });
 
-// Cinema catalogue, rooms, screenings and concessions.
+// Catalog management: movies, rooms, screenings and coupons.
 Route::middleware('can:manage-cinema')->group(function (): void {
-    Route::get('/cinema', [MovieController::class, 'index'])->name('cinema.index');
-    Route::get('/cinema/coupons', [MovieController::class, 'coupons'])->name('cinema.coupons.index');
-    Route::post('/cinema/movies', [MovieController::class, 'storeMovie'])->name('cinema.movies.store');
-    Route::post('/cinema/rooms', [MovieController::class, 'storeRoom'])->name('cinema.rooms.store');
-    Route::post('/cinema/screenings', [MovieController::class, 'storeScreening'])->name('cinema.screenings.store');
-    Route::post('/cinema/coupons', [MovieController::class, 'storeCoupon'])->name('cinema.coupons.store');
+    Route::get('/cinema', [CatalogController::class, 'index'])->name('cinema.index');
+    Route::get('/cinema/coupons', [CouponController::class, 'index'])->name('cinema.coupons.index');
+    Route::post('/cinema/movies', [CatalogController::class, 'storeMovie'])->name('cinema.movies.store');
+    Route::post('/cinema/rooms', [CatalogController::class, 'storeRoom'])->name('cinema.rooms.store');
+    Route::post('/cinema/screenings', [CatalogController::class, 'storeScreening'])->name('cinema.screenings.store');
+    Route::post('/cinema/coupons', [CouponController::class, 'store'])->name('cinema.coupons.store');
 });
+
+// Commerce inventory management: concessions and stock adjustments.
 Route::middleware('can:manage-inventory')->group(function (): void {
-    Route::get('/cinema/concessions', [MovieController::class, 'concessions'])->name('cinema.concessions.index');
-    Route::post('/cinema/concessions', [MovieController::class, 'storeConcession'])->name('cinema.concessions.store');
-    Route::patch('/cinema/concessions/{concession}', [MovieController::class, 'updateConcession'])->name('cinema.concessions.update');
+    Route::get('/cinema/concessions', [ConcessionController::class, 'index'])->name('cinema.concessions.index');
+    Route::post('/cinema/concessions', [ConcessionController::class, 'store'])->name('cinema.concessions.store');
+    Route::patch('/cinema/concessions/{concession}', [ConcessionController::class, 'update'])->name('cinema.concessions.update');
 });
 
 // Booking cancellation/refund operations.

@@ -2,8 +2,8 @@
 
 namespace App\Jobs;
 
-use App\Actions\Movie\Booking\FinalizeRefund;
-use App\Actions\Movie\Booking\FinalizeSuccessfulPayment;
+use App\Actions\Booking\Payment\FinalizeRefund;
+use App\Actions\Booking\Payment\FinalizeSuccessfulPayment;
 use App\Actions\Payment\TransitionPayment;
 use App\Enums\Payment\PaymentAttemptStatus;
 use App\Enums\Payment\PaymentProvider;
@@ -12,10 +12,10 @@ use App\Enums\Payment\RefundAttemptStatus;
 use App\Enums\Payment\StripeRefundStatus;
 use App\Enums\Payment\StripeWebhookEventType;
 use App\Enums\Payment\StripeWebhookProcessingResult;
-use App\Models\Movie\Booking;
-use App\Models\Payments\Payment;
-use App\Models\Payments\PaymentWebhookEvent;
-use App\Models\Payments\RefundAttempt;
+use App\Models\Booking\Booking;
+use App\Models\Payment\Payment;
+use App\Models\Payment\PaymentWebhookEvent;
+use App\Models\Payment\RefundAttempt;
 use App\Support\Payment\PaymentStateMachine;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;

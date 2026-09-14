@@ -2,10 +2,10 @@
 
 namespace App\Console\Commands;
 
-use App\Actions\Movie\Booking\RecoverStuckPayment;
+use App\Actions\Booking\Payment\RecoverStuckPayment;
 use App\Enums\Payment\PaymentStatus;
-use App\Models\Payments\Payment;
-use App\Support\Time\BookingClock;
+use App\Models\Payment\Payment;
+use App\Support\Booking\BookingClock;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;

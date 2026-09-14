@@ -1,49 +1,49 @@
 <?php
 
-use App\Actions\Movie\Booking\ApplyCoupon;
-use App\Actions\Movie\Booking\CancelBooking;
-use App\Actions\Movie\Booking\EditBookingSelection;
-use App\Actions\Movie\Booking\ExpireBooking;
-use App\Actions\Movie\Booking\FinalizeSuccessfulPayment;
-use App\Actions\Movie\Booking\HoldSeats;
-use App\Actions\Movie\Booking\PayBooking;
-use App\Actions\Movie\Booking\RefundBooking;
-use App\Actions\Movie\Booking\TransitionBooking;
-use App\Actions\Movie\Catalog\CreateScreening;
-use App\Actions\Movie\Concessions\AddConcessions;
-use App\Actions\Movie\Ticketing\CheckInTicket;
+use App\Actions\Booking\Checkout\EditBookingSelection;
+use App\Actions\Booking\Checkout\HoldSeats;
+use App\Actions\Booking\Checkout\PayBooking;
+use App\Actions\Booking\Lifecycle\CancelBooking;
+use App\Actions\Booking\Lifecycle\ExpireBooking;
+use App\Actions\Booking\Lifecycle\TransitionBooking;
+use App\Actions\Booking\Payment\FinalizeSuccessfulPayment;
+use App\Actions\Booking\Payment\RefundBooking;
+use App\Actions\Catalog\CreateScreening;
+use App\Actions\Commerce\Concessions\SyncBookingConcessions;
+use App\Actions\Commerce\Coupons\ApplyCoupon;
 use App\Actions\Payment\TransitionPayment;
+use App\Actions\Ticketing\CheckInTicket;
 use App\Contracts\PaymentGateway;
+use App\Enums\Booking\BookingStatus;
+use App\Enums\Catalog\Seating\ScreeningSeatStatus;
 use App\Enums\Infrastructure\OutboxEventType;
 use App\Enums\Inventory\InventoryMovementType;
 use App\Enums\Inventory\InventoryStockMode;
-use App\Enums\Movie\Booking\BookingStatus;
-use App\Enums\Movie\Seating\ScreeningSeatStatus;
-use App\Enums\Movie\Ticketing\TicketStatus;
 use App\Enums\Payment\PaymentAttemptStatus;
 use App\Enums\Payment\PaymentStatus;
 use App\Enums\Payment\RefundAttemptStatus;
+use App\Enums\Ticketing\TicketStatus;
+use App\Exceptions\Booking\BookingOperationFailed;
+use App\Exceptions\Booking\InvalidBookingTransition;
+use App\Exceptions\Booking\SeatHoldConflict;
 use App\Jobs\PublishOutboxMessage;
 use App\Mail\BookingConfirmationMail;
+use App\Models\Booking\Booking;
+use App\Models\Catalog\Movie;
+use App\Models\Catalog\ScreeningRoom;
+use App\Models\Catalog\Seat;
+use App\Models\Commerce\Concession;
+use App\Models\Commerce\Coupon;
+use App\Models\Commerce\CouponReservation;
 use App\Models\Infrastructure\OutboxMessage;
 use App\Models\Inventory\InventoryMovement;
-use App\Models\Movie\Booking;
-use App\Models\Movie\Concession;
-use App\Models\Movie\Coupon;
-use App\Models\Movie\CouponReservation;
-use App\Models\Movie\Movie;
-use App\Models\Movie\ScreeningRoom;
-use App\Models\Movie\Seat;
-use App\Models\Payments\Payment;
+use App\Models\Payment\Payment;
 use App\Models\User;
-use App\Notifications\MovieBookingNotification;
-use App\Queries\Movie\BookingReport;
-use App\Support\Booking\Exceptions\BookingOperationFailed;
-use App\Support\Booking\Exceptions\InvalidBookingTransition;
-use App\Support\Booking\SeatHoldConflict;
-use App\Support\Cinema\TicketQrCode;
+use App\Notifications\BookingNotification;
+use App\Queries\Booking\BookingReport;
+use App\Support\Booking\BookingClock;
 use App\Support\Payment\PaymentResult;
-use App\Support\Time\BookingClock;
+use App\Support\Ticketing\TicketQrCode;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
@@ -234,7 +234,7 @@ it('records combo reservations with explicit finite or unlimited stock semantics
     $finite = Concession::query()->create(['name' => 'Finite Combo', 'sku' => 'FINITE-MODE', 'price_minor_units' => 50000, 'currency' => 'VND', 'stock' => 3, 'is_active' => true]);
     $unlimited = Concession::query()->create(['name' => 'Unlimited Combo', 'sku' => 'UNLIMITED-MODE', 'price_minor_units' => 50000, 'currency' => 'VND', 'stock' => null, 'is_active' => true]);
 
-    app(AddConcessions::class)->execute($booking, [$finite->id => 1, $unlimited->id => 1]);
+    app(SyncBookingConcessions::class)->execute($booking, [$finite->id => 1, $unlimited->id => 1]);
 
     expect(InventoryMovement::query()->where('booking_id', $booking->id)->where('type', InventoryMovementType::Reserve)->where('stock_mode', InventoryStockMode::Finite)->count())->toBe(1)
         ->and(InventoryMovement::query()->where('booking_id', $booking->id)->where('type', InventoryMovementType::Reserve)->where('stock_mode', InventoryStockMode::Unlimited)->count())->toBe(1)
@@ -399,7 +399,7 @@ it('does not restore combo stock twice when a successful refund is retried', fun
     $screening = app(CreateScreening::class)->execute(Movie::factory()->create(), $room, now()->addDay()->toDateTimeString(), now()->addDay()->addHours(2)->toDateTimeString(), 100000);
     $booking = app(HoldSeats::class)->execute(User::factory()->create(), $screening, [$seat->id], 'refund-idempotency');
     $concession = Concession::query()->create(['name' => 'Refund Combo', 'sku' => 'COMBO-REFUND-IDEMPOTENT', 'price_minor_units' => 50000, 'currency' => 'VND', 'stock' => 3, 'is_active' => true]);
-    app(AddConcessions::class)->execute($booking, [$concession->id => 1]);
+    app(SyncBookingConcessions::class)->execute($booking, [$concession->id => 1]);
     app(PayBooking::class)->execute($booking);
 
     app(RefundBooking::class)->execute($booking);
@@ -519,7 +519,7 @@ it('releases expired cinema holds and snapshots combo pricing', function (): voi
     $user = User::factory()->create();
     $booking = app(HoldSeats::class)->execute($user, $screening, [$seat->id], 'cinema-expire-1');
     $concession = Concession::query()->create(['name' => 'Combo', 'sku' => 'COMBO-1', 'price_minor_units' => 50000, 'currency' => 'VND', 'stock' => 3, 'is_active' => true]);
-    app(AddConcessions::class)->execute($booking, [$concession->id => 1]);
+    app(SyncBookingConcessions::class)->execute($booking, [$concession->id => 1]);
     expect($booking->refresh()->total_minor_units)->toBe(150000)->and($concession->refresh()->stock)->toBe(2);
     $booking->forceFill(['expires_at' => now()->subMinute()])->saveQuietly();
     $screeningSeat = $screening->screeningSeats()->firstOrFail();
@@ -559,7 +559,7 @@ it('does not allow combo changes after payment has started', function (): void {
     $booking->save();
     $concession = Concession::query()->create(['name' => 'Combo', 'sku' => 'COMBO-PENDING', 'price_minor_units' => 50000, 'currency' => 'VND', 'stock' => 3, 'is_active' => true]);
 
-    expect(fn () => app(AddConcessions::class)->execute($booking, [$concession->id => 1]))->toThrow(RuntimeException::class);
+    expect(fn () => app(SyncBookingConcessions::class)->execute($booking, [$concession->id => 1]))->toThrow(RuntimeException::class);
     expect($concession->refresh()->stock)->toBe(3);
 });
 
@@ -571,8 +571,8 @@ it('treats combo quantities as the selected final quantity', function (): void {
     $booking = app(HoldSeats::class)->execute(User::factory()->create(), $screening, [$seat->id, $secondSeat->id], 'combo-quantity-1');
     $concession = Concession::query()->create(['name' => 'Combo', 'sku' => 'COMBO-QUANTITY', 'price_minor_units' => 50000, 'currency' => 'VND', 'stock' => 3, 'is_active' => true]);
 
-    app(AddConcessions::class)->execute($booking, [$concession->id => 2]);
-    app(AddConcessions::class)->execute($booking, [$concession->id => 1]);
+    app(SyncBookingConcessions::class)->execute($booking, [$concession->id => 2]);
+    app(SyncBookingConcessions::class)->execute($booking, [$concession->id => 1]);
 
     expect($booking->refresh()->total_minor_units)->toBe(250000)
         ->and($booking->concessions()->firstOrFail()->quantity)->toBe(1)
@@ -606,9 +606,9 @@ it('allows a combo to be added again after it was removed from a hold', function
     $booking = app(HoldSeats::class)->execute(User::factory()->create(), $screening, [$seat->id], 'combo-cycle');
     $concession = Concession::query()->create(['name' => 'Cycle Combo', 'sku' => 'COMBO-CYCLE', 'price_minor_units' => 50000, 'currency' => 'VND', 'stock' => 1, 'is_active' => true]);
 
-    app(AddConcessions::class)->execute($booking, [$concession->id => 1]);
-    app(AddConcessions::class)->execute($booking, [$concession->id => 0]);
-    app(AddConcessions::class)->execute($booking, [$concession->id => 1]);
+    app(SyncBookingConcessions::class)->execute($booking, [$concession->id => 1]);
+    app(SyncBookingConcessions::class)->execute($booking, [$concession->id => 0]);
+    app(SyncBookingConcessions::class)->execute($booking, [$concession->id => 1]);
 
     expect($booking->refresh()->concessions()->firstOrFail()->quantity)->toBe(1)
         ->and($concession->refresh()->stock)->toBe(0)
@@ -623,7 +623,7 @@ it('releases all combos when a same-seat edit submits an empty replacement paylo
     $booking = app(HoldSeats::class)->execute($user, $screening, [$seat->id], 'combo-empty-edit');
     $concession = Concession::query()->create(['name' => 'Empty Edit Combo', 'sku' => 'COMBO-EMPTY-EDIT', 'price_minor_units' => 50000, 'currency' => 'VND', 'stock' => 3, 'is_active' => true]);
 
-    app(AddConcessions::class)->execute($booking, [$concession->id => 1]);
+    app(SyncBookingConcessions::class)->execute($booking, [$concession->id => 1]);
     app(EditBookingSelection::class)->execute($user, $screening, [$seat->id], 'combo-empty-edit-retry', []);
 
     expect($booking->refresh()->concessions)->toHaveCount(0)
@@ -638,7 +638,7 @@ it('rejects combo mutation after a booking hold expires before scheduler cleanup
     $concession = Concession::query()->create(['name' => 'Expired Mutation Combo', 'sku' => 'COMBO-EXPIRED-MUTATION', 'price_minor_units' => 50000, 'currency' => 'VND', 'stock' => 3, 'is_active' => true]);
     $booking->forceFill(['expires_at' => now()->subMinute()])->save();
 
-    expect(fn () => app(AddConcessions::class)->execute($booking, [$concession->id => 1]))->toThrow(RuntimeException::class);
+    expect(fn () => app(SyncBookingConcessions::class)->execute($booking, [$concession->id => 1]))->toThrow(RuntimeException::class);
     expect($concession->refresh()->stock)->toBe(3)
         ->and($booking->refresh()->concessions)->toHaveCount(0);
 });
@@ -651,8 +651,8 @@ it('treats omitted combo quantities as zero and releases their stock', function 
     $first = Concession::query()->create(['name' => 'First Combo', 'sku' => 'COMBO-REPLACEMENT-1', 'price_minor_units' => 50000, 'currency' => 'VND', 'stock' => 3, 'is_active' => true]);
     $second = Concession::query()->create(['name' => 'Second Combo', 'sku' => 'COMBO-REPLACEMENT-2', 'price_minor_units' => 75000, 'currency' => 'VND', 'stock' => 3, 'is_active' => true]);
 
-    app(AddConcessions::class)->execute($booking, [$first->id => 1, $second->id => 1]);
-    app(AddConcessions::class)->execute($booking, [$first->id => 1]);
+    app(SyncBookingConcessions::class)->execute($booking, [$first->id => 1, $second->id => 1]);
+    app(SyncBookingConcessions::class)->execute($booking, [$first->id => 1]);
 
     expect($booking->refresh()->concessions()->pluck('concession_id')->all())->toBe([$first->id])
         ->and($first->refresh()->stock)->toBe(2)
@@ -666,9 +666,9 @@ it('releases an inactive combo when it is omitted from a replacement payload', f
     $booking = app(HoldSeats::class)->execute(User::factory()->create(), $screening, [$seat->id], 'combo-inactive-replacement');
     $concession = Concession::query()->create(['name' => 'Inactive Combo', 'sku' => 'COMBO-INACTIVE-REPLACEMENT', 'price_minor_units' => 50000, 'currency' => 'VND', 'stock' => 3, 'is_active' => true]);
 
-    app(AddConcessions::class)->execute($booking, [$concession->id => 1]);
+    app(SyncBookingConcessions::class)->execute($booking, [$concession->id => 1]);
     $concession->forceFill(['is_active' => false])->save();
-    app(AddConcessions::class)->execute($booking, []);
+    app(SyncBookingConcessions::class)->execute($booking, []);
 
     expect($booking->refresh()->concessions)->toHaveCount(0)
         ->and($concession->refresh()->stock)->toBe(3);
@@ -681,7 +681,7 @@ it('limits total combo quantity to three times the held tickets', function (): v
     $booking = app(HoldSeats::class)->execute(User::factory()->create(), $screening, [$seat->id], 'combo-ticket-limit');
     $concession = Concession::query()->create(['name' => 'Ticket Limited Combo', 'sku' => 'COMBO-TICKET-LIMIT', 'price_minor_units' => 50000, 'currency' => 'VND', 'stock' => 5, 'is_active' => true]);
 
-    expect(fn () => app(AddConcessions::class)->execute($booking, [$concession->id => 4]))
+    expect(fn () => app(SyncBookingConcessions::class)->execute($booking, [$concession->id => 4]))
         ->toThrow(RuntimeException::class);
     expect($concession->refresh()->stock)->toBe(5)
         ->and($booking->refresh()->concessions)->toHaveCount(0);
@@ -694,7 +694,7 @@ it('returns combo stock when a held booking is cancelled', function (): void {
     $user = User::factory()->create();
     $booking = app(HoldSeats::class)->execute($user, $screening, [$seat->id], 'combo-cancel-1');
     $concession = Concession::query()->create(['name' => 'Combo', 'sku' => 'COMBO-CANCEL', 'price_minor_units' => 50000, 'currency' => 'VND', 'stock' => 3, 'is_active' => true]);
-    app(AddConcessions::class)->execute($booking, [$concession->id => 1]);
+    app(SyncBookingConcessions::class)->execute($booking, [$concession->id => 1]);
 
     app(CancelBooking::class)->execute($booking);
 
@@ -940,8 +940,8 @@ it('creates an in-app notification when a booking payment succeeds', function ()
         ->assertJsonPath('unread_count', 0);
     expect($user->notifications()->whereKey($notification->getKey())->exists())->toBeFalse();
 
-    $user->notify(new MovieBookingNotification($booking, 'booking_confirmed'));
-    $user->notify(new MovieBookingNotification($booking, 'booking_reminder'));
+    $user->notify(new BookingNotification($booking, 'booking_confirmed'));
+    $user->notify(new BookingNotification($booking, 'booking_reminder'));
 
     $this->actingAs($user)->deleteJson(route('user.notifications.destroy-all'))
         ->assertOk()
@@ -953,7 +953,7 @@ it('keeps legacy local notification links after the app url changes host', funct
     $user = User::factory()->create();
     $notification = $user->notifications()->create([
         'id' => (string) Str::uuid(),
-        'type' => MovieBookingNotification::class,
+        'type' => BookingNotification::class,
         'data' => ['url' => 'http://localhost:8000/user/bookings/123'],
     ]);
 

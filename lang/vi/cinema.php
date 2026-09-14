@@ -67,6 +67,7 @@ return [
         'choose_seats' => 'Chọn ghế',
     ],
     'seats' => [
+        'types' => ['regular' => 'Ghế thường', 'vip' => 'Ghế VIP', 'couple' => 'Ghế đôi'],
         'vip' => 'Ghế VIP',
         'availability_changed' => 'Tình trạng ghế đã thay đổi. Các ghế sau không còn khả dụng: :seats.',
         'suggest' => 'Gợi ý ghế tốt',

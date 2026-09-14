@@ -1,6 +1,6 @@
-# Movie booking architecture
+# Booking architecture
 
-Tài liệu chuẩn cho developer, QA và operator của hệ thống đặt vé phim. Đây là modular monolith, trong đó code được group theo domain `Movie`, `Inventory`, `Payments` và `Infrastructure`. `Booking` là order nhiều vé cho một `Screening`, còn inventory cạnh tranh của ghế nằm ở từng `ScreeningSeat`. Behavior bên dưới mô tả implementation hiện tại; mục `Future work` không phải tính năng đã triển khai.
+Tài liệu chuẩn cho developer, QA và operator của hệ thống đặt vé phim. Đây là modular monolith, trong đó code được group theo các context `Booking`, `Catalog`, `Commerce`, `Ticketing`, `Inventory`, `Payment` và `Infrastructure`. `Booking` là order nhiều vé cho một `Screening`, còn inventory cạnh tranh của ghế nằm ở từng `ScreeningSeat`. Behavior bên dưới mô tả implementation hiện tại; mục `Future work` không phải tính năng đã triển khai.
 
 ### Cách đọc tài liệu
 
@@ -13,23 +13,23 @@ Tài liệu chuẩn cho developer, QA và operator của hệ thống đặt vé
 
 ```text
 app/
-├── Actions/Movie/                # use case đặt vé, catalog, combo, ticketing
-│   ├── Booking/
+├── Actions/
+│   ├── Booking/Checkout|Lifecycle|Payment/
 │   ├── Catalog/
-│   ├── Concessions/
+│   ├── Commerce/Concessions|Coupons/
 │   └── Ticketing/
 ├── Enums/
-│   ├── Movie/                     # trạng thái/loại dữ liệu movie booking
+│   ├── Booking|Catalog|Commerce|Ticketing/
 │   ├── Inventory/                 # loại biến động tồn kho
 │   ├── Payment/                   # payment/refund/provider status
 │   └── Infrastructure/            # outbox/delivery event status
 ├── Models/
-│   ├── Movie/                     # movie, screening, booking, ticket, coupon, combo catalog
+│   ├── Booking|Catalog|Commerce/  # booking, catalog, coupon và combo models
 │   ├── Inventory/                 # stock ledger và stock adjustment audit
-│   ├── Payments/                  # payment, attempts, refund và webhook
+│   ├── Payment/                   # payment, attempts, refund và webhook
 │   └── Infrastructure/            # outbox và delivery
-├── Policies/Movie/                # authorization booking movie
-└── Queries/Movie/                 # read/report queries của movie flow
+├── Policies/Booking/              # authorization booking
+└── Queries/Booking|Commerce/       # read/report queries
 ```
 
 ### Quy tắc phân tầng
@@ -43,7 +43,7 @@ app/
 | Model scope | Điều kiện query thuần, dùng lại được như `bookable`, `activeHold`, `availableForSelection`, `availableForBooking`. | Không gọi provider, queue hoặc thay đổi dữ liệu. |
 | Service | Chỉ dùng cho behavior phối hợp được nhiều use case/domain và có boundary rõ. | Không tạo service chỉ bọc một lệnh Eloquent. |
 
-Các query dùng chung hiện tại gồm `AvailableConcessionsQuery`, `ScreeningBookingContextQuery` và `UserBookingsQuery`. `AvailableConcessionsQuery` là nơi duy nhất dựng catalog combo khả dụng và giới hạn live availability; `UserBookingsQuery` sở hữu read model dashboard/history; `ScreeningBookingContextQuery` sở hữu lookup active hold và ownership ghế. Các thao tác combo có transaction/stock ledger nằm ở `AddConcessions`, `CreateConcession` và `UpdateConcession`; controller admin chỉ còn nhận input và điều phối Action.
+Các query dùng chung hiện tại gồm `AvailableConcessionsQuery`, `ScreeningBookingContextQuery` và `UserBookingsQuery`. `AvailableConcessionsQuery` là nơi duy nhất dựng catalog combo khả dụng và giới hạn live availability; `UserBookingsQuery` sở hữu read model dashboard/history; `ScreeningBookingContextQuery` sở hữu lookup active hold và ownership ghế. Các thao tác combo có transaction/stock ledger nằm ở `SyncBookingConcessions`, `CreateConcession` và `UpdateConcession`; controller admin chỉ còn nhận input và điều phối Action.
 
 Các scope canonical phải được ưu tiên thay vì copy điều kiện trong controller: `Movie::hasBookableScreenings()`, `Screening::bookable()`, `Screening::startsAfter()`, `Booking::activeHold()`, `Booking::expiredHold()`, `Booking::upcoming()`, `Booking::ownedBy()`, `ScreeningSeat::availableForSelection()` và `Concession::availableForBooking()`.
 
@@ -166,7 +166,7 @@ sequenceDiagram
 
 1. Request bắt buộc `seat_ids` và `idempotency_key`, giới hạn theo `config('booking.limits.max_seats')`.
 2. Seat picker chặn ngay ở client khi selection đạt `config('booking.limits.max_seats')`; backend vẫn validate cùng config.
-3. Tổng quantity combo không được vượt `số ticket × config('booking.limits.max_combos_per_ticket')`; mỗi line cũng không vượt `config('booking.limits.max_combo_quantity')`. UI clamp theo quota còn lại, còn `AddConcessions` kiểm tra lại sau khi lock booking.
+3. Tổng quantity combo không được vượt `số ticket × config('booking.limits.max_combos_per_ticket')`; mỗi line cũng không vượt `config('booking.limits.max_combo_quantity')`. UI clamp theo quota còn lại, còn `SyncBookingConcessions` kiểm tra lại sau khi lock booking.
 4. Action khóa user để serialize retry cùng user, khóa screening, rồi khóa các seat theo thứ tự tăng dần để giảm deadlock.
 5. Hold hết hạn được giải phóng trong transaction khi có request hoặc bởi scheduler.
 6. Unique `(screening_id, seat_id)` bảo vệ inventory không nhân bản.
@@ -222,7 +222,7 @@ Guest được xem/chọn ghế bằng UI; seat selection chỉ là client state
 - Tiền dùng integer minor units, currency uppercase ISO code.
 - Giá ticket snapshot tại `ScreeningSeat.price_minor_units` và `BookingItem.price_minor_units`.
 - Giá VIP/couple có thể override theo `ScreeningPrice`; giá hiện tại không được làm thay đổi order cũ.
-- Combo snapshot quantity/unit/total ở `BookingConcession`; stock lock trong `AddConcessions`.
+- Combo snapshot quantity/unit/total ở `BookingConcession`; stock lock trong `SyncBookingConcessions`.
 - Với capacity nhiều hơn 1, mô hình hiện tại đã materialize từng ghế; không dùng counter tổng để tránh oversell.
 
 ## 6. Seed và vận hành
@@ -235,7 +235,7 @@ php artisan app:outbox-publish
 php artisan schedule:work
 ```
 
-`MovieSeeder` tạo 30 phim, 30 phòng, ghế thường/VIP, 3 suất chiếu mỗi ngày trong 3 ngày liên tiếp cho từng phim (270 screening rows), combo, order paid có QR và order held. Các khung giờ được xoay theo ngày để dữ liệu UI đa dạng nhưng vẫn deterministic khi chạy lại. Mỗi phim dùng một phòng demo riêng để 3 suất trong ngày không bị conflict. Seeder dùng `updateOrCreate`, nhưng dữ liệu order demo chỉ tạo một lần cho user `user@gmail.com`.
+`CinemaSeeder` tạo 30 phim, 30 phòng, ghế thường/VIP, 3 suất chiếu mỗi ngày trong 3 ngày liên tiếp cho từng phim (270 screening rows), combo, order paid có QR và order held. Các khung giờ được xoay theo ngày để dữ liệu UI đa dạng nhưng vẫn deterministic khi chạy lại. Mỗi phim dùng một phòng demo riêng để 3 suất trong ngày không bị conflict. Seeder dùng `updateOrCreate`, nhưng dữ liệu order demo chỉ tạo một lần cho user `user@gmail.com`.
 
 Production cần Redis/SQS cho queue, shared cache cho scheduler, Stripe webhook secret, worker outbox, alert dead-letter, structured logs và metrics cho hold conflict, payment failure, refund, check-in, queue lag và booking latency.
 
@@ -319,7 +319,7 @@ if (! $request->user()->is_admin
 }
 ```
 
-`resumeHold` lấy payload một lần, load `screening.movie`, chạy lại `HoldSeats`, sau đó chạy `AddConcessions` với quantities đã lưu và đưa user về đúng URL public:
+`resumeHold` lấy payload một lần, load `screening.movie`, chạy lại `HoldSeats`, sau đó chạy `SyncBookingConcessions` với quantities đã lưu và đưa user về đúng URL public:
 
 ```php
 $pendingHold = session()->pull('cinema.pending_hold');
@@ -332,7 +332,7 @@ $booking = $holdSeats->execute(
     idempotencyKey: $pendingHold['idempotency_key'],
 );
 
-$addConcessions->execute($booking, $pendingHold['quantities'] ?? []);
+$syncBookingConcessions->execute($booking, $pendingHold['quantities'] ?? []);
 
 return to_route('cinema.screenings.show', [
     $screening->movie,
@@ -361,12 +361,12 @@ Public URL phải chứa movie slug và screening để route model binding ki�
 Route::scopeBindings()->group(function (): void {
     Route::get(
         '/movies/{movie:slug}/showtimes/{screening}',
-        [PublicMovieController::class, 'show']
+        [MovieController::class, 'show']
     )->name('cinema.screenings.show');
 
     Route::post(
         '/movies/{movie:slug}/showtimes/{screening}/hold',
-        [PublicMovieController::class, 'hold']
+        [MovieController::class, 'hold']
     )->name('cinema.screenings.hold');
 });
 ```
@@ -452,7 +452,7 @@ changed seat set  -> cancel old held booking, release resources,
                      tạo idempotency_key mới và hold ghế mới
 ```
 
-Combo cũ được hoàn tồn kho khi booking cũ bị hủy thông qua `ReleaseBookingResources`; combo mới chỉ được trừ sau đó bởi `AddConcessions` trong transaction. Vì vậy không thanh toán nhầm ghế cũ hoặc cộng dồn combo cũ và mới. Booking ở `pending_payment`/`confirmed` không được edit như `held`; phải đi qua nghiệp vụ cancel/refund tương ứng.
+Combo cũ được hoàn tồn kho khi booking cũ bị hủy thông qua `ReleaseBookingResources`; combo mới chỉ được trừ sau đó bởi `SyncBookingConcessions` trong transaction. Vì vậy không thanh toán nhầm ghế cũ hoặc cộng dồn combo cũ và mới. Booking ở `pending_payment`/`confirmed` không được edit như `held`; phải đi qua nghiệp vụ cancel/refund tương ứng.
 
 Các tình huống cần giữ trong regression test:
 
@@ -584,8 +584,8 @@ Mapping bắt buộc:
 | Limit | Backend | Frontend |
 |---|---|---|
 | `max_seats` | `HoldSeatsRequest` + `HoldSeats` | `data-seat-max` và seat picker |
-| `max_combos_per_ticket` | `AddConcessions` | `data-combos-per-seat` và quota tổng |
-| `max_combo_quantity` | `HoldSeatsRequest` + `AddConcessions`/availability | input `max`, combo controls |
+| `max_combos_per_ticket` | `SyncBookingConcessions` | `data-combos-per-seat` và quota tổng |
+| `max_combo_quantity` | `HoldSeatsRequest` + `SyncBookingConcessions`/availability | input `max`, combo controls |
 | `hold_minutes` | `HoldSeats`/expiry actions | countdown và hold hint |
 
 Không hard-code limit trong controller, Blade hoặc JS. Khi đổi limit, chạy `php artisan config:clear`/`php artisan config:cache` tùy môi trường rồi chạy lại regression test.
@@ -632,7 +632,7 @@ Ngoài UI contract, test phải assert inventory: giữ nguyên ghế không t�
 Regression cho giới hạn combo cần chứng minh cả client và domain:
 
 ```php
-expect(fn () => app(AddConcessions::class)->execute(
+expect(fn () => app(SyncBookingConcessions::class)->execute(
     $booking,
     [$concession->id => ($ticketCount * 3) + 1],
 ))->toThrow(RuntimeException::class);
@@ -970,7 +970,7 @@ Endpoint:
 
     Route::get(
         '/movies/{movie:slug}/showtimes/{screening}/availability',
-        [PublicMovieController::class, 'availability']
+        [MovieController::class, 'availability']
     )->name('cinema.screenings.availability');
 
 Response gồm seat id, trạng thái khả dụng, updated_at và Cache-Control no-store.
@@ -1213,7 +1213,7 @@ $maxQuantity = $concession->stock === null
     );
 ```
 
-`selectedQuantity + stock` là giới hạn hợp lý khi booking đã giữ một phần stock trước đó. Giá và stock vẫn phải validate lại ở `AddConcessions` trong transaction; giới hạn HTML chỉ là UX.
+`selectedQuantity + stock` là giới hạn hợp lý khi booking đã giữ một phần stock trước đó. Giá và stock vẫn phải validate lại ở `SyncBookingConcessions` trong transaction; giới hạn HTML chỉ là UX.
 
 Migration hình ảnh:
 
@@ -1260,7 +1260,7 @@ const previewTotal = originalGrandTotal
     - originalComboTotal;
 ```
 
-Checkout dùng một payment form duy nhất: quantity được gửi cùng request thanh toán, không còn bước `Lưu combo` riêng. Preview chỉ là dữ liệu tạm trên browser; tại thời điểm pay, `PayBooking` giữ lock booking, gọi `AddConcessions::executeForLockedBooking`, lock từng concession, kiểm tra currency/stock, cập nhật total và payment amount trong cùng transaction. Nếu request fail, transaction rollback và feedback Laravel hiển thị lỗi.
+Checkout dùng một payment form duy nhất: quantity được gửi cùng request thanh toán, không còn bước `Lưu combo` riêng. Preview chỉ là dữ liệu tạm trên browser; tại thời điểm pay, `PayBooking` giữ lock booking, gọi `SyncBookingConcessions::executeForLockedBooking`, lock từng concession, kiểm tra currency/stock, cập nhật total và payment amount trong cùng transaction. Nếu request fail, transaction rollback và feedback Laravel hiển thị lỗi.
 
 ### 16.3 Coupon
 
@@ -1322,7 +1322,7 @@ $booking = Booking::query()
     ->lockForUpdate()
     ->firstOrFail();
 
-$booking = $this->addConcessions->executeForLockedBooking(
+$booking = $this->syncBookingConcessions->executeForLockedBooking(
     $booking,
     $quantitiesByConcession,
 );
@@ -1333,7 +1333,7 @@ $payment->forceFill([
 ])->save();
 ```
 
-`AddConcessions` lock từng concession, so sánh `desired - current` với stock và chỉ decrement phần delta. Thiếu stock hoặc sai currency ném `BookingOperationFailed`; transaction rollback cả line combo, booking total, payment claim và stock. Sau khi booking chuyển `pending_payment`, combo bị khóa để không thay đổi amount trong lúc gateway đang charge.
+`SyncBookingConcessions` lock từng concession, so sánh `desired - current` với stock và chỉ decrement phần delta. Thiếu stock hoặc sai currency ném `BookingOperationFailed`; transaction rollback cả line combo, booking total, payment claim và stock. Sau khi booking chuyển `pending_payment`, combo bị khóa để không thay đổi amount trong lúc gateway đang charge.
 
 ### 18.3 Realtime/near-realtime availability
 
@@ -1826,12 +1826,12 @@ Phần này là inventory đối chiếu trực tiếp với code hiện tại. 
 
 | Journey | Route | Controller/Action | Kết quả |
 |---|---|---|---|
-| Browse catalog | `GET /movies` | `PublicMovieController@index` | Chỉ movie active có screening bookable |
-| Movie detail | `GET /movies/{movie:slug}` | `PublicMovieController@movie` | Showtimes tương lai, available/total seat counts |
-| Public seat map | `GET /movies/{movie:slug}/showtimes/{screening}` | `PublicMovieController@screening` | Seat map, active hold, combo và summary |
-| Availability | `GET .../availability` | `PublicMovieController@availability` | JSON no-store, polling gần realtime |
-| Guest/auth hold | `POST .../hold` | `PublicMovieController@hold` / `ScreeningController@hold` | Tạo/reuse/rewrite hold; guest lưu session |
-| Login resume | `GET /user/cinema/hold/resume` | `PublicMovieController@resumeHold` | Tạo lại hold rồi redirect public nested URL |
+| Browse catalog | `GET /movies` | `MovieController@index` | Chỉ movie active có screening bookable |
+| Movie detail | `GET /movies/{movie:slug}` | `MovieController@show` | Showtimes tương lai, available/total seat counts |
+| Public seat map | `GET /movies/{movie:slug}/showtimes/{screening}` | `MovieController@screening` | Seat map, active hold, combo và summary |
+| Availability | `GET .../availability` | `MovieController@availability` | JSON no-store, polling gần realtime |
+| Guest/auth hold | `POST .../hold` | `MovieController@hold` / `ScreeningController@hold` | Tạo/reuse/rewrite hold; guest lưu session |
+| Login resume | `GET /user/cinema/hold/resume` | `MovieController@resumeHold` | Tạo lại hold rồi redirect public nested URL |
 | User showtimes | `GET /user/screenings` | `ScreeningController@index` | Danh sách screening bookable |
 | Checkout | `GET /user/bookings/{booking}/checkout` | `BookingController@checkout` | Review/payment hoặc expired screen |
 | Combo review | `GET .../combos` | `BookingController@combos` | Edit combo khi booking còn `held` |
@@ -1849,7 +1849,7 @@ Public nested routes dùng `scopeBindings()` và phải truyền cả `$movie`, 
 ### 23.2 Booking domain và state transitions
 
 ```php
-// app/Actions/Movie/Booking/HoldSeats.php
+// app/Actions/Booking, app/Actions/Catalog and app/Actions/Commerce/Booking/HoldSeats.php
 $booking = $holdSeats->execute(
     $user,
     $screening,
@@ -1857,13 +1857,13 @@ $booking = $holdSeats->execute(
     $idempotencyKey,
 );
 
-// app/Actions/Movie/Concessions/AddConcessions.php
-$booking = $addConcessions->execute(
+// app/Actions/Booking, app/Actions/Catalog and app/Actions/Commerce/Concessions/SyncBookingConcessions.php
+$booking = $syncBookingConcessions->execute(
     $booking,
     $quantitiesByConcession,
 );
 
-// app/Actions/Movie/Booking/PayBooking.php
+// app/Actions/Booking, app/Actions/Catalog and app/Actions/Commerce/Booking/PayBooking.php
 $payment = $payBooking->execute(
     $booking,
     $paymentMethodId,
@@ -1925,7 +1925,7 @@ session()->put('cinema.pending_hold', [
 - `BookingItem.price_minor_units` snapshot giá tại thời điểm hold.
 - `BookingConcession.unit_price_minor_units` và `total_minor_units` snapshot combo.
 - `Money` dùng integer minor units và currency uppercase.
-- `AddConcessions` lock booking/concession, tính delta quantity, kiểm tra currency/stock, ghi `InventoryMovement` và cập nhật booking totals trong transaction. Catalog combo thuộc Movie; ledger stock thuộc Inventory.
+- `SyncBookingConcessions` lock booking/concession, tính delta quantity, kiểm tra currency/stock, ghi `InventoryMovement` và cập nhật booking totals trong transaction. Catalog combo thuộc Movie; ledger stock thuộc Inventory.
 - Tổng combo tối đa là `ticket_count × config('booking.limits.max_combos_per_ticket')`; mỗi line còn chịu `max_combo_quantity`.
 - Admin thay đổi stock bắt buộc reason và ghi `StockAdjustmentAudit` thuộc Inventory.
 - Cancel/expire/refund trả stock đúng một lần; retry không được double release.
@@ -2220,10 +2220,10 @@ Browser automation không chạy được trong môi trường review này vì k
 
 Các giá trị có ý nghĩa nghiệp vụ không được so sánh bằng literal rải rác trong application code:
 
-- Booking dùng `App\Enums\Movie\Booking\BookingStatus`.
-- Screening seat dùng `App\Enums\Movie\Seating\ScreeningSeatStatus`.
-- Screening dùng `App\Enums\Movie\Catalog\ScreeningStatus`.
-- Ticket dùng `App\Enums\Movie\Ticketing\TicketStatus`.
+- Booking dùng `App\Enums\Booking\BookingStatus`.
+- Screening seat dùng `App\Enums\Catalog\Seating\ScreeningSeatStatus`.
+- Screening dùng `App\Enums\Catalog\ScreeningStatus`.
+- Ticket dùng `App\Enums\Ticketing\TicketStatus`.
 - Payment và payment attempt dùng `App\Enums\Payment\PaymentStatus` và `PaymentAttemptStatus`.
 - Refund attempt dùng `App\Enums\Payment\RefundAttemptStatus`.
 - Concession inventory movement dùng `App\Enums\Inventory\InventoryMovementType`.
@@ -2357,7 +2357,7 @@ Reservation được:
 
 Khi combo thay đổi sau khi coupon đã apply, discount percentage được tính lại trên subtotal mới. Coupon không được thay đổi sau khi payment đã bắt đầu.
 
-MovieSeeder cung cấp các coupon mẫu để kiểm thử đủ trạng thái trên UI và nghiệp vụ:
+CinemaSeeder cung cấp các coupon mẫu để kiểm thử đủ trạng thái trên UI và nghiệp vụ:
 
 | Code | Loại | Giá trị | Trạng thái/mục đích |
 |---|---|---:|---|
@@ -2383,51 +2383,46 @@ Feature tests kiểm tra:
 
 Frontend cần tiếp tục bổ sung browser/DOM tests cho mở chuông, badge unread, mark-read, polling failure và responsive notification panel.
 
-## 14. Cấu trúc module Movie
+## 14. Cấu trúc module và context
 
-Domain movie booking được group theo feature `Movie` bên trong các layer chính của `app/`. Đây là modular monolith: module sở hữu nghiệp vụ movie, còn Laravel HTTP/Queue/Mail/Infrastructure vẫn là các adapter bên ngoài.
+Nghiệp vụ được chia theo context bên trong các layer chính của `app/`; `Movie` chỉ còn là catalog model/resource, không còn là thư mục domain bao trùm booking, coupon và combo.
 
 ```text
 app/
-├── Actions/Movie/
-│   ├── Booking/                 # hold, edit, pay, expire, cancel, refund, finalize
-│   ├── Catalog/                 # tạo/quản lý movie screening
-│   ├── Concessions/             # combo catalog và booking integration
-│   └── Ticketing/               # check-in và quyền sử dụng ticket
-├── Enums/Movie/                 # trạng thái/loại dữ liệu thuần movie
-│   ├── Booking/
+├── Actions/
+│   ├── Booking/Checkout|Lifecycle|Payment/
 │   ├── Catalog/
-│   ├── Concessions/
-│   ├── Seating/
+│   ├── Commerce/Concessions|Coupons/
 │   └── Ticketing/
+├── Enums/Booking|Catalog|Commerce|Ticketing/
 ├── Enums/Inventory/              # inventory movement types
-├── Models/Movie/                # movie, screening, seat, booking, combo và audit models
+├── Models/Booking|Catalog|Commerce/ # movie, screening, seat, booking, combo và audit models
 ├── Models/Inventory/             # inventory ledger và stock adjustment audit models
-├── Policies/Movie/              # authorization cho booking movie
-└── Queries/Movie/               # read model/query object của movie flow
+├── Policies/Booking/             # authorization cho booking
+└── Queries/Booking|Commerce/      # read model/query object
 ```
 
 Các lớp delivery vẫn ở vị trí chuẩn để dễ nhận biết boundary:
 
 ```text
-app/Http/Controllers/Movie/       # public movie HTTP surface
-app/Http/Controllers/Admin/       # admin HTTP surface (MovieController, BookingController...)
+app/Http/Controllers/Catalog/     # public catalog/movie HTTP surface
+app/Http/Controllers/Admin/       # admin HTTP surface (CatalogController, BookingController...)
 app/Http/Controllers/User/        # authenticated user HTTP surface
 app/Http/Requests/               # input validation theo HTTP surface
 app/Jobs/                        # asynchronous adapter
-app/Models/Payments/             # payment infrastructure dùng chung
+app/Models/Payment/              # payment infrastructure dùng chung
 app/Models/Infrastructure/       # outbox infrastructure dùng chung
 app/Enums/                       # enum payment/infrastructure/admin dùng chung
 ```
 
 Quy tắc tổ chức mới:
 
-- Use case mới thuộc movie phải bắt đầu ở `app/Actions/Movie/<Capability>`; không tạo action movie ở root `app/Actions`.
-- Enum thuần movie đặt trong `app/Enums/Movie/<Capability>`; enum payment, infrastructure và admin giữ ở `app/Enums` vì có phạm vi dùng chung.
-- Model có ownership của movie booking đặt tại `app/Models/Movie`; model payment/outbox dùng chung giữ ở layer riêng.
-- Inventory model đặt tại `app/Models/Inventory`; không đặt ledger/audit stock trong `app/Models/Movie` dù catalog combo vẫn thuộc Movie.
-- Payment model đặt tại `app/Models/Payments`; outbox/notification model đặt tại `app/Models/Infrastructure`.
-- Query đọc lại nhiều nơi đặt tại `app/Queries/Movie`; controller không tự copy điều kiện nghiệp vụ đã có trong query/scope.
+- Use case mới thuộc movie phải bắt đầu ở `app/Actions/Booking, app/Actions/Catalog and app/Actions/Commerce/<Capability>`; không tạo action movie ở root `app/Actions`.
+- Enum thuần movie đặt trong `app/Enums/Booking/, Enums/Catalog/ and Enums/Commerce/<Capability>`; enum payment, infrastructure và admin giữ ở `app/Enums` vì có phạm vi dùng chung.
+- Model có ownership của movie booking đặt tại `app/Models/Booking, app/Models/Catalog and app/Models/Commerce`; model payment/outbox dùng chung giữ ở layer riêng.
+- Inventory model đặt tại `app/Models/Inventory`; không đặt ledger/audit stock trong `app/Models/Booking, app/Models/Catalog and app/Models/Commerce` dù catalog combo vẫn thuộc Movie.
+- Payment model đặt tại `app/Models/Payment`; outbox/notification model đặt tại `app/Models/Infrastructure`.
+- Query đọc lại nhiều nơi đặt tại `app/Queries/Booking or Queries/Commerce`; controller không tự copy điều kiện nghiệp vụ đã có trong query/scope.
 - Controller chỉ authorize, validate, gọi action/query và trả response; không đưa transaction hoặc inventory invariant vào controller.
 - Tên route, view và translation legacy có thể tiếp tục dùng `cinema` để giữ backward compatibility; đó là presentation contract, không phải lý do để domain code quay lại namespace `Cinema`.
 - Khi tách capability mới, cập nhật namespace, factory, seed, policy registration, route imports, test imports và tài liệu trong cùng một change.
@@ -2436,13 +2431,13 @@ Quy tắc tổ chức mới:
 Import canonical sau refactor:
 
 ```php
-use App\Actions\Movie\Booking\HoldSeats;
-use App\Actions\Movie\Catalog\CreateScreening;
-use App\Actions\Movie\Concessions\AddConcessions;
-use App\Actions\Movie\Ticketing\CheckInTicket;
-use App\Models\Movie\Booking;
-use App\Models\Movie\Screening;
-use App\Queries\Movie\UserBookingsQuery;
+use App\Actions\Booking\Checkout\HoldSeats;
+use App\Actions\Catalog\CreateScreening;
+use App\Actions\Commerce\Concessions\SyncBookingConcessions;
+use App\Actions\Ticketing\CheckInTicket;
+use App\Models\Booking\Booking;
+use App\Models\Catalog\Screening;
+use App\Queries\Booking\UserBookingsQuery;
 ```
 
 Refactor này chỉ thay namespace/path và không thay route URL, route name, database table hoặc business transition. Rollback an toàn bằng cách revert commit namespace/path nếu chưa deploy; không cần migration dữ liệu.

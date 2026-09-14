@@ -2,11 +2,11 @@
 
 namespace App\Http\Controllers\User;
 
-use App\Actions\Movie\Booking\ApplyCoupon;
+use App\Actions\Commerce\Coupons\ApplyCoupon;
+use App\Exceptions\Booking\BookingOperationFailed;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\User\ApplyCouponRequest;
-use App\Models\Movie\Booking;
-use App\Support\Booking\Exceptions\BookingOperationFailed;
+use App\Models\Booking\Booking;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Validation\ValidationException;
 

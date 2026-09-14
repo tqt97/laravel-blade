@@ -2,8 +2,8 @@
 
 namespace App\Mail;
 
-use App\Models\Movie\Booking;
-use App\Support\Cinema\TicketQrCode;
+use App\Models\Booking\Booking;
+use App\Support\Ticketing\TicketQrCode;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Content;

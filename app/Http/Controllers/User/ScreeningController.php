@@ -2,12 +2,12 @@
 
 namespace App\Http\Controllers\User;
 
-use App\Actions\Movie\Booking\EditBookingSelection;
+use App\Actions\Booking\Checkout\EditBookingSelection;
+use App\Exceptions\Booking\BookingOperationFailed;
+use App\Exceptions\Booking\SeatHoldConflict;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\User\HoldSeatsRequest;
-use App\Models\Movie\Screening;
-use App\Support\Booking\Exceptions\BookingOperationFailed;
-use App\Support\Booking\SeatHoldConflict;
+use App\Models\Catalog\Screening;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;

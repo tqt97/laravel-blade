@@ -2,8 +2,8 @@
 
 namespace App\Http\Requests\Admin;
 
-use App\Models\Movie\Concession;
-use App\Support\Money\Currency;
+use App\Models\Commerce\Concession;
+use App\ValueObjects\Currency;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;

@@ -27,7 +27,7 @@
         ->map(function ($screening) use ($movie, $screeningSummaries): array {
             $summary = $screeningSummaries[$screening->id];
             $currency = strtoupper((string) $screening->currency);
-            $fractionDigits = \App\Support\Money\Currency::fractionDigits($currency);
+            $fractionDigits = \App\ValueObjects\Currency::fractionDigits($currency);
 
             return [
                 '@type' => 'ScreeningEvent',
@@ -172,7 +172,7 @@
                                 </div>
                                 <div class="mt-3 flex items-center justify-between gap-3 border-t border-border pt-4">
                                     <span class="text-sm font-semibold text-foreground">
-                                        {{ \App\Support\Money\Money::fromMinorUnits((int) $screening->base_price_minor_units, strtoupper((string) $screening->currency))->format() }}
+                                        {{ \App\ValueObjects\Money::fromMinorUnits((int) $screening->base_price_minor_units, strtoupper((string) $screening->currency))->format() }}
                                     </span>
                                     <span
                                         class="inline-flex items-center gap-1 rounded-lg bg-primary-soft px-3 py-2 text-sm font-bold text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground">

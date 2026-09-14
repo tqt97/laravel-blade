@@ -135,7 +135,7 @@ if (quantity > maximumComboQuantity) {
 }
 ```
 
-Đây chỉ là guard UX. `HoldSeatsRequest` và `AddConcessions` cùng đọc `config/booking.php`; request thủ công hoặc JavaScript bị tắt không thể vượt nghiệp vụ.
+Đây chỉ là guard UX. `HoldSeatsRequest` và `SyncBookingConcessions` cùng đọc `config/booking.php`; request thủ công hoặc JavaScript bị tắt không thể vượt nghiệp vụ.
 
 Summary luôn có đúng ba dòng ổn định: tiền ghế, tiền combo và tổng tiền. Modal xác nhận đặt ghế phía trên combo, nhóm các ghế cùng giá thành một dòng, nhấn mạnh tổng tiền bằng font đậm/màu semantic. Header và footer compact, phần detail có thể scroll để modal không quá cao.
 

@@ -2,7 +2,7 @@
 
 namespace App\Mail;
 
-use App\Models\Movie\Booking;
+use App\Models\Booking\Booking;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Attachment;

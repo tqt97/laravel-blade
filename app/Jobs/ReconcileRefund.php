@@ -2,14 +2,14 @@
 
 namespace App\Jobs;
 
-use App\Actions\Movie\Booking\FinalizeRefund;
+use App\Actions\Booking\Payment\FinalizeRefund;
 use App\Contracts\RefundStatusRetriever;
 use App\Enums\Payment\PaymentStatus;
 use App\Enums\Payment\RefundAttemptStatus;
 use App\Enums\Payment\StripeRefundStatus;
-use App\Models\Payments\Payment;
-use App\Models\Payments\RefundAttempt;
-use App\Support\Time\BookingClock;
+use App\Models\Payment\Payment;
+use App\Models\Payment\RefundAttempt;
+use App\Support\Booking\BookingClock;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\DB;

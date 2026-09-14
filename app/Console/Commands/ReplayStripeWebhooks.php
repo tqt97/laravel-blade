@@ -4,7 +4,7 @@ namespace App\Console\Commands;
 
 use App\Enums\Payment\PaymentProvider;
 use App\Jobs\ProcessStripeWebhook;
-use App\Models\Payments\PaymentWebhookEvent;
+use App\Models\Payment\PaymentWebhookEvent;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;

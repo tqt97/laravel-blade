@@ -2,10 +2,10 @@
 
 namespace App\Http\Controllers\Admin;
 
-use App\Actions\Movie\Ticketing\CheckInTicket;
+use App\Actions\Ticketing\CheckInTicket;
+use App\Exceptions\Booking\BookingOperationFailed;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\CheckInTicketRequest;
-use App\Support\Booking\Exceptions\BookingOperationFailed;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Validation\ValidationException;
 

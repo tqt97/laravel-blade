@@ -3,9 +3,9 @@
 namespace App\Actions\Infrastructure\Outbox;
 
 use App\Contracts\OutboxDeliveryHandler;
-use App\Models\Movie\Booking;
+use App\Models\Booking\Booking;
 use App\Models\User;
-use App\Notifications\MovieBookingNotification;
+use App\Notifications\BookingNotification;
 
 final class BookingExpiredDelivery implements OutboxDeliveryHandler
 {
@@ -16,6 +16,6 @@ final class BookingExpiredDelivery implements OutboxDeliveryHandler
             return;
         }
 
-        $user->notify(new MovieBookingNotification($booking, 'booking_expired'));
+        $user->notify(new BookingNotification($booking, 'booking_expired'));
     }
 }

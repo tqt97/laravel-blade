@@ -8,7 +8,7 @@ use App\Contracts\RefundStatusRetriever;
 use App\Enums\Payment\PaymentStatus;
 use App\Enums\Payment\StripePaymentIntentStatus;
 use App\Enums\Payment\StripeRefundStatus;
-use App\Models\Payments\Payment;
+use App\Models\Payment\Payment;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;

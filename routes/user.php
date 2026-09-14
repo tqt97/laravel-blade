@@ -2,8 +2,8 @@
 
 // User routes belong here and inherit the user route group's web/auth middleware.
 
-use App\Http\Controllers\Movie\PublicMovieController;
-use App\Http\Controllers\RedirectToMovieCatalogueController;
+use App\Http\Controllers\Catalog\MovieController;
+use App\Http\Controllers\RedirectToMovieCatalogController;
 use App\Http\Controllers\User\BookingCancellationController;
 use App\Http\Controllers\User\BookingConcessionController;
 use App\Http\Controllers\User\BookingController;
@@ -17,8 +17,8 @@ use Illuminate\Support\Facades\Route;
 
 // Dashboard and catalogue navigation.
 Route::get('/dashboard', DashboardController::class)->name('dashboard');
-Route::get('/screenings', RedirectToMovieCatalogueController::class)->name('screenings.index');
-Route::get('/cinema/hold/resume', [PublicMovieController::class, 'resumeHold'])->name('cinema.hold.resume');
+Route::get('/screenings', RedirectToMovieCatalogController::class)->name('screenings.index');
+Route::get('/cinema/hold/resume', [MovieController::class, 'resumeHold'])->name('cinema.hold.resume');
 Route::get('/screenings/{screening}', [ScreeningController::class, 'show'])->name('screenings.show');
 Route::post('/screenings/{screening}/hold', [ScreeningController::class, 'hold'])->middleware('throttle:booking-mutations')->name('screenings.hold');
 

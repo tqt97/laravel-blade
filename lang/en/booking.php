@@ -245,6 +245,7 @@ return [
         'idempotency_key_reused' => 'This request key was already used for another seat selection.',
         'payment_after_expiry' => 'Payment succeeded after the booking hold expired.',
         'invalid_transition' => 'The booking cannot be confirmed from its current state.',
+        'invalid_payment_transition' => 'The payment cannot transition from :from to :to.',
         'check_in_closed' => 'Check-in is not open for this screening.',
         'paid_booking_refund_first' => 'A paid booking must be refunded before it can be cancelled.',
         'refund_successful_only' => 'Only successful payments can be refunded.',

@@ -28,7 +28,7 @@ Các nguyên tắc bất biến phải giữ trong mọi luồng:
 ## 2. Bản đồ kiến trúc hiện tại
 
 ```text
-PublicMovieController / User BookingController
+MovieController / User BookingController
                     |
               Form Request
                     |
@@ -52,7 +52,7 @@ Domain ownership hiện tại:
 | Payments | `Payment`, `PaymentAttempt`, `RefundAttempt`, webhook | Provider state, charge, reconcile, refund |
 | Infrastructure | outbox, delivery, notification, mail | Side effect, retry, deduplication, delivery observability |
 
-Điểm tốt là các action đã được gom theo `app/Actions/Movie`, config giới hạn đã tập trung và public route canonical đã tồn tại. Điểm cần tiếp tục làm rõ là boundary giữa transition booking/payment, vì hiện vẫn còn `ConfirmBooking`, observer và nhiều action cùng có khả năng tác động state.
+Điểm tốt là các action đã được tách theo context `Booking`, `Catalog`, `Commerce` và `Ticketing`, config giới hạn đã tập trung và public route canonical đã tồn tại. Điểm cần tiếp tục làm rõ là boundary giữa transition booking/payment, vì hiện vẫn còn `ConfirmBooking`, observer và nhiều action cùng có khả năng tác động state.
 
 ## 3. Luồng nghiệp vụ chuẩn
 
@@ -94,7 +94,7 @@ Confirmation event tạo outbox message. Worker gửi một email xác nhận c�
 | ID | Finding | Bằng chứng hiện tại | Tác động | Phương án xử lý |
 |---|---|---|---|---|
 | P0-01 | Webhook giữ lock Payment rồi gọi finalize, trong khi finalize/refund dùng Booking → Payment | `StripeWebhookController` lock payment trước; `FinalizeSuccessfulPayment` và `RefundBooking` lock booking trước | Có thể deadlock dưới webhook/refund race; transaction boundary khó reasoning | Tách webhook ingest khỏi finalize. Ingest event/idempotency ngắn; sau commit dispatch transition job/action dùng lock order chuẩn `Booking → Payment → Attempt`. Nếu vẫn finalize inline, phải lock Booking trước Payment và không mở nested workflow ngược order |
-| P0-02 | Combo update chưa reconcile dòng bị bỏ khỏi request | `AddConcessions::executeForLockedBooking()` chỉ lặp key được gửi; line cũ không xuất hiện không bị đưa về 0 | Combo bị giữ/stock không phản ánh selection cuối; client partial payload có thể giữ combo ngoài ý muốn | Xác định payload là full replacement. Load toàn bộ active/current lines, coi key thiếu là quantity 0, trả stock phần giảm và xóa line. Với combo inactive, vẫn phải release line hiện tại nhưng không cho tăng mới |
+| P0-02 | Combo update chưa reconcile dòng bị bỏ khỏi request | `SyncBookingConcessions::executeForLockedBooking()` chỉ lặp key được gửi; line cũ không xuất hiện không bị đưa về 0 | Combo bị giữ/stock không phản ánh selection cuối; client partial payload có thể giữ combo ngoài ý muốn | Xác định payload là full replacement. Load toàn bộ active/current lines, coi key thiếu là quantity 0, trả stock phần giảm và xóa line. Với combo inactive, vẫn phải release line hiện tại nhưng không cho tăng mới |
 | P0-03 | Ownership seat không được DB enforce theo cùng screening/booking | FK `held_by_booking_id` chỉ trỏ Booking; `booking_items` chỉ FK screening seat | Dữ liệu sai screening có thể lọt nếu có code path mới/import/admin bypass action | Thêm service invariant bắt buộc ở mọi write; dài hạn dùng composite FK/constraint hoặc bảng ownership riêng có key `(screening_id, booking_id)` và test migration trên MySQL |
 | P0-04 | Payment unknown/no local payment cần contract recovery rõ hơn | Webhook ném RuntimeException khi provider ID không map payment; provider có thể retry nhưng HTTP behavior chưa phân biệt race với dữ liệu sai | Có thể 500 lặp vô hạn hoặc mất visibility payment provider đã charge | Ghi orphan event/attempt với provider ID, trả 202 cho race có thể recover, 4xx cho payload invalid, alert cho unknown. Reconcile phải search/retrieve theo provider ID và backfill payment trước finalize |
 
@@ -120,7 +120,7 @@ Confirmation event tạo outbox message. Worker gửi một email xác nhận c�
 - Notification bell hiện là polling, không phải realtime transport; nếu cần realtime thật dùng broadcast/WebSocket, vẫn giữ polling fallback.
 - Notification cần index theo `notifiable_type`, `notifiable_id`, `read_at`; payment attempts cần index provider ID; refund attempts cần unique provider refund ID nếu provider contract cho phép.
 - Các non-negative amount/stock, currency/status và `ends_at > starts_at` hiện phần lớn là application invariant; bổ sung DB CHECK khi tương thích production MySQL.
-- Admin MovieController vẫn điều phối nhiều listing query; tách `MovieCatalogController`, `ScreeningController`, `ConcessionController`, `CouponController` khi phạm vi admin tăng.
+- Admin catalog, concession và coupon hiện đã tách thành `CatalogController`, `ConcessionController`, `CouponController`.
 - Cần dashboard/alert cho payment stuck, orphan, refund unknown, outbox failed, availability 5xx, slow query và duplicate delivery.
 
 ## 5. Ma trận edge case và kết quả đúng
@@ -245,8 +245,8 @@ Acceptance criteria chung:
 
 | Finding | Thay đổi | Bằng chứng |
 |---|---|---|
-| P0-02 | `AddConcessions::executeForLockedBooking()` nay coi payload là full replacement: line hiện tại bị thiếu được đặt về `0`, stock được release, line bị xóa; line combo đã inactive vẫn được release nhưng không thể tăng mới. Các concession được lock theo thứ tự ID để giữ thứ tự lock ổn định. | `MovieBookingFeatureTest`: replacement payload và inactive combo release |
-| P1-01 | Đưa giới hạn vào domain action: `HoldSeats` giới hạn số ghế dù được gọi nội bộ; `AddConcessions` kiểm tra giới hạn mỗi dòng và tổng combo trước khi chạm stock. | Existing combo-limit test và full Pest suite |
+| P0-02 | `SyncBookingConcessions::executeForLockedBooking()` nay coi payload là full replacement: line hiện tại bị thiếu được đặt về `0`, stock được release, line bị xóa; line combo đã inactive vẫn được release nhưng không thể tăng mới. Các concession được lock theo thứ tự ID để giữ thứ tự lock ổn định. | `MovieBookingFeatureTest`: replacement payload và inactive combo release |
+| P1-01 | Đưa giới hạn vào domain action: `HoldSeats` giới hạn số ghế dù được gọi nội bộ; `SyncBookingConcessions` kiểm tra giới hạn mỗi dòng và tổng combo trước khi chạm stock. | Existing combo-limit test và full Pest suite |
 | Traceability | Bổ sung translation key `seat_limit` cho EN/VI và regression coverage ở feature layer. | `lang/en/booking.php`, `lang/vi/booking.php`, `tests/Feature/MovieBookingFeatureTest.php` |
 
 ### 10.2. Đánh giá sau triển khai
@@ -290,7 +290,7 @@ Verification sau enum predicate refactor: `php artisan test --compact` **108 pas
 - `routes/user.php` đã được chia thành dashboard/catalogue, ticket, notification và booking/payment/mutation.
 - `routes/admin.php` đã được chia thành landing/static, booking/report, cinema management, refund/cancel, ticket/settings và user management.
 - `routes/console.php` đã tách comment cho development command và recurring booking/payment maintenance.
-- Các route closure có nghiệp vụ đã được chuyển thành invokable controller: `LocaleController`, `HomeController`, `TicketVerificationController`, `RedirectToMovieCatalogueController`, `Admin\\RedirectToDashboardController`.
+- Các route closure có nghiệp vụ đã được chuyển thành invokable controller: `LocaleController`, `HomeController`, `TicketVerificationController`, `RedirectToMovieCatalogController`, `Admin\\RedirectToDashboardController`.
 - Route file hiện chỉ khai báo URL, middleware, name và controller boundary; nghiệp vụ/query/validation không còn nằm trực tiếp trong route closure.
 
 Verification: `php artisan route:list` pass, full Pest/PHPStan/Pint pass, `git diff --check` pass.
@@ -364,10 +364,10 @@ Chưa thể kết luận production-ready chỉ từ vòng chạy này:
 |---|---|---|---|---|
 | P0 | Webhook và finalize/refund vẫn có lock order ngược | `StripeWebhookController` lock Payment trước rồi gọi `FinalizeSuccessfulPayment`; finalize/refund lock Booking trước Payment | Có thể deadlock khi webhook chạy đồng thời refund/expiry/finalize; webhook transaction có thể retry/500 không ổn định | Tách webhook ingest ngắn khỏi finalize; dispatch transition sau commit; thống nhất lock order `Booking → Payment → Attempt → items/seats/inventory` |
 | P0 | Webhook provider ID chưa map payment làm mất durable orphan record | Webhook ném `RuntimeException` tại payment lookup; toàn transaction rollback nên `PaymentWebhookEvent` không được lưu | Provider retry vô hạn nhưng hệ thống không có record/orphan để reconcile hoặc alert | Lưu orphan event atomically với provider/event ID, trả `202`, reconcile/backfill theo provider ID; chỉ `4xx` cho payload/signature sai |
-| P1 | Có thể mutate combo/coupon sau khi hold đã hết hạn nhưng status chưa được scheduler chuyển | `AddConcessions` và `ApplyCoupon` chỉ kiểm tra `Held`; không recheck `expires_at`/`screening->isBookable()` | Giữ/trừ stock hoặc reserve coupon cho booking không còn hợp lệ; window scheduler tạo hành vi phụ thuộc timing | Tạo guard chung `assertBookingMutable()` trong transaction hoặc gọi `ExpireBooking`/reject trước mutation; thêm test không cần scheduler |
-| P1 | Same-seat edit bỏ qua replacement payload rỗng | `EditBookingSelection` chỉ gọi `AddConcessions` khi `$quantities !== []`; user bỏ hết combo nhưng submit `quantities=[]` sẽ giữ line cũ | Selection UI và server booking lệch nhau, stock bị giữ đến expiry | Luôn truyền full replacement payload; `[]` phải có nghĩa xóa toàn bộ combo; thêm feature test same-seat remove-all |
+| P1 | Có thể mutate combo/coupon sau khi hold đã hết hạn nhưng status chưa được scheduler chuyển | `SyncBookingConcessions` và `ApplyCoupon` chỉ kiểm tra `Held`; không recheck `expires_at`/`screening->isBookable()` | Giữ/trừ stock hoặc reserve coupon cho booking không còn hợp lệ; window scheduler tạo hành vi phụ thuộc timing | Tạo guard chung `assertBookingMutable()` trong transaction hoặc gọi `ExpireBooking`/reject trước mutation; thêm test không cần scheduler |
+| P1 | Same-seat edit bỏ qua replacement payload rỗng | `EditBookingSelection` chỉ gọi `SyncBookingConcessions` khi `$quantities !== []`; user bỏ hết combo nhưng submit `quantities=[]` sẽ giữ line cũ | Selection UI và server booking lệch nhau, stock bị giữ đến expiry | Luôn truyền full replacement payload; `[]` phải có nghĩa xóa toàn bộ combo; thêm feature test same-seat remove-all |
 | P1 | Coupon lock order và legacy reservation reconciliation chưa canonical | `ApplyCoupon` lock coupon mới trước, rồi lock reservation/coupon cũ; `ReleaseBookingResources` chỉ lấy `first()` Reserved | A→B đồng thời có thể deadlock; nhiều Reserved cũ có thể làm used_count/reservation drift | Lock tất cả coupon IDs tăng dần; load/reconcile tất cả Reserved rows; thêm unique invariant cho một Reserved/booking |
-| P1 | Movie detail và sitemap đọc toàn bộ showtimes không giới hạn | `PublicMovieController::movie()` và `sitemap()` dùng eager load/get không pagination/limit | Payload/TTFB và memory tăng theo horizon/catalog; sitemap có thể vượt kích thước thực tế | Movie detail giới hạn theo ngày/next N hoặc paginate; sitemap chunk/giới hạn URL và đo query plan |
+| P1 | Movie detail và sitemap đọc toàn bộ showtimes không giới hạn | `MovieController::movie()` và `sitemap()` dùng eager load/get không pagination/limit | Payload/TTFB và memory tăng theo horizon/catalog; sitemap có thể vượt kích thước thực tế | Movie detail giới hạn theo ngày/next N hoặc paginate; sitemap chunk/giới hạn URL và đo query plan |
 | P1 | Outbox email vẫn at-least-once nhưng chưa provider-idempotent | Worker đánh dấu Sent sau `Mail::send`; process chết giữa provider accepted và save Sent sẽ gửi lại ở retry | Email confirmation/reminder có thể duplicate dù notification đã dedupe | Dùng provider Message-ID/idempotency nếu adapter hỗ trợ; lưu delivery attempt/provider response; dashboard ambiguous delivery/manual replay |
 
 ### 13.2. Test matrix bắt buộc bổ sung
@@ -502,7 +502,7 @@ Kiến trúc hiện tại đã có nhiều application workflow đúng nghĩa, n
 | `ReconcilePayment` | Provider lookup ngoài transaction, local state transition trong transaction, finalize sau đó | Giữ làm recovery workflow; status mapping phải dùng enum mapper chung. |
 | `FinalizeSuccessfulPayment` | Atomic finalizer cho Booking/Payment/seat/item/outbox | Có thể xem là domain/application service chuyên biệt, nhưng không cần generic service. |
 | `EditBookingSelection` | Orchestrates cancel old hold → hold new seats → sync concessions | Đúng là workflow, nhưng hiện đang gọi `CancelBooking` và `HoldSeats` có transaction riêng bên trong transaction ngoài. Đây là điểm cần refactor ưu tiên P1. |
-| `HoldSeats`, `ApplyCoupon`, `AddConcessions`, `CancelBooking`, `ExpireBooking` | Atomic mutation với lock và invariant cục bộ | Giữ Action; bổ sung rõ public transaction boundary và internal transaction-free collaborator khi cần compose. |
+| `HoldSeats`, `ApplyCoupon`, `SyncBookingConcessions`, `CancelBooking`, `ExpireBooking` | Atomic mutation với lock và invariant cục bộ | Giữ Action; bổ sung rõ public transaction boundary và internal transaction-free collaborator khi cần compose. |
 | `ReleaseBookingResources` | Primitive giải phóng seat/item/stock/coupon, không tự mở transaction | Giữ làm collaborator cấp thấp; contract “caller phải sở hữu transaction và booking lock” phải được kiểm thử và ghi rõ. |
 
 ### 17.3. Vấn đề kiến trúc cần xử lý

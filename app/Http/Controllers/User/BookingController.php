@@ -2,13 +2,13 @@
 
 namespace App\Http\Controllers\User;
 
-use App\Actions\Movie\Booking\ExpireBooking;
-use App\Enums\Movie\Booking\BookingStatus;
+use App\Actions\Booking\Lifecycle\ExpireBooking;
+use App\Enums\Booking\BookingStatus;
 use App\Http\Controllers\Controller;
-use App\Models\Movie\Booking;
-use App\Queries\Movie\AvailableConcessionsQuery;
-use App\Queries\Movie\UserBookingsQuery;
-use App\Support\Time\BookingClock;
+use App\Models\Booking\Booking;
+use App\Queries\Booking\UserBookingsQuery;
+use App\Queries\Commerce\AvailableConcessionsQuery;
+use App\Support\Booking\BookingClock;
 use Illuminate\View\View;
 
 final class BookingController extends Controller
@@ -24,7 +24,12 @@ final class BookingController extends Controller
     {
         $this->authorize('view', $booking);
 
-        $booking->load(['screening.movie', 'screening.room', 'items.screeningSeat.seat', 'concessions.concession']);
+        $booking->load([
+            'screening.movie',
+            'screening.room',
+            'items.screeningSeat.seat',
+            'concessions.concession',
+        ]);
 
         return view('user.bookings.show', compact('booking'));
     }
@@ -55,7 +60,12 @@ final class BookingController extends Controller
             return view('user.bookings.expired', compact('booking', 'canRebook'));
         }
 
-        $booking->load(['screening.movie', 'screening.room', 'items.screeningSeat.seat', 'concessions.concession']);
+        $booking->load([
+            'screening.movie',
+            'screening.room',
+            'items.screeningSeat.seat',
+            'concessions.concession',
+        ]);
 
         $concessions = $concessionsQuery->get((string) ($booking->pricing_currency ?? $booking->currency));
 
@@ -67,7 +77,13 @@ final class BookingController extends Controller
         $this->authorize('view', $booking);
 
         abort_unless($booking->getRawOriginal('status') === BookingStatus::Confirmed->value, 404);
-        $booking->load(['screening.movie', 'screening.room', 'items.screeningSeat.seat', 'concessions.concession']);
+
+        $booking->load([
+            'screening.movie',
+            'screening.room',
+            'items.screeningSeat.seat',
+            'concessions.concession',
+        ]);
 
         return view('user.bookings.success', compact('booking'));
     }

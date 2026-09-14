@@ -144,6 +144,7 @@ return [
     ],
     'users' => [
         'title' => 'Người dùng',
+        'status' => 'Trạng thái',
         'management' => 'Quản lý người dùng',
         'management_description' => 'Tìm kiếm, lọc và quản lý người dùng tại một nơi.',
         'add' => 'Thêm người dùng',

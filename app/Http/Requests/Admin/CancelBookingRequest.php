@@ -2,7 +2,7 @@
 
 namespace App\Http\Requests\Admin;
 
-use App\Models\Movie\Booking;
+use App\Models\Booking\Booking;
 use Illuminate\Foundation\Http\FormRequest;
 
 final class CancelBookingRequest extends FormRequest

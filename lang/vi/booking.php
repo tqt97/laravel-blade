@@ -245,6 +245,7 @@ return [
         'idempotency_key_reused' => 'Mã yêu cầu này đã được dùng cho một lựa chọn ghế khác.',
         'payment_after_expiry' => 'Thanh toán thành công sau khi lượt giữ chỗ đã hết hạn.',
         'invalid_transition' => 'Không thể xác nhận đặt vé từ trạng thái hiện tại.',
+        'invalid_payment_transition' => 'Không thể chuyển thanh toán từ :from sang :to.',
         'check_in_closed' => 'Suất chiếu này chưa mở hoặc đã đóng check-in.',
         'paid_booking_refund_first' => 'Đặt vé đã thanh toán phải được hoàn tiền trước khi hủy.',
         'refund_successful_only' => 'Chỉ có thể hoàn tiền cho giao dịch đã thành công.',

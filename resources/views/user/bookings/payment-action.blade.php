@@ -53,7 +53,7 @@
                 <div class="shrink-0 sm:text-right">
                     <p class="text-xs text-muted-foreground">{{ __('booking.checkout.total') }}</p>
                     <p class="text-lg font-bold text-primary">
-                        {{ \App\Support\Money\Money::fromMinorUnits((int) $booking->total_minor_units, strtoupper((string) ($booking->pricing_currency ?? $booking->currency)))->format() }}
+                        {{ \App\ValueObjects\Money::fromMinorUnits((int) $booking->total_minor_units, strtoupper((string) ($booking->pricing_currency ?? $booking->currency)))->format() }}
                     </p>
                 </div>
             </div>

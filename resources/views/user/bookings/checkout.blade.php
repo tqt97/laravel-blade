@@ -1,6 +1,6 @@
 <x-layouts.movie :title="__('booking.checkout.title')">
     @php
-        $expiresAt = \App\Support\Time\BookingClock::parseStored($booking->getRawOriginal('expires_at'));
+        $expiresAt = \App\Support\Booking\BookingClock::parseStored($booking->getRawOriginal('expires_at'));
     @endphp
 
     <div class="mx-auto max-w-6xl space-y-8 px-5 py-12 pb-32 sm:px-8 sm:pb-12" data-booking-checkout
@@ -9,7 +9,7 @@
         data-combo-availability-url="{{ route('user.bookings.combo-availability', $booking) }}">
         <x-cinema.booking-stepper current="review" />
         <div>
-            @if ($booking->status === \App\Enums\Movie\Booking\BookingStatus::Held)
+            @if ($booking->status === \App\Enums\Booking\BookingStatus::Held)
                 <a href="{{ route('cinema.screenings.show', [$booking->screening->movie, $booking->screening]) }}"
                     class="text-sm font-semibold text-primary hover:underline">←
                     {{ __('booking.checkout.edit_selection') }}</a>
@@ -31,7 +31,7 @@
             $currency = strtoupper((string) ($booking->pricing_currency ?? $booking->currency));
             $comboTotal = (int) $booking->concessions->sum('total_minor_units');
             $seatTotal = max(0, (int) $booking->subtotal_minor_units - $comboTotal);
-            $isEditable = $booking->status === \App\Enums\Movie\Booking\BookingStatus::Held;
+            $isEditable = $booking->status === \App\Enums\Booking\BookingStatus::Held;
         @endphp
 
         <form id="booking-payment-form" method="POST" action="{{ route('user.bookings.pay', $booking) }}"
@@ -62,7 +62,7 @@
                                         class="flex items-center justify-between rounded-xl bg-muted px-3 py-2.5 text-sm">
                                         <span
                                             class="font-semibold">{{ $item->screeningSeat?->seat?->row_label }}{{ $item->screeningSeat?->seat?->seat_number }}</span><span
-                                            class="text-xs text-muted-foreground">{{ \App\Support\Money\Money::fromMinorUnits((int) $item->price_minor_units, $currency)->format() }}</span>
+                                            class="text-xs text-muted-foreground">{{ \App\ValueObjects\Money::fromMinorUnits((int) $item->price_minor_units, $currency)->format() }}</span>
                                     </div>
                                 @endforeach
                             </div>
@@ -82,10 +82,10 @@
                                         <div class="min-w-0">
                                             <p class="font-semibold">{{ $line->concession?->name ?? '—' }}</p>
                                             <p class="mt-1 text-xs text-muted-foreground">{{ $line->quantity }} ×
-                                                {{ \App\Support\Money\Money::fromMinorUnits((int) $line->unit_price_minor_units, $currency)->format() }}
+                                                {{ \App\ValueObjects\Money::fromMinorUnits((int) $line->unit_price_minor_units, $currency)->format() }}
                                             </p>
                                         </div><span
-                                            class="shrink-0 font-semibold">{{ \App\Support\Money\Money::fromMinorUnits((int) $line->total_minor_units, $currency)->format() }}</span>
+                                            class="shrink-0 font-semibold">{{ \App\ValueObjects\Money::fromMinorUnits((int) $line->total_minor_units, $currency)->format() }}</span>
                                     </div>
                                 @endforeach
                             </div>
@@ -109,19 +109,19 @@
                         <dl class="mt-5 space-y-3 text-sm">
                             <div class="flex justify-between gap-4 text-muted-foreground">
                                 <dt>{{ __('booking.checkout.seats') }}</dt>
-                                <dd>{{ \App\Support\Money\Money::fromMinorUnits($seatTotal, $currency)->format() }}
+                                <dd>{{ \App\ValueObjects\Money::fromMinorUnits($seatTotal, $currency)->format() }}
                                 </dd>
                             </div>
                             <div class="flex justify-between gap-4 text-muted-foreground">
                                 <dt>{{ __('booking.checkout.combos') }}</dt>
                                 <dd data-checkout-combo-total>
-                                    {{ \App\Support\Money\Money::fromMinorUnits($comboTotal, $currency)->format() }}
+                                    {{ \App\ValueObjects\Money::fromMinorUnits($comboTotal, $currency)->format() }}
                                 </dd>
                             </div>
                             @if ((int) $booking->discount_minor_units > 0)
                                 <div class="flex justify-between gap-4 text-success">
                                     <dt>{{ __('booking.checkout.discount') }}</dt>
-                                    <dd>-{{ \App\Support\Money\Money::fromMinorUnits((int) $booking->discount_minor_units, $currency)->format() }}
+                                    <dd>-{{ \App\ValueObjects\Money::fromMinorUnits((int) $booking->discount_minor_units, $currency)->format() }}
                                     </dd>
                                 </div>
                             @endif
@@ -129,7 +129,7 @@
                         <div class="mt-5 flex items-end justify-between gap-4 border-t border-primary/20 pt-5"><span
                                 class="text-sm font-semibold">{{ __('booking.checkout.subtotal') }}</span><strong
                                 data-checkout-grand-total data-grand-total="{{ (int) $booking->total_minor_units }}"
-                                class="text-xl text-primary">{{ \App\Support\Money\Money::fromMinorUnits((int) $booking->total_minor_units, $currency)->format() }}</strong>
+                                class="text-xl text-primary">{{ \App\ValueObjects\Money::fromMinorUnits((int) $booking->total_minor_units, $currency)->format() }}</strong>
                         </div>
                     </section>
                     <section class="rounded-2xl border border-border bg-card p-5 shadow-sm"><label for="promo-code"
@@ -173,7 +173,7 @@
                     <div class="min-w-0 flex-1">
                         <p class="text-xs text-muted-foreground">{{ __('booking.checkout.subtotal') }}</p>
                         <p class="truncate text-base font-bold text-primary" data-mobile-checkout-total>
-                            {{ \App\Support\Money\Money::fromMinorUnits((int) $booking->total_minor_units, $currency)->format() }}
+                            {{ \App\ValueObjects\Money::fromMinorUnits((int) $booking->total_minor_units, $currency)->format() }}
                         </p>
                     </div>
                     <x-admin.button type="submit" form="booking-payment-form" icon="save"

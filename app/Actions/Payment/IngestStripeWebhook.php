@@ -5,9 +5,9 @@ namespace App\Actions\Payment;
 use App\Enums\Payment\PaymentProvider;
 use App\Enums\Payment\StripeWebhookEventType;
 use App\Enums\Payment\StripeWebhookIngestResult;
-use App\Models\Movie\Booking;
-use App\Models\Payments\Payment;
-use App\Models\Payments\PaymentWebhookEvent;
+use App\Models\Booking\Booking;
+use App\Models\Payment\Payment;
+use App\Models\Payment\PaymentWebhookEvent;
 use Illuminate\Support\Facades\DB;
 
 final class IngestStripeWebhook

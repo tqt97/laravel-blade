@@ -2,18 +2,18 @@
 
 namespace App\Jobs;
 
-use App\Actions\Movie\Booking\FinalizeSuccessfulPayment;
+use App\Actions\Booking\Payment\FinalizeSuccessfulPayment;
 use App\Actions\Payment\TransitionPayment;
 use App\Contracts\PaymentStatusRetriever;
 use App\Enums\Payment\PaymentAttemptStatus;
 use App\Enums\Payment\PaymentStatus;
 use App\Enums\Payment\StripePaymentIntentStatus;
-use App\Models\Movie\Booking;
-use App\Models\Payments\Payment;
-use App\Models\Payments\PaymentAttempt;
+use App\Models\Booking\Booking;
+use App\Models\Payment\Payment;
+use App\Models\Payment\PaymentAttempt;
+use App\Support\Booking\BookingClock;
 use App\Support\Payment\PaymentStateMachine;
 use App\Support\Payment\ProviderPaymentStatus;
-use App\Support\Time\BookingClock;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;

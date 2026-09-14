@@ -3,8 +3,8 @@
 namespace App\Console\Commands;
 
 use App\Jobs\ReconcileRefund;
-use App\Models\Movie\Booking;
-use App\Models\Payments\RefundAttempt;
+use App\Models\Booking\Booking;
+use App\Models\Payment\RefundAttempt;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;

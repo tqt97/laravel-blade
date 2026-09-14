@@ -2,9 +2,9 @@
 
 namespace App\Jobs;
 
-use App\Actions\Movie\Booking\RefundBooking;
-use App\Models\Movie\Booking;
-use App\Models\Payments\RefundAttempt;
+use App\Actions\Booking\Payment\RefundBooking;
+use App\Models\Booking\Booking;
+use App\Models\Payment\RefundAttempt;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 

@@ -1,12 +1,12 @@
 <?php
 
-use App\Actions\Movie\Catalog\CreateScreening;
-use App\Enums\Movie\Seating\ScreeningSeatStatus;
-use App\Models\Movie\Booking;
-use App\Models\Movie\Concession;
-use App\Models\Movie\Movie;
-use App\Models\Movie\ScreeningRoom;
-use App\Models\Movie\Seat;
+use App\Actions\Catalog\CreateScreening;
+use App\Enums\Catalog\Seating\ScreeningSeatStatus;
+use App\Models\Booking\Booking;
+use App\Models\Catalog\Movie;
+use App\Models\Catalog\ScreeningRoom;
+use App\Models\Catalog\Seat;
+use App\Models\Commerce\Concession;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 

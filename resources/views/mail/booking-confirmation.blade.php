@@ -51,11 +51,11 @@
     ## {{ __('booking.mail.summary') }}
 
     {{ __('booking.mail.seat_total') }}:
-    **{{ \App\Support\Money\Money::fromMinorUnits((int) $booking->items->sum('price_minor_units'), (string) $booking->currency)->format() }}**
+    **{{ \App\ValueObjects\Money::fromMinorUnits((int) $booking->items->sum('price_minor_units'), (string) $booking->currency)->format() }}**
     {{ __('booking.mail.combo_total') }}:
-    **{{ \App\Support\Money\Money::fromMinorUnits((int) $booking->concessions->sum('total_minor_units'), (string) $booking->currency)->format() }}**
+    **{{ \App\ValueObjects\Money::fromMinorUnits((int) $booking->concessions->sum('total_minor_units'), (string) $booking->currency)->format() }}**
     {{ __('booking.mail.total') }}:
-    **{{ \App\Support\Money\Money::fromMinorUnits((int) $booking->total_minor_units, (string) $booking->currency)->format() }}**
+    **{{ \App\ValueObjects\Money::fromMinorUnits((int) $booking->total_minor_units, (string) $booking->currency)->format() }}**
 
     <x-mail::button :url="route('user.bookings.show', $booking)">
         {{ __('booking.mail.manage_booking') }}

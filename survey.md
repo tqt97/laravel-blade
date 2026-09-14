@@ -20,7 +20,7 @@ Kết quả kiểm thử hiện tại: 68 test pass, 1 skipped, 292 assertions. 
 
 Hai request vẫn hard-code `max:20`:
 
-- [AddConcessionsRequest.php:18](/Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Http/Requests/User/AddConcessionsRequest.php:18)
+- [SyncBookingConcessionsRequest.php:18](/Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Http/Requests/User/SyncBookingConcessionsRequest.php:18)
 - [PayBookingRequest.php:28](/Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Http/Requests/User/PayBookingRequest.php:28)
 
 Trong khi config đã có:
@@ -194,11 +194,11 @@ if ($screening === null) {
 }
 ```
 
-### M2 — AddConcessions có thể nhận action trực tiếp ngoài FormRequest
+### M2 — SyncBookingConcessions có thể nhận action trực tiếp ngoài FormRequest
 
 Action đã kiểm tra quota tổng và stock khá tốt:
 
-- [AddConcessions.php:44-57](/Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Actions/Cinema/AddConcessions.php:44)
+- [SyncBookingConcessions.php:44-57](/Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Actions/Commerce/Concessions/SyncBookingConcessions.php:44)
 
 Tuy nhiên giới hạn số lượng âm, số lượng quá lớn và dữ liệu sai chỉ được đảm bảo ở request layer. Nếu action được gọi từ command/job/controller khác, validation có thể bị bỏ qua.
 
@@ -225,7 +225,7 @@ Frontend phải tự tính quota tổng theo thứ tự DOM. Điều này dễ g
 
 - combo availability API;
 - seat picker;
-- AddConcessions;
+- SyncBookingConcessions;
 - PayBooking.
 
 API nên trả thêm:
@@ -302,7 +302,7 @@ Controller
 Các Action quan trọng đã được tách đúng:
 
 - `HoldSeats`
-- `AddConcessions`
+- `SyncBookingConcessions`
 - `ExpireBooking`
 - `ReleaseBookingResources`
 - `PayBooking`
@@ -424,7 +424,7 @@ Chưa có browser test thực sự cho:
 
 PHPStan hiện fail 11 lỗi, nổi bật ở:
 
-- AddConcessions model type inference.
+- SyncBookingConcessions action type inference.
 - PublicCinema builder không nhận diện `bookable()`.
 - Undefined dynamic properties.
 - ScreeningBookingContextQuery return type.
@@ -491,7 +491,7 @@ Hai lỗi full suite hiện tại liên quan trực tiếp timezone:
 
 ### 1. Có thể tạo payment thành công giả không có provider ID
 
-Trong [`PayBooking.php:37`](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Actions/Movie/Booking/PayBooking.php:37>), nếu booking đã `Confirmed`, hệ thống dùng `firstOrCreate()` và tự tạo payment với trạng thái `Succeeded`:
+Trong [`PayBooking.php:37`](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Actions/Booking/Checkout/PayBooking.php:37>), nếu booking đã `Confirmed`, hệ thống dùng `firstOrCreate()` và tự tạo payment với trạng thái `Succeeded`:
 
 ```php
 'status' => PaymentStatus::Succeeded,
@@ -517,7 +517,7 @@ Khuyến nghị:
 
 Luồng hiện tại:
 
-1. Gọi provider ở [`PayBooking.php:119`](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Actions/Movie/Booking/PayBooking.php:119>).
+1. Gọi provider ở [`PayBooking.php:119`](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Actions/Booking/Checkout/PayBooking.php:119>).
 2. Lưu `PaymentAttempt` ở dòng 139.
 3. Cập nhật payment chính ở dòng 140.
 4. Finalize booking.
@@ -526,7 +526,7 @@ Nếu bước 2 thành công nhưng bước 3 lỗi DB/process crash:
 
 - `PaymentAttempt` có provider ID.
 - Payment chính vẫn `processing`, provider ID có thể null.
-- `RecoverStuckPayment` chỉ nhìn payment chính ở [`RecoverStuckPayment.php:22`](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Actions/Movie/Booking/RecoverStuckPayment.php:22>).
+- `RecoverStuckPayment` chỉ nhìn payment chính ở [`RecoverStuckPayment.php:22`](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Actions/Booking/Payment/RecoverStuckPayment.php:22>).
 - Reconcile chỉ tìm payment có provider ID ở [`ReconcilePayment.php:28`](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Jobs/ReconcilePayment.php:28>).
 
 Kết quả là payment thật trên Stripe có thể bị đánh dấu `Unknown` nhưng không còn đường tự động tìm lại provider ID.
@@ -540,7 +540,7 @@ Khuyến nghị:
 
 ### 3. Refund `Unknown` bị khóa vĩnh viễn
 
-Trong [`RefundBooking.php:44`](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Actions/Movie/Booking/RefundBooking.php:44>), nếu refund attempt đang `Processing` hoặc `Unknown`, hệ thống return ngay:
+Trong [`RefundBooking.php:44`](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Actions/Booking/Payment/RefundBooking.php:44>), nếu refund attempt đang `Processing` hoặc `Unknown`, hệ thống return ngay:
 
 ```php
 return ['payment' => $payment, 'attempt' => null, ...];
@@ -626,9 +626,9 @@ Booking → Payment → BookingItems → ScreeningSeats → Concessions
 
 `checkout()` chỉ kiểm tra `booking.expires_at` tại [`BookingController.php:50`](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Http/Controllers/User/BookingController.php:50>).
 
-`PayBooking` cũng chỉ kiểm tra thời gian hold tại [`PayBooking.php:51`](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Actions/Movie/Booking/PayBooking.php:51>).
+`PayBooking` cũng chỉ kiểm tra thời gian hold tại [`PayBooking.php:51`](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Actions/Booking/Checkout/PayBooking.php:51>).
 
-`FinalizeSuccessfulPayment` kiểm tra hold expiry nhưng chưa kiểm tra `screening.starts_at` tại [`FinalizeSuccessfulPayment.php:119`](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Actions/Movie/Booking/FinalizeSuccessfulPayment.php:119>).
+`FinalizeSuccessfulPayment` kiểm tra hold expiry nhưng chưa kiểm tra `screening.starts_at` tại [`FinalizeSuccessfulPayment.php:119`](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Actions/Booking/Payment/FinalizeSuccessfulPayment.php:119>).
 
 Nếu hold 10 phút nhưng suất chiếu sắp bắt đầu, payment có thể được hoàn tất sau giờ chiếu.
 
@@ -644,13 +644,13 @@ và sử dụng thống nhất ở checkout, pay, edit, webhook, reconcile và f
 
 ### 8. Logic timezone đang không nhất quán
 
-Screening được convert về UTC khi tạo ở [`CreateScreening.php:23`](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Actions/Movie/Catalog/CreateScreening.php:23>), nhưng nhiều nơi lại parse raw DB timestamp bằng `config('app.timezone')`:
+Screening được convert về UTC khi tạo ở [`CreateScreening.php:23`](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Actions/Catalog/CreateScreening.php:23>), nhưng nhiều nơi lại parse raw DB timestamp bằng `config('app.timezone')`:
 
-- [`Screening.php:68`](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Models/Movie/Screening.php:68>)
-- [`ScreeningSeat.php:57`](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Models/Movie/ScreeningSeat.php:57>)
-- [`CheckInTicket.php:40`](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Actions/Movie/Ticketing/CheckInTicket.php:40>)
+- [`Screening.php:68`](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Models/Catalog/Screening.php:68>)
+- [`ScreeningSeat.php:57`](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Models/Booking/ScreeningSeat.php:57>)
+- [`CheckInTicket.php:40`](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Actions/Ticketing/CheckInTicket.php:40>)
 - [`SendBookingReminders.php:43`](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Console/Commands/SendBookingReminders.php:43>)
-- [`BookingPolicy.php:64`](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Policies/Movie/BookingPolicy.php:64>)
+- [`BookingPolicy.php:64`](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Policies/Booking/BookingPolicy.php:64>)
 
 Đây là nguyên nhân phù hợp với hai lỗi full test hiện tại.
 
@@ -664,7 +664,7 @@ Khuyến nghị:
 
 ### 9. `Screening::bookable()` chưa bao phủ movie/room active
 
-[`Screening.php:47-53`](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Models/Movie/Screening.php:47>) chỉ kiểm tra:
+[`Screening.php:47-53`](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Models/Catalog/Screening.php:47>) chỉ kiểm tra:
 
 - Status screening.
 - Khoảng thời gian.
@@ -674,7 +674,7 @@ Nhưng chưa kiểm tra:
 - Movie có `is_active`.
 - Screening room có `is_active`.
 
-Ngoài ra [`Movie.php:37-43`](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Models/Movie/Movie.php:37>) đang lặp lại một phần business logic bookable riêng.
+Ngoài ra [`Movie.php:37-43`](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Models/Catalog/Movie.php:37>) đang lặp lại một phần business logic bookable riêng.
 
 Điều này có thể dẫn đến public list và endpoint chi tiết trả kết quả khác nhau.
 
@@ -698,7 +698,7 @@ Nên validate conditional:
 
 ### 11. Guest resume chưa hoàn toàn atomic
 
-[`PublicMovieController.php:175`](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Http/Controllers/Movie/PublicMovieController.php:175>) dùng `session()->pull()` trước khi execute booking.
+[`MovieController.php:175`](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Http/Controllers/Catalog/MovieController.php:175>) dùng `session()->pull()` trước khi execute booking.
 
 Nếu xảy ra exception ngoài hai loại đã bắt, dữ liệu guest selection bị mất khỏi session.
 

@@ -2,9 +2,9 @@
 
 namespace App\Http\Controllers;
 
-use App\Enums\Movie\Booking\BookingStatus;
-use App\Enums\Movie\Ticketing\TicketStatus;
-use App\Models\Movie\BookingItem;
+use App\Enums\Booking\BookingStatus;
+use App\Enums\Ticketing\TicketStatus;
+use App\Models\Booking\BookingItem;
 use Illuminate\View\View;
 
 final class TicketVerificationController extends Controller

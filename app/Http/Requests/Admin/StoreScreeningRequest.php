@@ -2,7 +2,7 @@
 
 namespace App\Http\Requests\Admin;
 
-use App\Support\Money\Currency;
+use App\ValueObjects\Currency;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 

@@ -115,6 +115,7 @@ return [
     ],
     'users' => [
         'title' => 'Users',
+        'status' => 'Status',
         'management' => 'User management',
         'management_description' => 'Search, filter and manage users from one place.',
         'add' => 'Add new',

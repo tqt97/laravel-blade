@@ -2,7 +2,7 @@
 
 namespace App\Models\Inventory;
 
-use App\Models\Movie\Concession;
+use App\Models\Commerce\Concession;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;

@@ -3,8 +3,8 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Queries\Movie\BookingReport;
-use App\Support\Time\BookingClock;
+use App\Queries\Booking\BookingReport;
+use App\Support\Booking\BookingClock;
 use Illuminate\View\View;
 
 final class BookingReportController extends Controller

@@ -12,7 +12,10 @@ final class NotificationController extends Controller
     public function index(Request $request): JsonResponse
     {
         $user = $request->user();
-        $notifications = $user->notifications()->latest()->limit((int) config('booking.listing.notification_preview_limit'))->get();
+        $notifications = $user->notifications()
+            ->latest()
+            ->limit((int) config('booking.listing.notification_preview_limit'))
+            ->get();
 
         return response()->json([
             'unread_count' => $user->unreadNotifications()->count(),

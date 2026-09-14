@@ -2,7 +2,7 @@
 
 namespace App\Contracts;
 
-use App\Models\Payments\Payment;
+use App\Models\Payment\Payment;
 use App\Support\Payment\PaymentResult;
 
 interface PaymentGateway

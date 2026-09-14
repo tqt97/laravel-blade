@@ -2,11 +2,11 @@
 
 namespace App\Console\Commands;
 
+use App\Enums\Booking\BookingStatus;
 use App\Enums\Infrastructure\OutboxEventType;
-use App\Enums\Movie\Booking\BookingStatus;
+use App\Models\Booking\Booking;
 use App\Models\Infrastructure\OutboxMessage;
-use App\Models\Movie\Booking;
-use App\Support\Time\BookingClock;
+use App\Support\Booking\BookingClock;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;

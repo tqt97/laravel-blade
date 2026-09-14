@@ -2,16 +2,16 @@
 
 namespace App\Http\Controllers\User;
 
-use App\Actions\Movie\Booking\ExpireBooking;
-use App\Actions\Movie\Booking\PayBooking;
-use App\Enums\Movie\Booking\BookingStatus;
+use App\Actions\Booking\Checkout\PayBooking;
+use App\Actions\Booking\Lifecycle\ExpireBooking;
+use App\Enums\Booking\BookingStatus;
 use App\Enums\Payment\PaymentStatus;
+use App\Exceptions\Booking\BookingExpired;
+use App\Exceptions\Booking\BookingOperationFailed;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\User\PayBookingRequest;
 use App\Jobs\ReconcilePayment;
-use App\Models\Movie\Booking;
-use App\Support\Booking\Exceptions\BookingExpired;
-use App\Support\Booking\Exceptions\BookingOperationFailed;
+use App\Models\Booking\Booking;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Validation\ValidationException;
@@ -40,11 +40,13 @@ final class BookingPaymentController extends Controller
     public function status(Booking $booking): JsonResponse
     {
         $this->authorize('confirm', $booking);
+
         $payment = $booking->payment;
         abort_unless($payment !== null, 404);
 
         $status = (string) $payment->getRawOriginal('status');
         $bookingStatus = BookingStatus::tryFrom((string) $booking->getRawOriginal('status'));
+
         $redirect = match ($bookingStatus) {
             BookingStatus::Confirmed => $status === PaymentStatus::Succeeded->value
                 ? route('user.bookings.success', $booking)
@@ -56,7 +58,11 @@ final class BookingPaymentController extends Controller
             },
         };
 
-        return response()->json(['status' => $status, 'redirect' => $redirect, 'booking_status' => $bookingStatus?->value]);
+        return response()->json([
+            'status' => $status,
+            'redirect' => $redirect,
+            'booking_status' => $bookingStatus?->value,
+        ]);
     }
 
     public function sync(Booking $booking): JsonResponse

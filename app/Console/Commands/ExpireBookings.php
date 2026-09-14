@@ -2,8 +2,8 @@
 
 namespace App\Console\Commands;
 
-use App\Actions\Movie\Booking\ExpireBooking;
-use App\Models\Movie\Booking;
+use App\Actions\Booking\Lifecycle\ExpireBooking;
+use App\Models\Booking\Booking;
 use Illuminate\Console\Command;
 
 class ExpireBookings extends Command

@@ -2,13 +2,13 @@
 
 namespace App\Http\Controllers\Admin;
 
-use App\Actions\Movie\Booking\CancelBooking;
-use App\Actions\Movie\Booking\RefundBooking;
+use App\Actions\Booking\Lifecycle\CancelBooking;
+use App\Actions\Booking\Payment\RefundBooking;
+use App\Exceptions\Booking\BookingOperationFailed;
+use App\Exceptions\Booking\InvalidBookingTransition;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\CancelBookingRequest;
-use App\Models\Movie\Booking;
-use App\Support\Booking\Exceptions\BookingOperationFailed;
-use App\Support\Booking\Exceptions\InvalidBookingTransition;
+use App\Models\Booking\Booking;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;

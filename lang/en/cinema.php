@@ -67,6 +67,7 @@ return [
         'choose_seats' => 'Choose seats',
     ],
     'seats' => [
+        'types' => ['regular' => 'Regular seat', 'vip' => 'VIP seat', 'couple' => 'Couple seat'],
         'vip' => 'VIP seat',
         'availability_changed' => 'Seat availability changed. These seats are no longer available: :seats.',
         'suggest' => 'Suggest good seats',

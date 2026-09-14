@@ -57,24 +57,24 @@
                     <div class="flex justify-between gap-4">
                         <dt class="text-muted-foreground">{{ __('booking.bookings.seats') }}</dt>
                         <dd class="font-semibold">
-                            {{ \App\Support\Money\Money::fromMinorUnits($seatTotal, $currency)->format() }}</dd>
+                            {{ \App\ValueObjects\Money::fromMinorUnits($seatTotal, $currency)->format() }}</dd>
                     </div>
                     <div class="flex justify-between gap-4">
                         <dt class="text-muted-foreground">{{ __('booking.bookings.combos') }}</dt>
                         <dd class="font-semibold">
-                            {{ \App\Support\Money\Money::fromMinorUnits($comboTotal, $currency)->format() }}</dd>
+                            {{ \App\ValueObjects\Money::fromMinorUnits($comboTotal, $currency)->format() }}</dd>
                     </div>
                     @if ((int) $booking->discount_minor_units > 0)
                         <div class="flex justify-between gap-4 text-success">
                             <dt>{{ __('booking.checkout.discount') }}</dt>
-                            <dd>-{{ \App\Support\Money\Money::fromMinorUnits((int) $booking->discount_minor_units, $currency)->format() }}
+                            <dd>-{{ \App\ValueObjects\Money::fromMinorUnits((int) $booking->discount_minor_units, $currency)->format() }}
                             </dd>
                         </div>
                     @endif
                     <div class="flex justify-between gap-4 border-t border-border pt-3 text-base">
                         <dt class="font-semibold">{{ __('booking.bookings.total') }}</dt>
                         <dd class="font-bold text-primary">
-                            {{ \App\Support\Money\Money::fromMinorUnits((int) $booking->total_minor_units, $currency)->format() }}
+                            {{ \App\ValueObjects\Money::fromMinorUnits((int) $booking->total_minor_units, $currency)->format() }}
                         </dd>
                     </div>
                 </dl>
@@ -88,7 +88,7 @@
                             <div class="flex items-center justify-between gap-4 rounded-lg bg-muted p-3 text-sm">
                                 <span><span class="font-semibold">{{ $line->concession?->name ?? '—' }}</span><span
                                         class="ml-2 text-muted-foreground">× {{ $line->quantity }}</span></span><span
-                                    class="font-semibold">{{ \App\Support\Money\Money::fromMinorUnits((int) $line->total_minor_units, $currency)->format() }}</span>
+                                    class="font-semibold">{{ \App\ValueObjects\Money::fromMinorUnits((int) $line->total_minor_units, $currency)->format() }}</span>
                             </div>
                         @endforeach
                     </div>

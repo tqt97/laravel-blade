@@ -1,11 +1,11 @@
 <?php
 
-use App\Models\Movie\Concession;
-use App\Models\Movie\Coupon;
-use App\Models\Movie\Movie;
-use App\Models\Movie\Screening;
-use App\Models\Movie\ScreeningRoom;
-use App\Models\Movie\ScreeningSeat;
+use App\Models\Booking\ScreeningSeat;
+use App\Models\Catalog\Movie;
+use App\Models\Catalog\Screening;
+use App\Models\Catalog\ScreeningRoom;
+use App\Models\Commerce\Concession;
+use App\Models\Commerce\Coupon;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 

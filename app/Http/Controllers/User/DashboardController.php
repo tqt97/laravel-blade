@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\User;
 
 use App\Http\Controllers\Controller;
-use App\Queries\Movie\UserBookingsQuery;
+use App\Queries\Booking\UserBookingsQuery;
 use Illuminate\View\View;
 
 final class DashboardController extends Controller

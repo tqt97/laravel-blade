@@ -89,7 +89,7 @@
                                     data-seat-own-hold="{{ $isOwnHold ? 'true' : 'false' }}"
                                     data-seat-selected="{{ $isOwnHold ? 'true' : 'false' }}"
                                     aria-pressed="{{ $isOwnHold ? 'true' : 'false' }}" @disabled(!$available)
-                                    aria-label="{{ __('cinema.seats.seat_label', ['seat' => $screeningSeat->seat->row_label . $screeningSeat->seat->seat_number, 'type' => $screeningSeat->seat->seat_type->name]) }}"
+                                    aria-label="{{ __('cinema.public.seat_label', ['seat' => $screeningSeat->seat->row_label . $screeningSeat->seat->seat_number, 'type' => __('cinema.seats.types.' . $screeningSeat->seat->seat_type->value)]) }}"
                                     class="relative aspect-square min-h-10 min-w-10 rounded-lg border text-xs font-bold transition duration-200 {{ $isOwnHold ? 'border-primary bg-primary text-primary-foreground shadow-md ring-2 ring-primary/30 hover:border-primary-strong' : ($available ? ($screeningSeat->seat->getRawOriginal('seat_type') === 'vip' ? 'border-primary/50 bg-primary-soft hover:border-primary' : 'border-border bg-background hover:border-primary hover:bg-primary/10') : 'cursor-not-allowed border-border bg-muted text-muted-foreground line-through') }}"
                                     title="{{ $screeningSeat->seat->row_label }}{{ $screeningSeat->seat->seat_number }}">{{ $screeningSeat->seat->seat_number }}
                                     @if ($screeningSeat->seat->getRawOriginal('seat_type') === 'vip' && ($available || $isOwnHold))
@@ -182,7 +182,7 @@
                                 <div class="min-w-0 flex-1">
                                     <p class="font-semibold">{{ $concession->name }}</p>
                                     <p class="mt-1 text-sm font-medium text-primary">
-                                        {{ \App\Support\Money\Money::fromMinorUnits((int) $concession->price_minor_units, strtoupper((string) $concession->currency))->format() }}
+                                        {{ \App\ValueObjects\Money::fromMinorUnits((int) $concession->price_minor_units, strtoupper((string) $concession->currency))->format() }}
                                     </p>
                                     <p class="mt-1 text-xs text-muted-foreground">
                                         {{ $concession->stock === null ? __('booking.combos.unlimited') : __('booking.combos.stock', ['count' => $concession->stock]) }}
@@ -262,7 +262,7 @@
                                     {{ $item->screeningSeat?->seat?->row_label }}{{ $item->screeningSeat?->seat?->seat_number }}
                                 </span>
                                 <span class="text-xs font-bold text-foreground">
-                                    {{ \App\Support\Money\Money::fromMinorUnits((int) $item->price_minor_units, strtoupper((string) $screening->currency))->format() }}
+                                    {{ \App\ValueObjects\Money::fromMinorUnits((int) $item->price_minor_units, strtoupper((string) $screening->currency))->format() }}
                                 </span>
                             </div>
                         @endforeach
@@ -277,14 +277,14 @@
                                 {{ __('booking.checkout.seats') }}
                             </span>
                             <span data-seat-summary-seat-total>
-                                {{ \App\Support\Money\Money::fromMinorUnits($initialSeatTotal, strtoupper((string) $screening->currency))->format() }}
+                                {{ \App\ValueObjects\Money::fromMinorUnits($initialSeatTotal, strtoupper((string) $screening->currency))->format() }}
                             </span>
                         </div>
                         <div class="flex items-center justify-between gap-3">
                             <span class="text-muted-foreground">
                                 {{ __('booking.checkout.combos') }}
                             </span><span data-seat-summary-combo-total>
-                                {{ \App\Support\Money\Money::fromMinorUnits($initialComboTotal, strtoupper((string) $screening->currency))->format() }}
+                                {{ \App\ValueObjects\Money::fromMinorUnits($initialComboTotal, strtoupper((string) $screening->currency))->format() }}
                             </span>
                         </div>
                     </div>
@@ -293,7 +293,7 @@
                             {{ __('booking.checkout.subtotal') }}
                         </span>
                         <strong data-seat-summary-total
-                            class="text-xl text-primary">{{ \App\Support\Money\Money::fromMinorUnits($initialSeatTotal + $initialComboTotal, strtoupper((string) $screening->currency))->format() }}</strong>
+                            class="text-xl text-primary">{{ \App\ValueObjects\Money::fromMinorUnits($initialSeatTotal + $initialComboTotal, strtoupper((string) $screening->currency))->format() }}</strong>
                     </div>
                     <p data-seat-limit-status
                         class="mt-4 hidden rounded-xl bg-warning-soft p-3 text-xs text-warning-foreground" role="status"

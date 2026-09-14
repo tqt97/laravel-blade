@@ -4,8 +4,8 @@ namespace App\Actions\Payment;
 
 use App\Enums\Payment\PaymentAttemptStatus;
 use App\Enums\Payment\PaymentStatus;
-use App\Models\Payments\Payment;
-use App\Support\Payment\Exceptions\InvalidPaymentTransition;
+use App\Exceptions\Payment\InvalidPaymentTransition;
+use App\Models\Payment\Payment;
 use App\Support\Payment\PaymentStateMachine;
 use Illuminate\Support\Str;
 
@@ -23,7 +23,10 @@ final class TransitionPayment
         $currentStatus = PaymentStatus::from((string) $payment->getRawOriginal('status'));
 
         if ($targetStatus !== null && ! $this->stateMachine->canTransition($currentStatus, $targetStatus)) {
-            throw new InvalidPaymentTransition(sprintf('Cannot transition payment from %s to %s.', $currentStatus->value, $targetStatus->value));
+            throw new InvalidPaymentTransition(__('booking.messages.invalid_payment_transition', [
+                'from' => $currentStatus->value,
+                'to' => $targetStatus->value,
+            ]));
         }
 
         if ($targetStatus !== null) {

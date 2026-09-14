@@ -16,7 +16,7 @@
             <select id="booking-status" name="status" onchange="this.form.submit()"
                 class="rounded-xl border border-border bg-card px-3 py-2 text-sm">
                 <option value="">{{ __('booking.bookings.all_statuses') }}</option>
-                @foreach (\App\Enums\Movie\Booking\BookingStatus::cases() as $status)
+                @foreach (\App\Enums\Booking\BookingStatus::cases() as $status)
                     <option value="{{ $status->value }}" @selected(request('status') === $status->value)>
                         {{ __('booking.status.' . $status->value) }}</option>
                 @endforeach
@@ -45,7 +45,7 @@
                             {{ __('booking.bookings.seats') }} · {{ $booking->concessions_count }}
                             {{ __('booking.bookings.combos') }}</p>
                         <p class="mt-2 text-sm font-semibold text-primary">
-                            {{ \App\Support\Money\Money::fromMinorUnits((int) $booking->total_minor_units, strtoupper((string) ($booking->pricing_currency ?? config('booking.payment.currency'))))->format() }}
+                            {{ \App\ValueObjects\Money::fromMinorUnits((int) $booking->total_minor_units, strtoupper((string) ($booking->pricing_currency ?? config('booking.payment.currency'))))->format() }}
                         </p>
                         <p class="mt-3 text-sm font-semibold text-primary">{{ __('booking.bookings.details') }} →</p>
                     </a>
@@ -83,15 +83,15 @@
                                     </td>
                                     @php
                                         $statusClasses = match ($booking->status->value) {
-                                            \App\Enums\Movie\Booking\BookingStatus::Held->value,
-                                            \App\Enums\Movie\Booking\BookingStatus::PendingPayment->value
+                                            \App\Enums\Booking\BookingStatus::Held->value,
+                                            \App\Enums\Booking\BookingStatus::PendingPayment->value
                                                 => 'border border-warning/30 bg-warning-soft text-warning-foreground',
-                                            \App\Enums\Movie\Booking\BookingStatus::Confirmed->value,
-                                            \App\Enums\Movie\Booking\BookingStatus::Completed->value
+                                            \App\Enums\Booking\BookingStatus::Confirmed->value,
+                                            \App\Enums\Booking\BookingStatus::Completed->value
                                                 => 'border border-success/30 bg-success-soft text-success-foreground',
-                                            \App\Enums\Movie\Booking\BookingStatus::Cancelled->value,
-                                            \App\Enums\Movie\Booking\BookingStatus::Expired->value,
-                                            \App\Enums\Movie\Booking\BookingStatus::NoShow->value
+                                            \App\Enums\Booking\BookingStatus::Cancelled->value,
+                                            \App\Enums\Booking\BookingStatus::Expired->value,
+                                            \App\Enums\Booking\BookingStatus::NoShow->value
                                                 => 'border border-destructive/30 bg-destructive/10 text-destructive',
                                             default => 'border border-border bg-muted text-muted-foreground',
                                         };
@@ -102,7 +102,7 @@
                                                 aria-hidden="true"></span>{{ __('booking.status.' . $booking->status->value) }}</span>
                                     </td>
                                     <td class="whitespace-nowrap px-5 py-4 text-right font-semibold">
-                                        {{ \App\Support\Money\Money::fromMinorUnits((int) $booking->total_minor_units, strtoupper((string) ($booking->pricing_currency ?? config('booking.payment.currency'))))->format() }}
+                                        {{ \App\ValueObjects\Money::fromMinorUnits((int) $booking->total_minor_units, strtoupper((string) ($booking->pricing_currency ?? config('booking.payment.currency'))))->format() }}
                                     </td>
                                     <td class="whitespace-nowrap px-5 py-4 text-right">
                                         <x-admin.button :href="route('user.bookings.show', $booking)" variant="ghost" icon="eye" icon-only

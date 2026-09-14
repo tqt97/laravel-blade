@@ -42,6 +42,6 @@ class DatabaseSeeder extends Seeder
             User::factory()->count($remainingUsers)->create();
         }
 
-        $this->call(MovieSeeder::class);
+        $this->call(CinemaSeeder::class);
     }
 }
