@@ -163,7 +163,7 @@
                         </div>
                     @endif
                     <div class="hidden rounded-2xl border border-border bg-card p-5 shadow-sm lg:block"><x-admin.button
-                            type="submit" icon="save"
+                            type="submit" data-payment-submit icon="save"
                             class="w-full justify-center">{{ __('booking.checkout.pay') }}</x-admin.button></div>
                 </aside>
             </div>
@@ -176,7 +176,7 @@
                             {{ \App\ValueObjects\Money::fromMinorUnits((int) $booking->total_minor_units, $currency)->format() }}
                         </p>
                     </div>
-                    <x-admin.button type="submit" form="booking-payment-form" icon="save"
+                    <x-admin.button type="submit" form="booking-payment-form" data-payment-submit icon="save"
                         class="shrink-0">{{ __('booking.checkout.pay') }}</x-admin.button>
                 </div>
             </div>

@@ -63,6 +63,36 @@ it('retries unknown refunds without a provider refund id through the refund acti
     Queue::assertNotPushed(ReconcileRefund::class);
 });
 
+it('reports a pending admin refund instead of claiming it already succeeded', function (): void {
+    $admin = User::factory()->admin()->create();
+    $booking = Booking::factory()->create();
+    $payment = $booking->payment()->create([
+        'provider' => 'stripe',
+        'provider_payment_id' => 'pi_admin_refund_pending',
+        'status' => PaymentStatus::Refunding,
+        'amount_minor_units' => $booking->amount_minor_units,
+        'currency' => $booking->currency,
+    ]);
+
+    app()->instance(PaymentGateway::class, new class implements PaymentGateway
+    {
+        public function charge(Payment $payment): PaymentResult
+        {
+            return new PaymentResult('failed');
+        }
+
+        public function refund(Payment $payment): PaymentResult
+        {
+            return new PaymentResult('refunding', 're_admin_pending');
+        }
+    });
+
+    $this->actingAs($admin)
+        ->post(route('admin.bookings.refund', $booking))
+        ->assertRedirect()
+        ->assertSessionHas('warning', 'booking.messages.refund_in_progress');
+});
+
 it('does not treat a pending Stripe refund response as finalized', function (): void {
     config()->set('services.stripe.secret', 'sk_test_refund');
     Http::fake([

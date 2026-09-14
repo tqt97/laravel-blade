@@ -14,6 +14,14 @@ test('service worker excludes authenticated and payment routes from navigation c
 test('loads booking interactions on the standalone combo editing page', async () => {
     const source = await readFile(new URL('../../resources/js/app.js', import.meta.url), 'utf8');
 
-    assert.match(source, /data-booking-checkout.*data-combo-total/);
-    assert.match(source, /initComboTotals/);
+    assert.match(source, /hasStandaloneComboTotals/);
+    assert.match(source, /data-seat-picker/);
+    assert.match(source, /if \(hasStandaloneComboTotals\) initComboTotals/);
+});
+
+test('uses explicit payment submit hooks instead of the coupon submit button', async () => {
+    const source = await readFile(new URL('../../resources/js/modules/booking.js', import.meta.url), 'utf8');
+
+    assert.match(source, /data-payment-submit/);
+    assert.match(source, /event\.submitter/);
 });

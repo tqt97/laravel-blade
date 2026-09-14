@@ -21,10 +21,14 @@ if (document.querySelector('[data-seat-picker]')) {
     import('./modules/seat-picker.js').then(({ initSeatPickers }) => initSeatPickers());
 }
 
-if (document.querySelector('[data-booking-checkout], [data-combo-total]')) {
+const hasBookingCheckout = document.querySelector('[data-booking-checkout]') !== null;
+const hasStandaloneComboTotals = document.querySelector('[data-combo-total]') !== null
+    && document.querySelector('[data-seat-picker]') === null;
+
+if (hasBookingCheckout || hasStandaloneComboTotals) {
     import('./modules/booking.js').then(({ initBookingCheckout, initComboTotals }) => {
-        initBookingCheckout();
-        initComboTotals();
+        if (hasBookingCheckout) initBookingCheckout();
+        if (hasStandaloneComboTotals) initComboTotals();
     });
 }
 

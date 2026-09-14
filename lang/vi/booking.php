@@ -225,6 +225,7 @@ return [
         'checked_in' => 'Check-in vé thành công.',
         'refunded' => 'Đã hoàn tiền và giải phóng vé.',
         'refund_in_progress' => 'Giao dịch này đang được xử lý hoàn tiền.',
+        'refund_requires_review' => 'Chưa xác nhận được kết quả hoàn tiền. Cần đối soát hoặc kiểm tra thủ công.',
         'updated' => 'Đã cập nhật đặt vé.',
         'booking_cannot_be_paid' => 'Đặt vé này không thể thanh toán ở trạng thái hiện tại.',
         'active_hold_exists' => 'Bạn đã có một lượt giữ chỗ đang hoạt động cho suất chiếu này.',

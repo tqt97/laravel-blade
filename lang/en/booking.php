@@ -225,6 +225,7 @@ return [
         'checked_in' => 'Ticket checked in successfully.',
         'refunded' => 'Payment refunded and tickets released.',
         'refund_in_progress' => 'This payment refund is still in progress.',
+        'refund_requires_review' => 'The refund has not been confirmed. Reconciliation or manual review is required.',
         'updated' => 'Booking updated.',
         'booking_cannot_be_paid' => 'This booking cannot be paid in its current state.',
         'active_hold_exists' => 'You already have an active hold for this screening.',

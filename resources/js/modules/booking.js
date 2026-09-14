@@ -35,7 +35,9 @@ export const initBookingCheckout = () => {
             countdown.closest('[role="status"]')?.classList.toggle('bg-warning-soft', seconds > 60);
 
             if (seconds === 0) {
-                paymentForm?.querySelector('button[type="submit"]')?.setAttribute('disabled', 'disabled');
+                paymentForm?.querySelectorAll('[data-payment-submit]').forEach((button) => {
+                    button.disabled = true;
+                });
                 if (!paymentForm?.previousElementSibling?.matches('[data-expired-message]')) {
                     const message = document.createElement('p');
                     message.dataset.expiredMessage = 'true';
@@ -51,12 +53,14 @@ export const initBookingCheckout = () => {
         timer = window.setInterval(tick, 1000);
         tick();
 
-        paymentForm?.addEventListener('submit', () => {
-            const button = paymentForm.querySelector('button[type="submit"]');
-            if (!button) return;
-            button.disabled = true;
-            button.dataset.originalLabel = button.textContent;
-            button.textContent = paymentForm.dataset.processingLabel ?? button.textContent;
+        paymentForm?.addEventListener('submit', (event) => {
+            if (!event.submitter?.matches('[data-payment-submit]')) return;
+
+            paymentForm.querySelectorAll('[data-payment-submit]').forEach((button) => {
+                button.disabled = true;
+                button.dataset.originalLabel = button.textContent;
+                button.textContent = paymentForm.dataset.processingLabel ?? button.textContent;
+            });
         }, { once: true });
     });
 };

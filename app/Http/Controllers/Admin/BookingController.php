@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Actions\Booking\Lifecycle\CancelBooking;
 use App\Actions\Booking\Payment\RefundBooking;
+use App\Enums\Payment\PaymentStatus;
 use App\Exceptions\Booking\BookingOperationFailed;
 use App\Exceptions\Booking\InvalidBookingTransition;
 use App\Http\Controllers\Controller;
@@ -54,11 +55,21 @@ class BookingController extends Controller
         $this->authorize('refund', $booking);
 
         try {
-            $refundBooking->execute($booking);
+            $payment = $refundBooking->execute($booking);
         } catch (BookingOperationFailed $exception) {
             throw ValidationException::withMessages(['booking' => $exception->getMessage()]);
         }
 
-        return back()->with('status', 'booking.messages.refunded');
+        $status = PaymentStatus::tryFrom((string) $payment->getRawOriginal('status'));
+
+        $message = match ($status) {
+            PaymentStatus::Refunded => 'booking.messages.refunded',
+            PaymentStatus::Refunding => 'booking.messages.refund_in_progress',
+            default => 'booking.messages.refund_requires_review',
+        };
+
+        return $status === PaymentStatus::Refunded
+            ? back()->with('status', $message)
+            : back()->with('warning', $message);
     }
 }
