@@ -21,6 +21,7 @@ Bộ tài liệu này là điểm vào chính cho tính năng movie booking hi�
 5. [05 — Notes, bug và điểm cần lưu ý](05-development-notes-and-known-bugs.md)
 6. [06 — Lessons learned](06-lessons-learned.md)
 7. [07 — Stripe, 3DS và vận hành payment](07-stripe-3ds-and-operations.md)
+8. [08 — Kỹ thuật triển khai và code minh họa](08-engineering-techniques.md)
 
 ## Source of truth trong code
 
@@ -42,6 +43,10 @@ Bộ tài liệu này là điểm vào chính cho tính năng movie booking hi�
 | Frontend payment/3DS | `resources/js/modules/payment-status.js:2-154` |
 | Scheduler | `routes/console.php:14-20` |
 
+## Kỹ thuật cần hiểu trước khi sửa code
+
+Transaction, `lockForUpdate`, deterministic lock order, idempotency key, state machine, compensation, outbox, retry/backoff, reconciliation, webhook deduplication, inventory ledger, server clock và frontend polling được giải thích tập trung tại [08 — Kỹ thuật triển khai](08-engineering-techniques.md).
+
 ## Tài liệu cũ
 
 Các file ở `docs/` root vẫn được giữ để truy vết lịch sử, nhưng không nên dùng làm điểm bắt đầu:
@@ -56,4 +61,3 @@ Khi có thay đổi nghiệp vụ, phải cập nhật code, test và file tươ
 ## Quy ước trích dẫn code
 
 Các tham chiếu dùng dạng `path/to/file.php:line`. Dòng là snapshot tại thời điểm viết tài liệu; khi refactor làm thay đổi dòng, phải cập nhật lại link/tham chiếu trong tài liệu cùng commit.
-
