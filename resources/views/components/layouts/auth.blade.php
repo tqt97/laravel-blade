@@ -22,6 +22,10 @@
 </head>
 
 <body class="min-h-full bg-background font-sans text-foreground antialiased transition-colors duration-300">
+    <a href="#admin-main-content"
+        class="sr-only z-50 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground focus:not-sr-only focus:fixed focus:left-4 focus:top-4">
+        {{ __('cinema.public.skip_to_content') }}
+    </a>
     <div class="admin-shell min-h-screen lg:flex" data-admin-shell data-sidebar-collapsed="false"
         data-mobile-sidebar-open="false">
         <div data-sidebar-mobile-backdrop
@@ -213,7 +217,7 @@
                             </svg></button></form>
                 </div>
             </header>
-            <main class="p-5 sm:p-8">{{ $slot }}</main>
+            <main id="admin-main-content" class="p-5 sm:p-8">{{ $slot }}</main>
         </div>
     </div>
 </body>

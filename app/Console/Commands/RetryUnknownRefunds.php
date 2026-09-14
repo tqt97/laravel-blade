@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Jobs\ReconcileRefund;
+use App\Jobs\RetryUnknownRefund;
 use App\Models\Booking\Booking;
 use App\Models\Payment\RefundAttempt;
 use Illuminate\Console\Attributes\Description;
@@ -32,7 +33,11 @@ class RetryUnknownRefunds extends Command
             $bookingId = $attempt->payment?->getAttribute('payable_id');
 
             if ($bookingId !== null) {
-                ReconcileRefund::dispatch($attempt->getKey());
+                if (filled($attempt->provider_refund_id)) {
+                    ReconcileRefund::dispatch($attempt->getKey());
+                } else {
+                    RetryUnknownRefund::dispatch((int) $bookingId);
+                }
             }
         }
 

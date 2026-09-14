@@ -22,6 +22,10 @@
 </head>
 
 <body class="min-h-full bg-background font-sans text-foreground antialiased transition-colors duration-300">
+    <a href="#guest-main-content"
+        class="sr-only z-50 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground focus:not-sr-only focus:fixed focus:left-4 focus:top-4">
+        {{ __('cinema.public.skip_to_content') }}
+    </a>
     <div class="relative flex min-h-screen flex-col overflow-hidden">
         <div
             class="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,rgba(15,23,42,0.06),transparent_38%),linear-gradient(to_bottom,transparent,rgba(226,232,240,0.45))] dark:bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.08),transparent_38%),linear-gradient(to_bottom,transparent,rgba(15,23,42,0.65))]">
@@ -38,7 +42,7 @@
             </div>
         </header>
 
-        <main class="flex flex-1 items-center justify-center px-5 pb-12 pt-4 sm:px-8">
+        <main id="guest-main-content" class="flex flex-1 items-center justify-center px-5 pb-12 pt-4 sm:px-8">
             <div class="w-full {{ $wide ? 'max-w-2xl' : 'max-w-md' }}">
                 <div class="rounded-xl border border-border bg-card p-6 shadow-sm sm:p-8">
                     {{ $slot }}

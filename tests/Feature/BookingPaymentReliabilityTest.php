@@ -11,9 +11,12 @@ use App\Enums\Booking\BookingStatus;
 use App\Enums\Catalog\Seating\ScreeningSeatStatus;
 use App\Enums\Payment\PaymentAttemptStatus;
 use App\Enums\Payment\PaymentStatus;
+use App\Enums\Payment\RefundAttemptStatus;
 use App\Enums\Ticketing\TicketStatus;
 use App\Jobs\ProcessStripeWebhook;
 use App\Jobs\ReconcilePayment;
+use App\Jobs\ReconcileRefund;
+use App\Jobs\RetryUnknownRefund;
 use App\Models\Booking\Booking;
 use App\Models\Catalog\Movie;
 use App\Models\Catalog\ScreeningRoom;
@@ -35,6 +38,29 @@ it('formats supported currencies from integer minor units', function (): void {
     expect(Money::fromMinorUnits(1250, 'USD')->format())->toBe('12.50 USD')
         ->and(Money::fromMinorUnits(250000, 'VND')->format())->toBe('250,000 VND')
         ->and(fn () => Money::fromMinorUnits(100, 'XXX')->format())->toThrow(InvalidArgumentException::class);
+});
+
+it('retries unknown refunds without a provider refund id through the refund action', function (): void {
+    Queue::fake();
+
+    $booking = Booking::factory()->create();
+    $payment = $booking->payment()->create([
+        'provider' => 'stripe',
+        'provider_payment_id' => 'pi_refund_retry',
+        'status' => PaymentStatus::RequiresRefund,
+        'amount_minor_units' => $booking->amount_minor_units,
+        'currency' => $booking->currency,
+    ]);
+    $payment->refundAttempts()->create([
+        'attempt_key' => 'refund-retry-without-provider-id',
+        'status' => RefundAttemptStatus::Unknown,
+        'next_reconcile_at' => now()->subMinute(),
+    ]);
+
+    $this->artisan('payments:retry-refunds')->assertSuccessful();
+
+    Queue::assertPushed(RetryUnknownRefund::class, fn (RetryUnknownRefund $job): bool => $job->bookingId === $booking->getKey());
+    Queue::assertNotPushed(ReconcileRefund::class);
 });
 
 it('does not treat a pending Stripe refund response as finalized', function (): void {

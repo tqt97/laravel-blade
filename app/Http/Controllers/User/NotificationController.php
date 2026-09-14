@@ -36,7 +36,7 @@ final class NotificationController extends Controller
             return '/user/dashboard';
         }
 
-        if (str_starts_with($url, '/')) {
+        if (str_starts_with($url, '/') && ! str_starts_with($url, '//')) {
             return $url;
         }
 

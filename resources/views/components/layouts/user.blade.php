@@ -19,6 +19,10 @@
 </head>
 
 <body class="min-h-full bg-background font-sans text-foreground antialiased">
+    <a href="#user-main-content"
+        class="sr-only z-50 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground focus:not-sr-only focus:fixed focus:left-4 focus:top-4">
+        {{ __('cinema.public.skip_to_content') }}
+    </a>
     <div class="user-shell min-h-screen lg:flex" data-user-shell data-mobile-sidebar-open="false">
         <div data-user-sidebar-backdrop class="fixed inset-0 z-40 hidden bg-foreground/50 backdrop-blur-sm lg:hidden"></div>
         <aside class="fixed inset-y-0 left-0 z-50 flex w-64 -translate-x-full flex-col border-r border-border bg-card transition-transform duration-300 lg:sticky lg:top-0 lg:h-screen lg:translate-x-0">
@@ -71,7 +75,7 @@
                     </form>
                 </div>
             </header>
-            <main class="p-5 sm:p-8">{{ $slot }}</main>
+            <main id="user-main-content" class="p-5 sm:p-8">{{ $slot }}</main>
         </div>
     </div>
     @stack('scripts')

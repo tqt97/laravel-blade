@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Queries\Booking\ScreeningBookingContextQuery;
 use App\Queries\Commerce\AvailableConcessionsQuery;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\Eloquent\Model;
 
 final class ScreeningPageQuery
 {
@@ -50,7 +51,7 @@ final class ScreeningPageQuery
 
         return [
             'available' => $seats->filter(
-                fn (ScreeningSeat $seat): bool => $seat->isAvailableForSelection(),
+                fn (Model $seat): bool => $seat instanceof ScreeningSeat && $seat->isAvailableForSelection(),
             )->count(),
             'total' => $seats->count(),
         ];

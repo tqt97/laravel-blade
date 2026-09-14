@@ -2,8 +2,8 @@ const updateCount = (root, unreadCount, { shake = true } = {}) => {
     const count = root.querySelector('[data-notification-count]');
     const unread = Number(unreadCount ?? 0);
     const previousUnread = Number(root.dataset.unreadCount ?? 0);
-    count.textContent = unread > 99 ? '99+' : String(unread);
-    count.classList.toggle('hidden', unread === 0);
+    count?.replaceChildren(document.createTextNode(unread > 99 ? '99+' : String(unread)));
+    count?.classList.toggle('hidden', unread === 0);
     root.dataset.unreadCount = String(unread);
     root.classList.toggle('notification-bell--unread', unread > 0);
     if (shake && unread > previousUnread) {
@@ -95,8 +95,12 @@ export const initNotificationBells = () => {
         const list = root.querySelector('[data-notification-list]');
         const csrf = document.querySelector('meta[name="csrf-token"]')?.content ?? '';
         const load = async () => {
-            const response = await fetch(root.dataset.notificationsUrl, { headers: { Accept: 'application/json' }, cache: 'no-store' });
-            if (response.ok) render(root, await response.json());
+            try {
+                const response = await fetch(root.dataset.notificationsUrl, { headers: { Accept: 'application/json' }, cache: 'no-store' });
+                if (response.ok) render(root, await response.json());
+            } catch {
+                // Notifications are a progressive enhancement; the rest of the page remains usable offline.
+            }
         };
         toggle.addEventListener('click', () => {
             const closed = panel.classList.toggle('hidden');
@@ -117,20 +121,29 @@ export const initNotificationBells = () => {
             }
         });
         root.querySelector('[data-notification-read-all]')?.addEventListener('click', async () => {
-            const response = await fetch(root.dataset.readAllUrl, { method: 'PATCH', headers: { Accept: 'application/json', 'X-CSRF-TOKEN': csrf } });
-            if (response.ok) updateCount(root, (await response.json()).unread_count, { shake: false });
-            await load();
+            try {
+                const response = await fetch(root.dataset.readAllUrl, { method: 'PATCH', headers: { Accept: 'application/json', 'X-CSRF-TOKEN': csrf } });
+                if (response.ok) updateCount(root, (await response.json()).unread_count, { shake: false });
+                await load();
+            } catch {
+                // Keep the current list and unread state when the request fails.
+            }
         });
         root.querySelector('[data-notification-delete-all]')?.addEventListener('click', async () => {
             if (!window.confirm(root.dataset.deleteAllConfirm ?? 'Clear all notifications?')) return;
             const button = root.querySelector('[data-notification-delete-all]');
             button.disabled = true;
-            const response = await fetch(root.dataset.deleteAllUrl, { method: 'DELETE', headers: { Accept: 'application/json', 'X-CSRF-TOKEN': csrf } });
-            if (response.ok) {
-                updateCount(root, 0, { shake: false });
-                await load();
+            try {
+                const response = await fetch(root.dataset.deleteAllUrl, { method: 'DELETE', headers: { Accept: 'application/json', 'X-CSRF-TOKEN': csrf } });
+                if (response.ok) {
+                    updateCount(root, 0, { shake: false });
+                    await load();
+                }
+            } catch {
+                // Keep the delete action available for a retry.
+            } finally {
+                button.disabled = false;
             }
-            button.disabled = false;
         });
         root.addEventListener('click', async (event) => {
             const deleteButton = event.target.closest('[data-notification-delete]');
@@ -139,17 +152,19 @@ export const initNotificationBells = () => {
                 const item = deleteButton.closest('[data-notification-item]');
                 deleteButton.disabled = true;
                 const deleteUrl = root.dataset.deleteUrlTemplate.replace('__ID__', encodeURIComponent(deleteButton.dataset.notificationDelete));
-                const response = await fetch(deleteUrl, { method: 'DELETE', headers: { Accept: 'application/json', 'X-CSRF-TOKEN': csrf } });
-                if (response.ok) {
-                    item?.remove();
-                    updateCount(root, (await response.json()).unread_count, { shake: false });
-                    if (!list.querySelector('[data-notification-item]')) {
-                        const emptyState = document.createElement('p');
-                        emptyState.className = 'flex min-h-28 items-center justify-center px-5 py-8 text-center text-sm text-muted-foreground';
-                        emptyState.textContent = root.dataset.emptyLabel ?? '';
-                        list.replaceChildren(emptyState);
+                try {
+                    const response = await fetch(deleteUrl, { method: 'DELETE', headers: { Accept: 'application/json', 'X-CSRF-TOKEN': csrf } });
+                    if (response.ok) {
+                        item?.remove();
+                        updateCount(root, (await response.json()).unread_count, { shake: false });
+                        if (!list.querySelector('[data-notification-item]')) {
+                            const emptyState = document.createElement('p');
+                            emptyState.className = 'flex min-h-28 items-center justify-center px-5 py-8 text-center text-sm text-muted-foreground';
+                            emptyState.textContent = root.dataset.emptyLabel ?? '';
+                            list.replaceChildren(emptyState);
+                        }
                     }
-                } else {
+                } catch {
                     deleteButton.disabled = false;
                 }
                 return;
@@ -158,8 +173,12 @@ export const initNotificationBells = () => {
             if (!link || link.dataset.read === 'true') return;
             link.dataset.read = 'true';
             const readUrl = root.dataset.readUrlTemplate.replace('__ID__', encodeURIComponent(link.dataset.notificationId));
-            const response = await fetch(readUrl, { method: 'PATCH', headers: { Accept: 'application/json', 'X-CSRF-TOKEN': csrf } });
-            if (response.ok) updateCount(root, (await response.json()).unread_count, { shake: false });
+            try {
+                const response = await fetch(readUrl, { method: 'PATCH', headers: { Accept: 'application/json', 'X-CSRF-TOKEN': csrf } });
+                if (response.ok) updateCount(root, (await response.json()).unread_count, { shake: false });
+            } catch {
+                link.dataset.read = 'false';
+            }
         });
         void load();
         window.setInterval(load, 15000);

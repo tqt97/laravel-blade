@@ -10,3 +10,10 @@ test('service worker excludes authenticated and payment routes from navigation c
     assert.match(source, /user\|admin/);
     assert.match(source, /checkout.*payment|payment.*checkout/);
 });
+
+test('loads booking interactions on the standalone combo editing page', async () => {
+    const source = await readFile(new URL('../../resources/js/app.js', import.meta.url), 'utf8');
+
+    assert.match(source, /data-booking-checkout.*data-combo-total/);
+    assert.match(source, /initComboTotals/);
+});

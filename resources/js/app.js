@@ -21,7 +21,7 @@ if (document.querySelector('[data-seat-picker]')) {
     import('./modules/seat-picker.js').then(({ initSeatPickers }) => initSeatPickers());
 }
 
-if (document.querySelector('[data-booking-checkout]')) {
+if (document.querySelector('[data-booking-checkout], [data-combo-total]')) {
     import('./modules/booking.js').then(({ initBookingCheckout, initComboTotals }) => {
         initBookingCheckout();
         initComboTotals();
