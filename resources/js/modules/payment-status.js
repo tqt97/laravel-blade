@@ -1,6 +1,7 @@
 const poll = (root) => {
     const statusUrl = root.dataset.statusUrl;
     let timer;
+    let redirecting = false;
     let attempts = 0;
     const terminalStatuses = new Set((root.dataset.terminalStatuses ?? '').split(',').filter(Boolean));
     const pollInterval = Number(root.dataset.pollIntervalMs ?? 3000);
@@ -8,6 +9,7 @@ const poll = (root) => {
     const maxUnknownAttempts = Number(root.dataset.maxUnknownAttempts ?? 20);
 
     const check = async () => {
+        if (redirecting) return;
         try {
             const response = await fetch(statusUrl, { headers: { Accept: 'application/json' } });
             if (!response.ok) {
@@ -17,7 +19,8 @@ const poll = (root) => {
             const data = await response.json();
             attempts += 1;
             if (data.redirect) {
-                window.location.assign(data.redirect);
+                redirecting = true;
+                window.location.replace(data.redirect);
                 return;
             }
             if (data.status === 'requires_payment_method') {
@@ -49,6 +52,7 @@ export const initPaymentStatus = () => {
         if (root.dataset.initialized === 'true') return;
         root.dataset.initialized = 'true';
         const stopPolling = poll(root);
+        const syncUrl = root.dataset.syncUrl;
         const button = root.querySelector('[data-stripe-confirm]');
         const stripeKey = root.dataset.stripeKey;
         const clientSecret = root.dataset.clientSecret;
@@ -149,6 +153,24 @@ export const initPaymentStatus = () => {
                     showError(result.error.message ?? root.dataset.errorLabel ?? root.dataset.unavailableLabel ?? '');
                     setSubmitting(false);
                     setProcessing(false);
+                    return;
+                }
+                if (syncUrl) {
+                    const syncResponse = await fetch(syncUrl, {
+                        method: 'POST',
+                        headers: {
+                            Accept: 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content ?? '',
+                        },
+                    });
+                    if (syncResponse.ok) {
+                        const syncData = await syncResponse.json();
+                        if (syncData.redirect) {
+                            stopPolling();
+                            window.location.replace(syncData.redirect);
+                            return;
+                        }
+                    }
                 }
             } catch {
                 showError(root.dataset.errorLabel ?? root.dataset.unavailableLabel ?? '');

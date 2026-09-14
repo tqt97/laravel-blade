@@ -46,6 +46,10 @@ final class StripeWebhookController extends Controller
             return response()->json(['message' => 'Webhook payment data does not match the local payment.'], 422);
         }
 
+        if ($result === StripeWebhookIngestResult::Ignored) {
+            return response()->noContent();
+        }
+
         ProcessStripeWebhook::dispatch($eventId)->afterCommit();
 
         if ($result === StripeWebhookIngestResult::Orphan) {

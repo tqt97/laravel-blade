@@ -8,6 +8,7 @@ use App\Enums\Movie\Booking\BookingStatus;
 use App\Enums\Payment\PaymentStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\User\PayBookingRequest;
+use App\Jobs\ReconcilePayment;
 use App\Models\Movie\Booking;
 use App\Support\Booking\Exceptions\BookingExpired;
 use App\Support\Booking\Exceptions\BookingOperationFailed;
@@ -44,17 +45,30 @@ final class BookingPaymentController extends Controller
 
         $status = (string) $payment->getRawOriginal('status');
         $bookingStatus = BookingStatus::tryFrom((string) $booking->getRawOriginal('status'));
-        $redirect = $bookingStatus === BookingStatus::Expired || $bookingStatus === BookingStatus::Cancelled
-            ? route('user.bookings.show', $booking)
-            : ($bookingStatus?->isPayable() !== true
-                ? route('user.bookings.checkout', $booking)
-            : match ($status) {
-                PaymentStatus::Succeeded->value => route('user.bookings.success', $booking),
+        $redirect = match ($bookingStatus) {
+            BookingStatus::Confirmed => $status === PaymentStatus::Succeeded->value
+                ? route('user.bookings.success', $booking)
+                : route('user.bookings.show', $booking),
+            BookingStatus::Expired, BookingStatus::Cancelled => route('user.bookings.show', $booking),
+            default => match ($status) {
                 PaymentStatus::Failed->value, PaymentStatus::RequiresRefund->value => route('user.bookings.checkout', $booking),
                 default => null,
-            });
+            },
+        };
 
         return response()->json(['status' => $status, 'redirect' => $redirect, 'booking_status' => $bookingStatus?->value]);
+    }
+
+    public function sync(Booking $booking): JsonResponse
+    {
+        $this->authorize('confirm', $booking);
+
+        $payment = $booking->payment;
+        abort_unless($payment !== null && filled($payment->provider_payment_id), 422);
+
+        ReconcilePayment::dispatchSync($payment->getKey());
+
+        return $this->status($booking->refresh());
     }
 
     public function pay(PayBookingRequest $request, Booking $booking, PayBooking $payBooking, ExpireBooking $expireBooking): RedirectResponse

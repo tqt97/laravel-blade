@@ -6,6 +6,7 @@ use App\Actions\Movie\Booking\HoldSeats;
 use App\Actions\Movie\Booking\PayBooking;
 use App\Actions\Movie\Catalog\CreateScreening;
 use App\Actions\Movie\Concessions\AddConcessions;
+use App\Contracts\PaymentGateway;
 use App\Enums\Movie\Booking\CouponType;
 use App\Enums\Movie\Seating\SeatType;
 use App\Models\Movie\Booking;
@@ -15,6 +16,7 @@ use App\Models\Movie\Movie;
 use App\Models\Movie\Screening;
 use App\Models\Movie\ScreeningRoom;
 use App\Models\User;
+use App\Support\Payment\FakePaymentGateway;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Collection;
@@ -237,7 +239,10 @@ class MovieSeeder extends Seeder
         }
         $paid = app(HoldSeats::class)->execute($user, $screening, [(int) $seats[0]->getAttribute('seat_id'), (int) $seats[1]->getAttribute('seat_id')], 'seed-paid-'.$screening->id);
         app(AddConcessions::class)->execute($paid, [$concessions->first()->id => 2, $concessions->get(2)->id => 1]);
-        app(PayBooking::class)->execute($paid);
+        if (app()->environment(['local', 'testing'])) {
+            app()->instance(PaymentGateway::class, new FakePaymentGateway);
+            app(PayBooking::class)->execute($paid);
+        }
         $heldScreening->load('screeningSeats');
         $heldSeat = $heldScreening->screeningSeats->first();
         if ($heldSeat !== null && ! Booking::query()->where('user_id', $user->id)->where('screening_id', $heldScreening->id)->exists()) {

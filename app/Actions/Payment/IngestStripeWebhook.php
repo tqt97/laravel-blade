@@ -29,6 +29,16 @@ final class IngestStripeWebhook
                 return StripeWebhookIngestResult::Rejected;
             }
 
+            $eventType = StripeWebhookEventType::tryFromPayload($data['type'] ?? null);
+            if ($eventType === null) {
+                $event->forceFill([
+                    'processed_at' => now(),
+                    'failure_message' => 'Unsupported Stripe webhook event type ignored.',
+                ])->save();
+
+                return StripeWebhookIngestResult::Ignored;
+            }
+
             $object = $data['data']['object'] ?? [];
             $providerPaymentId = is_array($object) ? ($object['id'] ?? null) : null;
 
@@ -51,8 +61,6 @@ final class IngestStripeWebhook
             $payment = Payment::query()->forProvider(PaymentProvider::Stripe)
                 ->where('provider_payment_id', $providerPaymentId)
                 ->first();
-
-            $eventType = StripeWebhookEventType::tryFromPayload($data['type'] ?? null);
 
             if (
                 $payment !== null

@@ -249,6 +249,76 @@ it('moves an unavailable reconciliation to manual review after its deadline', fu
         ->and($payment->last_reconciliation_error)->toBe('Stripe search is eventually consistent.');
 });
 
+it('redirects a confirmed booking to its success page during payment polling', function (): void {
+    $user = User::factory()->create();
+    $booking = Booking::factory()->for($user)->confirmed()->create();
+    $booking->payment()->create([
+        'provider' => 'stripe',
+        'provider_payment_id' => 'pi_confirmed_poll',
+        'status' => PaymentStatus::Succeeded,
+        'amount_minor_units' => $booking->amount_minor_units,
+        'currency' => $booking->currency,
+    ]);
+
+    $this->actingAs($user)
+        ->getJson(route('user.bookings.payment-status', $booking))
+        ->assertOk()
+        ->assertJsonPath('status', PaymentStatus::Succeeded->value)
+        ->assertJsonPath('redirect', route('user.bookings.success', $booking));
+});
+
+it('syncs a completed Stripe payment when the webhook is delayed', function (): void {
+    $user = User::factory()->create();
+    $room = ScreeningRoom::factory()->create();
+    $seat = Seat::factory()->for($room, 'room')->create();
+    $screening = app(CreateScreening::class)->execute(Movie::factory()->create(), $room, now()->addDay()->toDateTimeString(), now()->addDay()->addHours(2)->toDateTimeString(), 100000);
+    $booking = app(HoldSeats::class)->execute($user, $screening, [$seat->id], 'payment-sync');
+    $payment = $booking->payment()->create([
+        'provider' => 'stripe',
+        'provider_payment_id' => 'pi_sync',
+        'status' => PaymentStatus::Processing,
+        'amount_minor_units' => $booking->amount_minor_units,
+        'currency' => $booking->currency,
+        'attempts' => 1,
+    ]);
+    $payment->attempts()->create([
+        'attempt_key' => 'payment-sync-attempt',
+        'status' => PaymentAttemptStatus::Processing,
+        'amount_minor_units' => $payment->amount_minor_units,
+        'currency' => $payment->currency,
+    ]);
+
+    app()->instance(PaymentStatusRetriever::class, new class($booking->id) implements PaymentStatusRetriever
+    {
+        public function __construct(private readonly int $bookingId) {}
+
+        public function retrieve(string $providerPaymentId): ProviderPaymentStatus
+        {
+            return new ProviderPaymentStatus('succeeded', $providerPaymentId, [
+                'amount_received' => 100000,
+                'currency' => 'vnd',
+                'metadata' => [
+                    'payable_type' => Booking::class,
+                    'payable_id' => (string) $this->bookingId,
+                ],
+            ]);
+        }
+
+        public function retrieveByAttemptKey(string $attemptKey): ProviderPaymentStatus
+        {
+            return $this->retrieve('pi_sync');
+        }
+    });
+
+    $this->actingAs($user)
+        ->postJson(route('user.bookings.payment-sync', $booking))
+        ->assertOk()
+        ->assertJsonPath('status', PaymentStatus::Succeeded->value)
+        ->assertJsonPath('redirect', route('user.bookings.success', $booking));
+
+    expect($booking->refresh()->status)->toBe(BookingStatus::Confirmed);
+});
+
 it('recovers a payment claim that never received a provider id', function (): void {
     $payment = Payment::query()->create([
         'payable_type' => Booking::class,
@@ -274,6 +344,7 @@ it('recovers a payment claim that never received a provider id', function (): vo
 });
 
 it('does not charge again when the first gateway response times out', function (): void {
+    Queue::fake();
     $room = ScreeningRoom::factory()->create();
     $seat = Seat::factory()->for($room, 'room')->create();
     $screening = app(CreateScreening::class)->execute(Movie::factory()->create(), $room, now()->addDay()->toDateTimeString(), now()->addDay()->addHours(2)->toDateTimeString(), 100000);
@@ -299,6 +370,8 @@ it('does not charge again when the first gateway response times out', function (
         ->and(app(PayBooking::class)->execute($booking)->status)->toBe(PaymentStatus::Processing)
         ->and($gateway->charges)->toBe(1)
         ->and($booking->payment->attempts()->where('status', 'unknown')->count())->toBe(1);
+
+    Queue::assertPushed(ReconcilePayment::class, fn (ReconcilePayment $job): bool => $job->paymentId === $booking->payment->id);
 });
 
 it('uses the payment attempt key as the Stripe idempotency key', function (): void {
@@ -404,6 +477,50 @@ it('reconciles a timeout payment by searching Stripe with its attempt key', func
         ->and($payment->status)->toBe(PaymentStatus::Processing);
 });
 
+it('keeps requires payment method as a recoverable reconciliation state', function (): void {
+    $payment = Payment::query()->create([
+        'payable_type' => Booking::class,
+        'payable_id' => 999999,
+        'provider' => 'stripe',
+        'provider_payment_id' => 'pi_requires_method',
+        'status' => PaymentStatus::Processing,
+        'amount_minor_units' => 100000,
+        'currency' => 'VND',
+        'attempts' => 1,
+    ]);
+    $payment->attempts()->create([
+        'attempt_key' => 'requires-method-lookup',
+        'status' => PaymentAttemptStatus::Processing,
+        'amount_minor_units' => $payment->amount_minor_units,
+        'currency' => $payment->currency,
+    ]);
+
+    $retriever = new class implements PaymentStatusRetriever
+    {
+        public function retrieve(string $providerPaymentId): ProviderPaymentStatus
+        {
+            return new ProviderPaymentStatus('requires_payment_method', $providerPaymentId, [
+                'amount' => 100000,
+                'currency' => 'vnd',
+                'metadata' => [
+                    'payable_type' => Booking::class,
+                    'payable_id' => '999999',
+                ],
+            ]);
+        }
+
+        public function retrieveByAttemptKey(string $attemptKey): ProviderPaymentStatus
+        {
+            return $this->retrieve('pi_requires_method');
+        }
+    };
+
+    (new ReconcilePayment($payment->id))->handle($retriever, app(FinalizeSuccessfulPayment::class));
+
+    expect($payment->refresh()->status)->toBe(PaymentStatus::RequiresPaymentMethod)
+        ->and($payment->attempts()->latest('id')->firstOrFail()->status)->toBe(PaymentAttemptStatus::RequiresPaymentMethod);
+});
+
 it('rejects a Stripe webhook when amount or currency does not match', function (): void {
     $room = ScreeningRoom::factory()->create();
     $seat = Seat::factory()->for($room, 'room')->create();
@@ -470,6 +587,24 @@ it('returns bad request for malformed signed Stripe webhook JSON', function (): 
         'HTTP_STRIPE_SIGNATURE' => 't='.$timestamp.',v1='.hash_hmac('sha256', $timestamp.'.'.$body, 'whsec_test'),
         'CONTENT_TYPE' => 'application/json',
     ], $body)->assertStatus(400);
+});
+
+it('ignores unsupported Stripe charge events without creating orphan retries', function (): void {
+    Queue::fake();
+    $payload = ['id' => 'evt_charge_ignored', 'type' => 'charge.succeeded', 'data' => ['object' => ['id' => 'ch_ignored']]];
+    $body = json_encode($payload, JSON_THROW_ON_ERROR);
+    $timestamp = time();
+    config(['services.stripe.webhook_secret' => 'whsec_test']);
+
+    $this->call('POST', route('webhooks.stripe'), [], [], [], [
+        'HTTP_STRIPE_SIGNATURE' => 't='.$timestamp.',v1='.hash_hmac('sha256', $timestamp.'.'.$body, 'whsec_test'),
+        'CONTENT_TYPE' => 'application/json',
+    ], $body)->assertNoContent();
+
+    expect(PaymentWebhookEvent::query()->where('event_id', 'evt_charge_ignored')->firstOrFail())
+        ->processed_at->not->toBeNull()
+        ->and(PaymentWebhookEvent::query()->where('event_id', 'evt_charge_ignored')->value('orphaned_at'))->toBeNull();
+    Queue::assertNotPushed(ProcessStripeWebhook::class);
 });
 
 it('does not regress a succeeded payment when an older Stripe event arrives', function (): void {

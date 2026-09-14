@@ -136,7 +136,7 @@ class ReconcilePayment implements ShouldQueue
                 'processing' => PaymentStatus::Processing,
                 'requires_payment_method' => PaymentStatus::RequiresPaymentMethod,
                 'canceled', 'failed' => PaymentStatus::Failed,
-                default => PaymentStatus::from((string) $locked->getRawOriginal('status')),
+                default => PaymentStatus::Unknown,
             };
             if (! $stateMachine->canTransition(PaymentStatus::from((string) $locked->getRawOriginal('status')), $status)) {
                 return $locked;

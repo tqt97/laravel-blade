@@ -39,6 +39,7 @@ Route::get('/bookings/{booking}/checkout', [BookingController::class, 'checkout'
 Route::get('/bookings/{booking}/success', [BookingController::class, 'success'])->name('bookings.success');
 Route::get('/bookings/{booking}/payment-action', [BookingPaymentController::class, 'action'])->name('bookings.payment-action');
 Route::get('/bookings/{booking}/payment-status', [BookingPaymentController::class, 'status'])->name('bookings.payment-status');
+Route::post('/bookings/{booking}/payment-sync', [BookingPaymentController::class, 'sync'])->middleware('throttle:booking-mutations')->name('bookings.payment-sync');
 Route::get('/bookings/{booking}/combo-availability', [BookingConcessionController::class, 'availability'])->middleware('throttle:availability')->name('bookings.combo-availability');
 Route::get('/bookings/{booking}/combos', [BookingConcessionController::class, 'index'])->name('bookings.combos');
 Route::post('/bookings/{booking}/combos', [BookingConcessionController::class, 'store'])->middleware('throttle:booking-mutations')->name('bookings.combos.store');

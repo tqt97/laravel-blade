@@ -9,6 +9,7 @@ use App\Enums\Movie\Booking\BookingStatus;
 use App\Enums\Payment\PaymentAttemptStatus;
 use App\Enums\Payment\PaymentProvider;
 use App\Enums\Payment\PaymentStatus;
+use App\Jobs\ReconcilePayment;
 use App\Models\Movie\Booking;
 use App\Models\Payments\Payment;
 use App\Models\Payments\PaymentAttempt;
@@ -150,6 +151,8 @@ final class PayBooking
                 'status' => PaymentStatus::Processing,
                 'failure_message' => 'Payment provider response was unknown. Reconciliation is required.',
             ])->save();
+
+            ReconcilePayment::dispatch($payment->getKey())->afterCommit();
 
             report($exception);
 

@@ -5,7 +5,7 @@ use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\Movie\PublicMovieController;
 use App\Http\Controllers\TicketVerificationController;
 use App\Http\Controllers\Webhooks\StripeWebhookController;
-use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
+use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
 use Illuminate\Support\Facades\Route;
 
 // Public locale/session preference.
@@ -26,4 +26,4 @@ Route::scopeBindings()->group(function (): void {
 
 // Public signed ticket verification and provider webhook endpoints.
 Route::get('/ticket-verify/{ticket}', TicketVerificationController::class)->middleware('signed')->name('user.tickets.verify');
-Route::post('/webhooks/stripe', StripeWebhookController::class)->withoutMiddleware([ValidateCsrfToken::class])->name('webhooks.stripe');
+Route::post('/webhooks/stripe', StripeWebhookController::class)->withoutMiddleware([PreventRequestForgery::class])->name('webhooks.stripe');

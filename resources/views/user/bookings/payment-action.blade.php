@@ -21,6 +21,7 @@
         data-max-unknown-attempts="{{ config('booking.payment.status_max_unknown_attempts') }}"
         data-delayed-notice-ms="{{ config('booking.payment.status_delayed_notice_ms') }}"
         data-status-url="{{ route('user.bookings.payment-status', $booking) }}"
+        data-sync-url="{{ route('user.bookings.payment-sync', $booking) }}"
         data-success-url="{{ route('user.bookings.success', $booking) }}" data-client-secret="{{ $clientSecret ?? '' }}"
         data-return-url="{{ request()->url() }}" data-stripe-key="{{ config('services.stripe.key') ?? '' }}"
         data-copy-success-label="{{ __('booking.checkout.payment_test_card_copied') }}"
