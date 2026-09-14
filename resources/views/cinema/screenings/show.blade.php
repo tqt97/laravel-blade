@@ -142,6 +142,9 @@
                         aria-live="polite">
                         {{ __('cinema.seats.availability_refresh_failed') }}
                     </p>
+                    <p data-seat-conflict-region tabindex="-1"
+                        class="mt-4 hidden rounded-xl border border-warning/40 bg-warning-soft p-4 text-sm text-warning-foreground outline-none"
+                        role="alert" aria-live="assertive"></p>
                     <p data-combo-availability-status
                         class="mt-2 hidden rounded-xl bg-warning-soft p-3 text-xs text-warning-foreground" role="status"
                         aria-live="polite">
@@ -201,7 +204,8 @@
                                 </span>
                                 <span data-combo-quantity-status
                                     data-selected-label="{{ __('booking.combos.selected_quantity') }}"
-                                    data-available-label="{{ $maxQuantity }}" class="text-xs text-muted-foreground">
+                                    data-available-label="{{ $maxQuantity }}" class="text-xs text-muted-foreground"
+                                    aria-live="polite">
                                 </span>
                                 <div class="ml-auto flex items-center gap-1">
                                     <button type="button" data-combo-decrease
@@ -213,6 +217,7 @@
                                         aria-label="{{ __('booking.combos.quantity_label', ['name' => $concession->name]) }}"
                                         data-combo-name="{{ $concession->name }}"
                                         data-combo-price="{{ $concession->price_minor_units }}"
+                                        aria-valuemin="0" aria-valuemax="{{ $maxQuantity }}" aria-valuenow="{{ $selectedQuantity }}"
                                         class="w-12 rounded-lg border border-border bg-card px-2 py-2 text-center text-sm font-semibold"
                                         @disabled($soldOut)>
                                     <button type="button" data-combo-increase

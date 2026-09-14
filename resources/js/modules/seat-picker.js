@@ -146,6 +146,9 @@ export const initSeatPickers = () => {
                 const isVip = button.dataset.seatType === 'vip';
                 const isAvailable = !button.disabled || isSelected;
                 button.classList.remove('border-primary/50', 'bg-primary-soft', 'bg-amber-100', 'text-foreground', 'text-amber-950', 'dark:bg-amber-950/60', 'dark:text-amber-100');
+                button.classList.toggle('border-destructive', button.dataset.lostAvailability === 'true');
+                button.classList.toggle('bg-destructive/10', button.dataset.lostAvailability === 'true');
+                button.classList.toggle('text-destructive', button.dataset.lostAvailability === 'true');
                 button.classList.toggle('border-primary', isSelected);
                 button.classList.toggle('bg-primary', isSelected);
                 button.classList.toggle('text-primary-foreground', isSelected);
@@ -184,9 +187,13 @@ export const initSeatPickers = () => {
                     const ownedByCurrentBooking = typeof state === 'object' && state?.owned_by_current_booking === true;
                     button.dataset.seatOwnHold = String(ownedByCurrentBooking);
                     const selectable = available || ownedByCurrentBooking;
+                    if (selectable) {
+                        button.dataset.lostAvailability = 'false';
+                    }
                     if (!selectable && button.dataset.selected === 'true') {
                         lostSeatLabels.push(button.dataset.seatLabel ?? button.getAttribute('title') ?? '');
                         button.dataset.selected = 'false';
+                        button.dataset.lostAvailability = 'true';
                         changed = true;
                     }
                     if (!button.disabled || button.dataset.selected !== 'true') {
@@ -197,12 +204,12 @@ export const initSeatPickers = () => {
                 });
                 if (changed) {
                     sync();
-                    const notice = document.createElement('p');
-                    notice.className = 'rounded-xl bg-warning-soft p-4 text-sm text-warning-foreground';
-                    notice.setAttribute('role', 'alert');
-                    notice.textContent = (picker.dataset.seatConflictLabel ?? '').replace(':seats', lostSeatLabels.filter(Boolean).join(', '));
-                    picker.before(notice);
-                    window.setTimeout(() => notice.remove(), 6000);
+                    const notice = picker.querySelector('[data-seat-conflict-region]');
+                    if (notice) {
+                        notice.textContent = (picker.dataset.seatConflictLabel ?? '').replace(':seats', lostSeatLabels.filter(Boolean).join(', '));
+                        notice.classList.remove('hidden');
+                        notice.focus({ preventScroll: false });
+                    }
                 }
 
                 Object.entries(data.concessions ?? {}).forEach(([id, availability]) => {

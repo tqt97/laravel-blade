@@ -65,6 +65,13 @@
             <p class="mx-auto mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
                 {{ $paymentDescription }}
             </p>
+            @if ($paymentStatus === \App\Enums\Payment\PaymentStatus::Unknown)
+                <ul class="mx-auto mt-4 grid max-w-2xl gap-2 text-left text-sm text-muted-foreground" aria-live="polite">
+                    @foreach (__('booking.checkout.payment_unknown_guidance') as $guidance)
+                        <li class="flex gap-2"><span class="text-primary" aria-hidden="true">•</span><span>{{ $guidance }}</span></li>
+                    @endforeach
+                </ul>
+            @endif
             <p class="mx-auto mt-4 max-w-3xl rounded-xl bg-muted/50 p-3 text-sm leading-6 text-muted-foreground">
                 {{ __('booking.checkout.payment_test_mode_hint') }}
             </p>

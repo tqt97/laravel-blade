@@ -37,11 +37,17 @@
                             {{ $concession->stock === null ? __('booking.combos.unlimited') : __('booking.combos.stock', ['count' => $concession->stock]) }}</span><span
                             class="mt-1 block text-xs text-primary" data-combo-quantity-status
                             data-selected-label="{{ __('booking.combos.selected_quantity') }}"
-                            data-available-label="{{ $maxQuantity }}"></span></span>
+                            data-available-label="{{ $maxQuantity }}" aria-live="polite"></span></span>
+                    @if ($maxQuantity === 0)
+                        <span class="rounded-full bg-muted px-2 py-1 text-[11px] font-semibold text-muted-foreground">
+                            {{ __('booking.combos.sold_out') }}
+                        </span>
+                    @endif
                     <input type="number" min="0" max="{{ $maxQuantity }}" inputmode="numeric"
                         name="quantities[{{ $concession->id }}]"
                         value="{{ old('quantities.' . $concession->id, $selectedQuantity) }}"
                         aria-label="{{ __('booking.combos.quantity_label', ['name' => $concession->name]) }}"
+                        aria-valuemin="0" aria-valuemax="{{ $maxQuantity }}" aria-valuenow="{{ $selectedQuantity }}"
                         data-combo-price="{{ $concession->price_minor_units }}"
                         data-combo-stock="{{ $concession->stock ?? '' }}"
                         class="w-20 rounded-lg border border-border bg-card px-3 py-2 text-center">

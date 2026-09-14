@@ -6,6 +6,8 @@
     <div class="mx-auto max-w-6xl space-y-8 px-5 py-12 pb-32 sm:px-8 sm:pb-12" data-booking-checkout
         data-expires-at="{{ $expiresAt?->toIso8601String() }}"
         data-expired-label="{{ __('booking.checkout.expired_notice') }}"
+        data-reselect-label="{{ __('booking.checkout.reselect') }}"
+        data-reselect-url="{{ route('cinema.screenings.show', [$booking->screening->movie, $booking->screening]) }}"
         data-combo-availability-url="{{ route('user.bookings.combo-availability', $booking) }}">
         <x-cinema.booking-stepper current="review" />
         <div>

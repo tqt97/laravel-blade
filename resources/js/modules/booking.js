@@ -11,6 +11,7 @@ export const initBookingCheckout = () => {
         if (!countdown || Number.isNaN(expiresAt)) return;
 
         let timer;
+        let expired = false;
         const tick = () => {
             const serverNow = Date.parse(checkout.dataset.serverNow ?? '');
             const serverClockOffsetMs = Number.isNaN(serverNow) ? 0 : serverNow - Date.now();
@@ -35,15 +36,28 @@ export const initBookingCheckout = () => {
             countdown.closest('[role="status"]')?.classList.toggle('bg-warning-soft', seconds > 60);
 
             if (seconds === 0) {
+                if (expired) return;
+                expired = true;
+                checkout.dataset.bookingExpired = 'true';
+                checkout.dispatchEvent(new CustomEvent('booking:expired'));
                 paymentForm?.querySelectorAll('[data-payment-submit]').forEach((button) => {
                     button.disabled = true;
                 });
-                if (!paymentForm?.previousElementSibling?.matches('[data-expired-message]')) {
+                paymentForm?.querySelectorAll('button, input, select, textarea').forEach((control) => {
+                    control.disabled = true;
+                });
+                if (!checkout.querySelector('[data-expired-message]')) {
                     const message = document.createElement('p');
                     message.dataset.expiredMessage = 'true';
-                    message.className = 'rounded-xl bg-destructive/10 p-4 text-sm text-destructive';
+                    message.className = 'rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive';
                     message.setAttribute('role', 'alert');
-                    message.textContent = checkout.dataset.expiredLabel ?? '';
+                    const text = document.createElement('p');
+                    text.textContent = checkout.dataset.expiredLabel ?? '';
+                    const link = document.createElement('a');
+                    link.className = 'mt-3 inline-flex font-semibold underline';
+                    link.href = checkout.dataset.reselectUrl ?? '#';
+                    link.textContent = checkout.dataset.reselectLabel ?? '';
+                    message.append(text, link);
                     paymentForm?.before(message);
                 }
                 window.clearInterval(timer);
@@ -54,6 +68,10 @@ export const initBookingCheckout = () => {
         tick();
 
         paymentForm?.addEventListener('submit', (event) => {
+            if (expired || checkout.dataset.bookingExpired === 'true') {
+                event.preventDefault();
+                return;
+            }
             if (!event.submitter?.matches('[data-payment-submit]')) return;
 
             paymentForm.querySelectorAll('[data-payment-submit]').forEach((button) => {
@@ -82,6 +100,13 @@ export const initComboTotals = () => {
                     input.value = String(max);
                 }
                 const status = input.closest('[data-combo-control]')?.querySelector('[data-combo-quantity-status]');
+                input.setAttribute('aria-valuenow', String(quantity));
+                input.setAttribute('aria-valuemax', String(max));
+                const control = input.closest('[data-combo-control]');
+                const increase = control?.querySelector('[data-combo-increase]');
+                const decrease = control?.querySelector('[data-combo-decrease]');
+                if (increase) increase.disabled = input.disabled || quantity >= max;
+                if (decrease) decrease.disabled = input.disabled || quantity <= 0;
                 if (status) status.textContent = status.dataset.selectedLabel.replace(':selected', String(quantity)).replace(':available', status.dataset.availableLabel);
                 selectedCount += quantity;
                 return sum + Number(input.dataset.comboPrice ?? 0) * quantity;
@@ -120,8 +145,19 @@ export const initComboTotals = () => {
         let availabilityTimer;
         let availabilityController;
         let lastComboAvailabilityVersion;
+        let expired = availabilityRoot.dataset.bookingExpired === 'true';
+        availabilityRoot.addEventListener('booking:expired', () => {
+            expired = true;
+            window.clearTimeout(availabilityTimer);
+            availabilityController?.abort();
+            form.querySelectorAll('[data-combo-price]').forEach((input) => {
+                input.value = '0';
+                input.disabled = true;
+            });
+            update();
+        }, { once: true });
         const refreshAvailability = async () => {
-            if (!availabilityUrl || document.hidden) return;
+            if (!availabilityUrl || document.hidden || expired) return;
             availabilityController?.abort();
             availabilityController = new AbortController();
             try {
@@ -156,7 +192,7 @@ export const initComboTotals = () => {
         };
         const scheduleAvailabilityRefresh = () => {
             window.clearTimeout(availabilityTimer);
-            if (!document.hidden) {
+            if (!document.hidden && !expired) {
                 availabilityTimer = window.setTimeout(async () => {
                     await refreshAvailability();
                     scheduleAvailabilityRefresh();
