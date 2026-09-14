@@ -71,6 +71,7 @@ final class PayBooking
                 'amount_minor_units' => $booking->amount_minor_units,
                 'currency' => $booking->currency,
             ]);
+            $payment = Payment::query()->whereKey($payment->getKey())->lockForUpdate()->firstOrFail();
 
             $paymentStatus = PaymentStatus::from((string) $payment->getRawOriginal('status'));
             if (

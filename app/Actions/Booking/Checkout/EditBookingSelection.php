@@ -72,17 +72,17 @@ final class EditBookingSelection
                     ->first();
 
                 if ($expiredHold !== null) {
-                    $this->cancelBooking->execute($expiredHold, 'expired_hold_replaced', false);
+                    $this->cancelBooking->cancelLocked($expiredHold, 'expired_hold_replaced');
                     $idempotencyKey = (string) Str::uuid();
                 }
             }
 
             if ($activeHold !== null) {
-                $this->cancelBooking->execute($activeHold, 'seat_selection_edited', false);
+                $this->cancelBooking->cancelLocked($activeHold, 'seat_selection_edited');
                 $idempotencyKey = (string) Str::uuid();
             }
 
-            $booking = $this->holdSeats->execute($user, $screening, $seatIds, $idempotencyKey, false);
+            $booking = $this->holdSeats->holdLocked($user, $screening, $seatIds, $idempotencyKey);
             if ($quantities !== []) {
                 $this->syncBookingConcessions->executeForLockedBooking($booking, $quantities);
             }

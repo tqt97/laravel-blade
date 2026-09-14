@@ -21,7 +21,13 @@ final class HoldSeats
     /**
      * @param  list<int>  $seatIds
      */
-    public function execute(User $user, Screening $screening, array $seatIds, string $idempotencyKey, bool $manageTransaction = true): Booking
+    public function execute(User $user, Screening $screening, array $seatIds, string $idempotencyKey): Booking
+    {
+        return DB::transaction(fn (): Booking => $this->holdLocked($user, $screening, $seatIds, $idempotencyKey), 3);
+    }
+
+    /** The caller must hold the surrounding transaction. */
+    public function holdLocked(User $user, Screening $screening, array $seatIds, string $idempotencyKey): Booking
     {
         $seatIds = array_values(array_unique(array_map(static fn (int|string $id): int => (int) $id, $seatIds)));
         sort($seatIds);
@@ -148,6 +154,6 @@ final class HoldSeats
             ]);
         };
 
-        return $manageTransaction ? DB::transaction($operation, 3) : $operation();
+        return $operation();
     }
 }

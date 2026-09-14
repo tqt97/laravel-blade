@@ -92,9 +92,13 @@ final class ReleaseBookingResources
                 ->lockForUpdate()
                 ->first();
 
-            if ($coupon !== null && $coupon->used_count > 0) {
-                $coupon->decrement('used_count');
-                $coupon->decrement('reserved_count');
+            if ($coupon !== null) {
+                if ($coupon->used_count > 0) {
+                    $coupon->decrement('used_count');
+                }
+                if ($coupon->reserved_count > 0) {
+                    $coupon->decrement('reserved_count');
+                }
             }
 
             $reservation->update(['status' => CouponReservationStatus::Released]);

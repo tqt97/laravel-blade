@@ -11,7 +11,13 @@ final class CancelBooking
 {
     public function __construct(private readonly ReleaseBookingResources $resourceReleaser) {}
 
-    public function execute(Booking $booking, ?string $reason = null, bool $manageTransaction = true): Booking
+    public function execute(Booking $booking, ?string $reason = null): Booking
+    {
+        return DB::transaction(fn (): Booking => $this->cancelLocked($booking, $reason), 3);
+    }
+
+    /** The caller must hold the surrounding transaction. */
+    public function cancelLocked(Booking $booking, ?string $reason = null): Booking
     {
         $operation = function () use ($booking, $reason): Booking {
             $booking = Booking::query()->whereKey($booking->id)->lockForUpdate()->firstOrFail();
@@ -37,6 +43,6 @@ final class CancelBooking
             return $booking->refresh();
         };
 
-        return $manageTransaction ? DB::transaction($operation, 3) : $operation();
+        return $operation();
     }
 }
