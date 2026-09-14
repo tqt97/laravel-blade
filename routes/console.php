@@ -16,6 +16,7 @@ Schedule::command('app:outbox-publish')->everyMinute()->withoutOverlapping()->on
 Schedule::command('payments:reconcile')->everyMinute()->withoutOverlapping()->onOneServer();
 Schedule::command('payments:recover-stuck')->everyMinute()->withoutOverlapping()->onOneServer();
 Schedule::command('payments:alert-stuck')->everyFiveMinutes()->withoutOverlapping()->onOneServer();
+Schedule::command('payments:retry-refunds')->everyFiveMinutes()->withoutOverlapping()->onOneServer();
 Schedule::command('booking:send-reminders')->everyMinute()->withoutOverlapping()->onOneServer();
 
 DevCommands::artisan('schedule:work', 'scheduler');

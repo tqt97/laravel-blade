@@ -4,9 +4,10 @@ namespace App\Support\Payment;
 
 use App\Contracts\PaymentGateway;
 use App\Contracts\PaymentStatusRetriever;
+use App\Contracts\RefundStatusRetriever;
 use App\Models\Payments\Payment;
 
-final class FakePaymentGateway implements PaymentGateway, PaymentStatusRetriever
+final class FakePaymentGateway implements PaymentGateway, PaymentStatusRetriever, RefundStatusRetriever
 {
     public function charge(Payment $payment): PaymentResult
     {
@@ -26,5 +27,10 @@ final class FakePaymentGateway implements PaymentGateway, PaymentStatusRetriever
     public function retrieveByAttemptKey(string $attemptKey): ProviderPaymentStatus
     {
         return new ProviderPaymentStatus('unknown', metadata: ['fake' => true, 'attempt_key' => $attemptKey]);
+    }
+
+    public function retrieveRefund(string $providerRefundId): ProviderRefundStatus
+    {
+        return new ProviderRefundStatus('succeeded', $providerRefundId, metadata: ['fake' => true]);
     }
 }

@@ -13,6 +13,7 @@ use App\Models\Movie\Coupon;
 use App\Support\Booking\BookingMutationGuard;
 use App\Support\Booking\Exceptions\BookingOperationFailed;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 final class AddConcessions
 {
@@ -154,13 +155,10 @@ final class AddConcessions
                 'stock_before' => $stockBefore,
                 'stock_after' => $stock === null ? null : (int) $concession->fresh()->stock,
                 'reference' => 'booking-'.$booking->getKey(),
-                'idempotency_key' => sprintf(
-                    'booking:%d:concession:%d:from:%d:to:%d',
-                    $booking->getKey(),
-                    $concession->getKey(),
-                    $currentQuantity,
-                    $desiredQuantity,
-                ),
+                // Request idempotency belongs to the booking mutation. The
+                // inventory ledger must allow a valid 0->1->0->1 history.
+                'idempotency_key' => 'booking:'.$booking->getKey().':concession:'.$concession->getKey().':mutation:'.
+                    (string) Str::uuid(),
             ]);
 
             $totalDelta += $newTotal - $currentTotal;

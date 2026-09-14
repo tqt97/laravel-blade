@@ -8,6 +8,7 @@ use App\Actions\Movie\Catalog\CreateScreening;
 use App\Contracts\PaymentGateway;
 use App\Contracts\PaymentStatusRetriever;
 use App\Enums\Movie\Booking\BookingStatus;
+use App\Enums\Movie\Seating\ScreeningSeatStatus;
 use App\Enums\Movie\Ticketing\TicketStatus;
 use App\Enums\Payment\PaymentAttemptStatus;
 use App\Enums\Payment\PaymentStatus;
@@ -34,6 +35,66 @@ it('formats supported currencies from integer minor units', function (): void {
     expect(Money::fromMinorUnits(1250, 'USD')->format())->toBe('12.50 USD')
         ->and(Money::fromMinorUnits(250000, 'VND')->format())->toBe('250,000 VND')
         ->and(fn () => Money::fromMinorUnits(100, 'XXX')->format())->toThrow(InvalidArgumentException::class);
+});
+
+it('does not treat a pending Stripe refund response as finalized', function (): void {
+    config()->set('services.stripe.secret', 'sk_test_refund');
+    Http::fake([
+        'https://api.stripe.com/v1/refunds' => Http::response([
+            'id' => 're_pending',
+            'status' => 'pending',
+            'payment_intent' => 'pi_refund_pending',
+        ], 200),
+    ]);
+    $payment = Payment::query()->create([
+        'payable_type' => Booking::class,
+        'payable_id' => 999991,
+        'provider' => 'stripe',
+        'provider_payment_id' => 'pi_refund_pending',
+        'status' => PaymentStatus::Succeeded,
+        'amount_minor_units' => 100000,
+        'currency' => 'VND',
+    ]);
+
+    expect(app(StripePaymentGateway::class)->refund($payment)->status)->toBe('refunding');
+});
+
+it('finalizes a refund only after a succeeded refund webhook', function (): void {
+    $room = ScreeningRoom::factory()->create();
+    $seat = Seat::factory()->for($room, 'room')->create();
+    $screening = app(CreateScreening::class)->execute(Movie::factory()->create(), $room, now()->addDay()->toDateTimeString(), now()->addDay()->addHours(2)->toDateTimeString(), 100000);
+    $booking = app(HoldSeats::class)->execute(User::factory()->create(), $screening, [$seat->id], 'refund-webhook-success');
+    $payment = $booking->payment()->create([
+        'provider' => 'stripe',
+        'provider_payment_id' => 'pi_refund_webhook',
+        'status' => PaymentStatus::Succeeded,
+        'amount_minor_units' => $booking->amount_minor_units,
+        'currency' => 'VND',
+    ]);
+    app(FinalizeSuccessfulPayment::class)->execute($payment);
+    PaymentWebhookEvent::query()->create([
+        'provider' => 'stripe',
+        'event_id' => 'evt_refund_succeeded',
+        'provider_payment_id' => 're_webhook_succeeded',
+        'provider_object_type' => 'refund',
+        'payload' => [
+            'id' => 'evt_refund_succeeded',
+            'type' => 'refund.updated',
+            'data' => ['object' => [
+                'id' => 're_webhook_succeeded',
+                'status' => 'succeeded',
+                'payment_intent' => 'pi_refund_webhook',
+                'amount' => 100000,
+                'currency' => 'vnd',
+            ]],
+        ],
+    ]);
+
+    (new ProcessStripeWebhook('evt_refund_succeeded'))->handle(app(FinalizeSuccessfulPayment::class));
+
+    expect($payment->refresh()->status)->toBe(PaymentStatus::Refunded)
+        ->and($booking->refresh()->status)->toBe(BookingStatus::Cancelled)
+        ->and($screening->screeningSeats()->firstOrFail()->refresh()->status)->toBe(ScreeningSeatStatus::Available);
 });
 
 it('does not charge a payment again while a previous attempt is pending', function (): void {

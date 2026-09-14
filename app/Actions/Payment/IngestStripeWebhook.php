@@ -33,7 +33,7 @@ final class IngestStripeWebhook
             if ($eventType === null) {
                 $event->forceFill([
                     'processed_at' => now(),
-                    'failure_message' => 'Unsupported Stripe webhook event type ignored.',
+                    'failure_message' => __('booking.messages.payment_webhook_unsupported'),
                 ])->save();
 
                 return StripeWebhookIngestResult::Ignored;
@@ -45,32 +45,42 @@ final class IngestStripeWebhook
             if (! is_string($providerPaymentId) || $providerPaymentId === '') {
                 $event->forceFill([
                     'failed_at' => now(),
-                    'failure_message' => 'Stripe webhook is missing a provider payment ID.',
+                    'failure_message' => __('booking.messages.payment_webhook_missing_id'),
                 ])->save();
 
                 return StripeWebhookIngestResult::MissingProviderPaymentId;
             }
 
+            $isRefund = $eventType->isRefund();
+            $paymentIntentId = $object['payment_intent'] ?? null;
+            $linkedPaymentId = $isRefund ? $paymentIntentId : $providerPaymentId;
             $event->forceFill([
                 'provider_payment_id' => $providerPaymentId,
+                'provider_object_type' => $isRefund ? 'refund' : 'payment_intent',
                 'orphaned_at' => Payment::query()->forProvider(PaymentProvider::Stripe)
-                    ->where('provider_payment_id', $providerPaymentId)
+                    ->where(function ($query) use ($linkedPaymentId): void {
+                        $query->where('provider_payment_id', $linkedPaymentId)
+                            ->orWhereHas('attempts', fn ($attempts) => $attempts->where('provider_payment_id', $linkedPaymentId));
+                    })
                     ->exists() ? null : now(),
             ])->save();
 
             $payment = Payment::query()->forProvider(PaymentProvider::Stripe)
-                ->where('provider_payment_id', $providerPaymentId)
+                ->where(function ($query) use ($linkedPaymentId): void {
+                    $query->where('provider_payment_id', $linkedPaymentId)
+                        ->orWhereHas('attempts', fn ($attempts) => $attempts->where('provider_payment_id', $linkedPaymentId));
+                })
                 ->first();
 
             if (
                 $payment !== null
-                && $eventType !== null
+                && ! $isRefund
                 && ! $this->matchesPayment($payment, $object, $eventType->usesReceivedAmount())
             ) {
                 $event->forceFill([
                     'failed_at' => now(),
                     'orphaned_at' => null,
-                    'failure_message' => 'Stripe webhook amount, currency, or metadata does not match the local payment.',
+                    'failure_message' => __('booking.messages.payment_webhook_mismatch'),
                 ])->save();
 
                 return StripeWebhookIngestResult::Rejected;

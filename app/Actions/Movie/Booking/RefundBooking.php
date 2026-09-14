@@ -60,6 +60,9 @@ final class RefundBooking
                     'provider_already_refunded' => false,
                 ];
             }
+            if ($existing?->getRawOriginal('status') === RefundAttemptStatus::Pending->value) {
+                return ['payment' => $payment, 'attempt' => null, 'provider_already_refunded' => false];
+            }
             if ($existing?->getRawOriginal('status') === RefundAttemptStatus::Unknown->value) {
                 $existing->forceFill(['status' => RefundAttemptStatus::Processing, 'failure_message' => null, 'started_at' => now()])->save();
 
@@ -99,11 +102,22 @@ final class RefundBooking
             try {
                 $result = $this->gateway->refund($payment);
             } catch (Throwable $exception) {
-                $claim['attempt']->forceFill(['status' => RefundAttemptStatus::Unknown, 'failure_message' => 'Refund provider response was unknown.'])->save();
+                $claim['attempt']->forceFill(['status' => RefundAttemptStatus::Unknown, 'failure_message' => __('booking.messages.refund_provider_unavailable'), 'next_reconcile_at' => now()->addMinutes((int) config('booking.payment.refund_reconciliation_retry_minutes', 5))])->save();
                 report($exception);
 
                 return $payment->refresh();
             }
+        }
+
+        if ($result->status === 'refunding') {
+            $claim['attempt']->forceFill([
+                'status' => RefundAttemptStatus::Pending,
+                'provider_refund_id' => $result->providerPaymentId,
+                'metadata' => $result->metadata,
+                'next_reconcile_at' => now()->addMinutes((int) config('booking.payment.refund_reconciliation_retry_minutes', 5)),
+            ])->save();
+
+            return $payment->refresh();
         }
 
         if ($result->status !== 'refunded') {
@@ -118,7 +132,7 @@ final class RefundBooking
         if (blank($result->providerPaymentId)) {
             $claim['attempt']->forceFill([
                 'status' => RefundAttemptStatus::Unknown,
-                'failure_message' => 'Refund succeeded without a provider refund ID. Reconciliation is required.',
+                'failure_message' => __('booking.messages.refund_provider_missing_id'),
                 'metadata' => $result->metadata,
             ])->save();
 

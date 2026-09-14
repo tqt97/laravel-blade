@@ -4,13 +4,17 @@ namespace App\Support\Payment;
 
 use App\Contracts\PaymentGateway;
 use App\Contracts\PaymentStatusRetriever;
+use App\Contracts\RefundStatusRetriever;
+use App\Enums\Payment\PaymentStatus;
+use App\Enums\Payment\StripePaymentIntentStatus;
+use App\Enums\Payment\StripeRefundStatus;
 use App\Models\Payments\Payment;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
-final class StripePaymentGateway implements PaymentGateway, PaymentStatusRetriever
+final class StripePaymentGateway implements PaymentGateway, PaymentStatusRetriever, RefundStatusRetriever
 {
     public function charge(Payment $payment): PaymentResult
     {
@@ -41,16 +45,11 @@ final class StripePaymentGateway implements PaymentGateway, PaymentStatusRetriev
         if ($response->failed()) {
             $this->logProviderError('payment_intent_create', $response);
 
-            return new PaymentResult('failed', failureMessage: (string) ($response->json('error.message') ?? 'Stripe payment failed.'));
+            return new PaymentResult(PaymentStatus::Failed->value, failureMessage: (string) ($response->json('error.message') ?? __('booking.messages.payment_provider_failed')));
         }
 
-        $status = match ($response->json('status')) {
-            'succeeded' => 'succeeded',
-            'requires_action', 'requires_confirmation' => 'requires_action',
-            'requires_payment_method' => 'requires_payment_method',
-            'processing' => 'processing',
-            default => 'failed',
-        };
+        $providerStatus = StripePaymentIntentStatus::tryFrom((string) $response->json('status'));
+        $status = $providerStatus?->toApplicationStatus() ?? 'failed';
 
         return new PaymentResult(
             $status,
@@ -67,12 +66,43 @@ final class StripePaymentGateway implements PaymentGateway, PaymentStatusRetriev
             ->post('https://api.stripe.com/v1/refunds', ['payment_intent' => $payment->provider_payment_id]);
 
         if ($response->successful()) {
-            return new PaymentResult('refunded', $response->json('id'), $response->json());
+            $providerStatus = StripeRefundStatus::tryFrom((string) $response->json('status'));
+            $status = $providerStatus?->toApplicationStatus() ?? 'failed';
+
+            return new PaymentResult(
+                $status,
+                $response->json('id'),
+                $response->json(),
+                $providerStatus?->isFailure() === true
+                    ? (string) ($response->json('failure_reason') ?? __('booking.messages.refund_failed'))
+                    : null,
+            );
         }
 
         $this->logProviderError('refund_create', $response);
 
-        return new PaymentResult('failed', failureMessage: (string) ($response->json('error.message') ?? 'Stripe refund failed.'));
+        return new PaymentResult(PaymentStatus::Failed->value, failureMessage: (string) ($response->json('error.message') ?? __('booking.messages.refund_failed')));
+    }
+
+    public function retrieveRefund(string $providerRefundId): ProviderRefundStatus
+    {
+        $response = Http::withBasicAuth((string) config('services.stripe.secret'), '')
+            ->timeout((int) config('services.stripe.timeout_seconds', 10))
+            ->get('https://api.stripe.com/v1/refunds/'.urlencode($providerRefundId));
+
+        if ($response->failed()) {
+            $this->logProviderError('refund_retrieve', $response);
+
+            return new ProviderRefundStatus('unknown', $providerRefundId, failureMessage: (string) ($response->json('error.message') ?? __('booking.messages.refund_provider_unavailable')));
+        }
+
+        return new ProviderRefundStatus(
+            (string) $response->json('status', 'unknown'),
+            (string) $response->json('id'),
+            $response->json('payment_intent'),
+            $response->json(),
+            $response->json('failure_reason'),
+        );
     }
 
     public function retrieve(string $providerPaymentId): ProviderPaymentStatus
@@ -83,7 +113,7 @@ final class StripePaymentGateway implements PaymentGateway, PaymentStatusRetriev
         if ($response->failed()) {
             $this->logProviderError('payment_intent_retrieve', $response);
 
-            return new ProviderPaymentStatus('unknown', $providerPaymentId, failureMessage: (string) ($response->json('error.message') ?? 'Stripe payment status unavailable.'));
+            return new ProviderPaymentStatus('unknown', $providerPaymentId, failureMessage: (string) ($response->json('error.message') ?? __('booking.messages.payment_provider_unavailable')));
         }
 
         return new ProviderPaymentStatus($this->mapStatus((string) $response->json('status')), $providerPaymentId, $response->json());
@@ -101,7 +131,7 @@ final class StripePaymentGateway implements PaymentGateway, PaymentStatusRetriev
         if ($response->failed()) {
             $this->logProviderError('payment_intent_search', $response);
 
-            return new ProviderPaymentStatus('unknown', failureMessage: (string) ($response->json('error.message') ?? 'Stripe payment search unavailable.'));
+            return new ProviderPaymentStatus('unknown', failureMessage: (string) ($response->json('error.message') ?? __('booking.messages.payment_provider_unavailable')));
         }
 
         $paymentIntent = $response->json('data.0');
@@ -118,14 +148,7 @@ final class StripePaymentGateway implements PaymentGateway, PaymentStatusRetriev
 
     private function mapStatus(string $status): string
     {
-        return match ($status) {
-            'succeeded' => 'succeeded',
-            'requires_action', 'requires_confirmation' => 'requires_action',
-            'requires_payment_method' => 'requires_payment_method',
-            'processing' => 'processing',
-            'canceled' => 'canceled',
-            default => 'failed',
-        };
+        return StripePaymentIntentStatus::tryFrom($status)?->toApplicationStatus() ?? 'unknown';
     }
 
     private function logProviderError(string $operation, Response $response): void

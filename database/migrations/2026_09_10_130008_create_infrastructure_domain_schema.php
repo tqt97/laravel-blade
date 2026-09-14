@@ -14,11 +14,16 @@ return new class extends Migration
             $table->unsignedBigInteger('aggregate_id');
             $table->string('event_type', 128);
             $table->json('payload');
-            $table->timestamp('available_at')->useCurrent();
-            $table->timestamp('claimed_at')->nullable();
-            $table->timestamp('published_at')->nullable();
-            $table->unsignedInteger('attempts')->default(0);
-            $table->timestamp('failed_at')->nullable();
+            $table->timestamp('available_at')->useCurrent()
+                ->comment('Earliest time the outbox publisher may claim this message.');
+            $table->timestamp('claimed_at')->nullable()
+                ->comment('Timestamp when a publisher worker claimed the message.');
+            $table->timestamp('published_at')->nullable()
+                ->comment('Timestamp when the message was successfully published.');
+            $table->unsignedInteger('attempts')->default(0)
+                ->comment('Number of outbox publish attempts.');
+            $table->timestamp('failed_at')->nullable()
+                ->comment('Terminal failure timestamp; non-null messages require retry or review.');
             $table->text('last_error')->nullable();
             $table->timestamps();
 
@@ -30,9 +35,15 @@ return new class extends Migration
             $table->id();
             $table->foreignId('outbox_message_id')->constrained('outbox_messages')->cascadeOnDelete();
             $table->string('channel', 32);
+            $table->string('idempotency_key', 191)->nullable()->unique()
+                ->comment('Stable delivery key preventing duplicate external sends on retries.');
             $table->string('status', 24)->index();
+            $table->unsignedInteger('attempts')->default(0)
+                ->comment('Number of delivery attempts for this channel.');
             $table->timestamp('claimed_at')->nullable();
             $table->timestamp('sent_at')->nullable();
+            $table->string('message_id', 255)->nullable()
+                ->comment('External provider message id returned after successful delivery.');
             $table->text('last_error')->nullable();
             $table->timestamps();
 

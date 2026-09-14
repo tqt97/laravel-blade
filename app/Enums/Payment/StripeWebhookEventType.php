@@ -9,14 +9,26 @@ enum StripeWebhookEventType: string
     case Processing = 'payment_intent.processing';
     case RequiresAction = 'payment_intent.requires_action';
     case Canceled = 'payment_intent.canceled';
+    case RefundCreated = 'refund.created';
+    case RefundUpdated = 'refund.updated';
+    case RefundFailed = 'refund.failed';
 
-    public function paymentStatus(): PaymentStatus
+    public function isRefund(): bool
+    {
+        return match ($this) {
+            self::RefundCreated, self::RefundUpdated, self::RefundFailed => true,
+            default => false,
+        };
+    }
+
+    public function paymentStatus(): ?PaymentStatus
     {
         return match ($this) {
             self::Succeeded => PaymentStatus::Succeeded,
             self::PaymentFailed, self::Canceled => PaymentStatus::Failed,
             self::Processing => PaymentStatus::Processing,
             self::RequiresAction => PaymentStatus::RequiresAction,
+            self::RefundCreated, self::RefundUpdated, self::RefundFailed => null,
         };
     }
 
@@ -35,6 +47,18 @@ enum StripeWebhookEventType: string
             self::RequiresAction,
             self::Canceled,
         ];
+    }
+
+    /** @return list<self> */
+    public static function supported(): array
+    {
+        return array_merge(self::paymentIntentEvents(), self::refundEvents());
+    }
+
+    /** @return list<self> */
+    public static function refundEvents(): array
+    {
+        return [self::RefundCreated, self::RefundUpdated, self::RefundFailed];
     }
 
     public static function tryFromPayload(mixed $eventType): ?self

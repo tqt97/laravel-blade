@@ -47,7 +47,7 @@ final class FinalizeSuccessfulPayment
             if (blank($payment->getRawOriginal('provider_payment_id'))) {
                 $payment->forceFill([
                     'status' => PaymentStatus::Unknown,
-                    'failure_message' => 'Payment is marked succeeded without a provider payment ID.',
+                    'failure_message' => __('booking.messages.payment_provider_missing_id'),
                 ])->save();
 
                 return $payment->refresh();
@@ -69,7 +69,7 @@ final class FinalizeSuccessfulPayment
 
                 $metadata = $payment->getAttribute('metadata');
                 $payment->setAttribute('status', PaymentStatus::RequiresRefund);
-                $payment->setAttribute('failure_message', 'Payment succeeded after the booking hold expired.');
+                $payment->setAttribute('failure_message', __('booking.messages.payment_after_expiry'));
                 $payment->setAttribute('metadata', array_merge(is_array($metadata) ? $metadata : [], [
                     'requires_refund' => true,
                     'requires_refund_reason' => 'booking_expired_before_finalization',
@@ -98,14 +98,14 @@ final class FinalizeSuccessfulPayment
                 ) {
                     $this->expireAndReleaseBooking($booking);
 
-                    return $this->markRequiresRefund($payment, 'A booking seat was released before payment finalization.');
+                    return $this->markRequiresRefund($payment, __('booking.messages.seat_released_before_payment_finalization'));
                 }
                 $heldUntil = $seat->getRawOriginal('held_until');
 
                 if ($heldUntil === null || BookingClock::parseStored((string) $heldUntil)?->lessThanOrEqualTo(BookingClock::now()) !== false) {
                     $this->expireAndReleaseBooking($booking);
 
-                    return $this->markRequiresRefund($payment, 'A booking seat hold expired before payment finalization.');
+                    return $this->markRequiresRefund($payment, __('booking.messages.seat_hold_expired_before_payment_finalization'));
                 }
             }
 

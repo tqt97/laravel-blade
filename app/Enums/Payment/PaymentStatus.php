@@ -23,17 +23,42 @@ enum PaymentStatus: string
 
     public function isRefundProtected(): bool
     {
-        return in_array($this, [self::Refunded, self::RequiresRefund], true);
+        return match ($this) {
+            self::Refunded, self::RequiresRefund => true,
+            default => false,
+        };
     }
 
     public function isAwaitingProviderResolution(): bool
     {
-        return in_array($this, [self::Pending, self::Processing, self::RequiresAction, self::RequiresPaymentMethod, self::Unknown], true);
+        return match ($this) {
+            self::Pending, self::Processing, self::RequiresAction, self::RequiresPaymentMethod, self::Unknown => true,
+            default => false,
+        };
     }
 
     public function isRefundable(): bool
     {
-        return in_array($this, [self::Succeeded, self::RequiresRefund, self::Refunding], true);
+        return match ($this) {
+            self::Succeeded, self::RequiresRefund, self::Refunding => true,
+            default => false,
+        };
+    }
+
+    public function isProcessingState(): bool
+    {
+        return match ($this) {
+            self::Pending, self::Processing => true,
+            default => false,
+        };
+    }
+
+    public function requiresClientAction(): bool
+    {
+        return match ($this) {
+            self::RequiresAction, self::RequiresPaymentMethod => true,
+            default => false,
+        };
     }
 
     public function canTransitionTo(self $target): bool

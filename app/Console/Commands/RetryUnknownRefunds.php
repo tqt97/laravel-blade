@@ -2,8 +2,7 @@
 
 namespace App\Console\Commands;
 
-use App\Enums\Payment\RefundAttemptStatus;
-use App\Jobs\RetryUnknownRefund;
+use App\Jobs\ReconcileRefund;
 use App\Models\Movie\Booking;
 use App\Models\Payments\RefundAttempt;
 use Illuminate\Console\Attributes\Description;
@@ -22,7 +21,7 @@ class RetryUnknownRefunds extends Command
         $limit = max(1, (int) $this->option('limit'));
 
         $attempts = RefundAttempt::query()
-            ->where('status', RefundAttemptStatus::Unknown)
+            ->reconciliationDue()
             ->whereHas('payment', fn ($query) => $query->where('payable_type', Booking::class))
             ->oldest('id')
             ->limit($limit)
@@ -33,7 +32,7 @@ class RetryUnknownRefunds extends Command
             $bookingId = $attempt->payment?->getAttribute('payable_id');
 
             if ($bookingId !== null) {
-                RetryUnknownRefund::dispatch((int) $bookingId);
+                ReconcileRefund::dispatch($attempt->getKey());
             }
         }
 

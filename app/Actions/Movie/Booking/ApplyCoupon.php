@@ -11,7 +11,6 @@ use App\Models\Movie\CouponReservation;
 use App\Models\Movie\CouponUserUsage;
 use App\Support\Booking\BookingMutationGuard;
 use App\Support\Booking\Exceptions\BookingOperationFailed;
-use App\Support\Time\BookingClock;
 use Illuminate\Support\Facades\DB;
 
 final class ApplyCoupon
@@ -29,21 +28,12 @@ final class ApplyCoupon
             $this->mutationGuard->assertHeldAndBookable($booking, 'booking.messages.coupon_locked');
 
             $coupon = Coupon::query()
+                ->active()
                 ->where('code', strtoupper(trim($code)))
                 ->lockForUpdate()
                 ->first();
 
-            $startsAt = $coupon?->getRawOriginal('starts_at');
-            $endsAt = $coupon?->getRawOriginal('ends_at');
-
-            if (
-                $coupon === null ||
-                ! (bool) $coupon->getAttribute('is_active') ||
-                ($startsAt !== null &&
-                    BookingClock::parseStored((string) $startsAt)?->isFuture()) ||
-                ($endsAt !== null &&
-                    BookingClock::parseStored((string) $endsAt)?->isPast())
-            ) {
+            if ($coupon === null) {
                 throw new BookingOperationFailed(__('booking.messages.coupon_invalid'));
             }
 

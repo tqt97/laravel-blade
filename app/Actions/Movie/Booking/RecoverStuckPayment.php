@@ -79,7 +79,7 @@ final class RecoverStuckPayment
                 'reconciliation_attempts' => ((int) $locked->reconciliation_attempts) + 1,
                 'next_reconcile_at' => BookingClock::now(),
                 'reconciliation_deadline' => $reconciliationDeadline,
-                'failure_message' => 'Payment provider response was unknown. Reconciliation is in progress.',
+                'failure_message' => __('booking.messages.payment_provider_unavailable'),
             ])->save();
 
             ReconcilePayment::dispatch($locked->getKey())->afterCommit();

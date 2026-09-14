@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Contracts\PaymentGateway;
 use App\Contracts\PaymentStatusRetriever;
+use App\Contracts\RefundStatusRetriever;
 use App\Enums\Payment\PaymentProvider;
 use App\Models\Movie\Booking;
 use App\Models\User;
@@ -42,6 +43,7 @@ class AppServiceProvider extends ServiceProvider
 
         $this->app->bind(PaymentGateway::class, $factory);
         $this->app->bind(PaymentStatusRetriever::class, fn (): PaymentStatusRetriever => $factory());
+        $this->app->bind(RefundStatusRetriever::class, fn (): RefundStatusRetriever => $factory());
     }
 
     /**

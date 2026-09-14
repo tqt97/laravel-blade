@@ -20,6 +20,11 @@ class Payment extends Model
         $query->where($query->qualifyColumn('provider'), $provider->value);
     }
 
+    public function scopeRefunding(Builder $query): void
+    {
+        $query->where($query->qualifyColumn('status'), PaymentStatus::Refunding);
+    }
+
     public function payable(): MorphTo
     {
         return $this->morphTo();

@@ -37,7 +37,12 @@ export const initBookingCheckout = () => {
             if (seconds === 0) {
                 paymentForm?.querySelector('button[type="submit"]')?.setAttribute('disabled', 'disabled');
                 if (!paymentForm?.previousElementSibling?.matches('[data-expired-message]')) {
-                    paymentForm?.insertAdjacentHTML('beforebegin', `<p data-expired-message class="rounded-xl bg-destructive/10 p-4 text-sm text-destructive" role="alert">${checkout.dataset.expiredLabel ?? ''}</p>`);
+                    const message = document.createElement('p');
+                    message.dataset.expiredMessage = 'true';
+                    message.className = 'rounded-xl bg-destructive/10 p-4 text-sm text-destructive';
+                    message.setAttribute('role', 'alert');
+                    message.textContent = checkout.dataset.expiredLabel ?? '';
+                    paymentForm?.before(message);
                 }
                 window.clearInterval(timer);
             }
@@ -61,7 +66,7 @@ export const initComboTotals = () => {
         const form = total.closest('form');
         if (!form || form.dataset.comboTotalsInitialized === 'true') return;
         form.dataset.comboTotalsInitialized = 'true';
-        const currency = total.textContent.trim().split(/\s+/).at(-1) ?? '';
+        const currency = total.dataset.currency ?? '';
         const count = form.querySelector('[data-combo-count]');
         const update = () => {
             let selectedCount = 0;

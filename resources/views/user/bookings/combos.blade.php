@@ -52,7 +52,7 @@
             <div class="flex flex-col gap-4 border-t border-border pt-6 sm:flex-row sm:items-center sm:justify-between">
                 <p class="text-sm font-semibold"><span data-combo-count>0</span>
                     {{ __('booking.combos.items_selected') }} · {{ __('booking.combos.total') }}: <span
-                        data-combo-total>0 {{ $booking->pricing_currency ?? $booking->currency }}</span>
+                        data-combo-total data-currency="{{ $booking->pricing_currency ?? $booking->currency }}">0 {{ $booking->pricing_currency ?? $booking->currency }}</span>
                 </p>
                 <x-admin.button type="submit" icon="save">{{ __('booking.combos.save') }}</x-admin.button>
             </div>

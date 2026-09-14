@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Actions\Movie\Booking\RefundBooking;
 use App\Models\Movie\Booking;
+use App\Models\Payments\RefundAttempt;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 
@@ -20,7 +21,15 @@ class RetryUnknownRefund implements ShouldQueue
     {
         $booking = Booking::query()->find($this->bookingId);
         if ($booking !== null) {
-            $refundBooking->execute($booking);
+            $attempt = $booking->payment === null ? null : RefundAttempt::query()
+                ->where('payment_id', $booking->payment->getKey())
+                ->reconciliationDue()
+                ->latest('id')->first();
+            if ($attempt !== null && filled($attempt->provider_refund_id)) {
+                ReconcileRefund::dispatch($attempt->getKey());
+            } else {
+                $refundBooking->execute($booking);
+            }
         }
     }
 }

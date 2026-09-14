@@ -228,7 +228,7 @@
                     <p class="mt-5 border-t border-border pt-4 text-sm text-muted-foreground">
                         <span data-combo-count>0</span>
                         {{ __('booking.combos.items_selected') }} ·
-                        <strong data-combo-total class="text-foreground">
+                        <strong data-combo-total data-currency="{{ $screening->currency }}" class="text-foreground">
                             0 {{ $screening->currency }}
                         </strong>
                     </p>

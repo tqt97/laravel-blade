@@ -135,13 +135,13 @@ final class PayBooking
         } catch (Throwable $exception) {
             $claim['attempt']?->forceFill([
                 'status' => PaymentAttemptStatus::Unknown,
-                'failure_message' => 'Payment provider response was unknown.',
+                'failure_message' => __('booking.messages.payment_provider_unavailable'),
             ])->save();
 
             app(TransitionPayment::class)->execute(
                 $payment,
                 PaymentAttemptStatus::Unknown,
-                failureMessage: 'Payment provider response was unknown.',
+                failureMessage: __('booking.messages.payment_provider_unavailable'),
             );
 
             $payment->forceFill([
@@ -149,7 +149,7 @@ final class PayBooking
                 // second provider intent before reconciliation identifies
                 // the first one by its attempt key.
                 'status' => PaymentStatus::Processing,
-                'failure_message' => 'Payment provider response was unknown. Reconciliation is required.',
+                'failure_message' => __('booking.messages.payment_provider_unavailable'),
             ])->save();
 
             ReconcilePayment::dispatch($payment->getKey())->afterCommit();
@@ -180,13 +180,7 @@ final class PayBooking
                 ? null
                 : PaymentAttempt::query()->whereKey($attemptId)->lockForUpdate()->first();
 
-            $status = match ($result->status) {
-                'succeeded' => PaymentStatus::Succeeded,
-                'requires_action' => PaymentStatus::RequiresAction,
-                'pending', 'processing' => PaymentStatus::Processing,
-                'requires_payment_method' => PaymentStatus::RequiresPaymentMethod,
-                default => PaymentStatus::Failed,
-            };
+            $status = PaymentStatus::tryFrom($result->status) ?? PaymentStatus::Failed;
 
             if ($status === PaymentStatus::Succeeded && blank($result->providerPaymentId)) {
                 $status = PaymentStatus::Unknown;
@@ -204,11 +198,18 @@ final class PayBooking
             $payment->setAttribute('client_secret', data_get($result->metadata, 'client_secret'));
 
             if (filled($result->providerPaymentId)) {
+                $providerIds = $payment->getAttribute('metadata');
+                $providerIds = is_array($providerIds) ? $providerIds : [];
+                $providerIds['provider_payment_ids'] = array_values(array_unique(array_merge(
+                    is_array($providerIds['provider_payment_ids'] ?? null) ? $providerIds['provider_payment_ids'] : [],
+                    [$result->providerPaymentId],
+                )));
                 $payment->setAttribute('provider_payment_id', $result->providerPaymentId);
+                $payment->setAttribute('metadata', $providerIds);
             }
 
             $payment->setAttribute('failure_message', $status === PaymentStatus::Unknown
-                ? 'Payment succeeded without a provider payment ID. Reconciliation is required.'
+                ? __('booking.messages.payment_provider_missing_id')
                 : $result->failureMessage);
 
             $payment->setAttribute('processing_started_at', null);
@@ -245,7 +246,7 @@ final class PayBooking
                     'provider_payment_id' => $result->providerPaymentId,
                     'response_metadata' => $providerMetadata,
                     'failure_message' => $payment->failure_message,
-                    'completed_at' => in_array($status, [PaymentStatus::Pending, PaymentStatus::Processing], true) ? null : now(),
+                    'completed_at' => $status->isProcessingState() ? null : now(),
                 ])->save();
             }
             $payment->save();

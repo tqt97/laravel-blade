@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 
 /** @property array<string, mixed> $payload */
-#[Fillable(['provider', 'event_id', 'provider_payment_id', 'payload', 'processed_at', 'orphaned_at', 'processing_attempts', 'last_attempt_at', 'failed_at', 'failure_message'])]
+#[Fillable(['provider', 'event_id', 'provider_payment_id', 'provider_object_type', 'payload', 'processed_at', 'orphaned_at', 'processing_attempts', 'last_attempt_at', 'failed_at', 'failure_message'])]
 class PaymentWebhookEvent extends Model
 {
     public function scopeForProvider(Builder $query, PaymentProvider|string $provider): void

@@ -3,7 +3,6 @@
 namespace App\Actions\Movie\Booking;
 
 use App\Enums\Movie\Booking\BookingStatus;
-use App\Enums\Payment\PaymentStatus;
 use App\Models\Movie\Booking;
 use App\Support\Time\BookingClock;
 use Illuminate\Support\Facades\DB;
@@ -25,15 +24,10 @@ final class ExpireBooking
                 return false;
             }
 
-            $payment = $booking->payment()->first();
-            $paymentStatus = $payment === null
-                ? null
-                : PaymentStatus::tryFrom((string) $payment->getRawOriginal('status'));
-
-            if (
-                $paymentStatus?->isAwaitingProviderResolution() === true ||
-                $paymentStatus === PaymentStatus::Refunding
-            ) {
+            // The hold TTL is the hard resource boundary. A late provider
+            // success is handled by FinalizeSuccessfulPayment as a refund,
+            // rather than keeping seats locked indefinitely.
+            if ($booking->payment()->refunding()->exists()) {
                 return false;
             }
 

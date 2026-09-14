@@ -7,6 +7,7 @@ use App\Actions\Payment\TransitionPayment;
 use App\Contracts\PaymentStatusRetriever;
 use App\Enums\Payment\PaymentAttemptStatus;
 use App\Enums\Payment\PaymentStatus;
+use App\Enums\Payment\StripePaymentIntentStatus;
 use App\Models\Movie\Booking;
 use App\Models\Payments\Payment;
 use App\Models\Payments\PaymentAttempt;
@@ -78,12 +79,26 @@ class ReconcilePayment implements ShouldQueue
             }
         } else {
             $providerStatus = $retriever->retrieve((string) $payment->provider_payment_id);
+            $attemptProviderIds = $payment->attempts()
+                ->whereNotNull('provider_payment_id')
+                ->pluck('provider_payment_id')
+                ->filter(fn ($providerId): bool => $providerId !== $payment->provider_payment_id)
+                ->unique()
+                ->values();
+            foreach ($attemptProviderIds as $attemptProviderId) {
+                $previousProviderStatus = $retriever->retrieve((string) $attemptProviderId);
+                if ($previousProviderStatus->status === StripePaymentIntentStatus::Succeeded->value) {
+                    $providerStatus = $previousProviderStatus;
+
+                    break;
+                }
+            }
         }
         if ($providerStatus->status === 'unknown') {
             $payment->refresh();
             $deadline = BookingClock::parseStored($payment->getRawOriginal('reconciliation_deadline'))
                 ?? BookingClock::now()->addMinutes((int) config('booking.payment.reconciliation_deadline_minutes', 30));
-            $error = $providerStatus->failureMessage ?? 'Provider payment status is temporarily unavailable.';
+            $error = $providerStatus->failureMessage ?? __('booking.messages.payment_provider_unavailable');
             $payment->forceFill([
                 'reconciliation_attempts' => ((int) $payment->reconciliation_attempts) + 1,
                 'reconciliation_attempted_at' => now(),
@@ -96,7 +111,7 @@ class ReconcilePayment implements ShouldQueue
                 $payment->forceFill([
                     'status' => PaymentStatus::Unknown,
                     'next_reconcile_at' => null,
-                    'failure_message' => 'Payment reconciliation deadline exceeded. Manual review is required.',
+                    'failure_message' => __('booking.messages.payment_reconciliation_expired'),
                 ])->save();
 
                 return;
@@ -114,8 +129,8 @@ class ReconcilePayment implements ShouldQueue
                 $locked->forceFill([
                     'status' => PaymentStatus::Unknown,
                     'processing_started_at' => null,
-                    'failure_message' => 'Provider payment amount, currency, or booking metadata does not match the local payment.',
-                    'last_reconciliation_error' => 'Provider payment amount, currency, or booking metadata does not match the local payment.',
+                    'failure_message' => __('booking.messages.payment_webhook_mismatch'),
+                    'last_reconciliation_error' => __('booking.messages.payment_webhook_mismatch'),
                     'next_reconcile_at' => null,
                 ])->save();
                 app(TransitionPayment::class)->execute($locked, PaymentAttemptStatus::Unknown, failureMessage: $locked->failure_message, targetStatus: PaymentStatus::Unknown);
@@ -130,14 +145,7 @@ class ReconcilePayment implements ShouldQueue
             if ($locked->getRawOriginal('status') === PaymentStatus::Succeeded->value) {
                 return $locked;
             }
-            $status = match ($providerStatus->status) {
-                'succeeded' => PaymentStatus::Succeeded,
-                'requires_action' => PaymentStatus::RequiresAction,
-                'processing' => PaymentStatus::Processing,
-                'requires_payment_method' => PaymentStatus::RequiresPaymentMethod,
-                'canceled', 'failed' => PaymentStatus::Failed,
-                default => PaymentStatus::Unknown,
-            };
+            $status = PaymentStatus::tryFrom($providerStatus->status) ?? PaymentStatus::Unknown;
             if (! $stateMachine->canTransition(PaymentStatus::from((string) $locked->getRawOriginal('status')), $status)) {
                 return $locked;
             }
@@ -172,14 +180,13 @@ class ReconcilePayment implements ShouldQueue
     private function matchesPayment(Payment $payment, ProviderPaymentStatus $providerStatus): bool
     {
         $metadata = $providerStatus->metadata;
-        $amount = $providerStatus->status === 'succeeded'
+        $amount = $providerStatus->status === StripePaymentIntentStatus::Succeeded->value
             ? ($metadata['amount_received'] ?? null)
             : ($metadata['amount'] ?? null);
         $providerPayableType = $metadata['metadata']['payable_type'] ?? null;
         $providerPayableId = $metadata['metadata']['payable_id'] ?? null;
 
-        return $providerStatus->providerPaymentId === $payment->provider_payment_id
-            && is_numeric($amount)
+        return is_numeric($amount)
             && (int) $amount === (int) $payment->amount_minor_units
             && strtoupper((string) ($metadata['currency'] ?? '')) === strtoupper((string) $payment->currency)
             && $providerPayableType === Booking::class

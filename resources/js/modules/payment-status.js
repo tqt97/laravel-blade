@@ -163,13 +163,14 @@ export const initPaymentStatus = () => {
                             'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content ?? '',
                         },
                     });
-                    if (syncResponse.ok) {
-                        const syncData = await syncResponse.json();
-                        if (syncData.redirect) {
-                            stopPolling();
-                            window.location.replace(syncData.redirect);
-                            return;
-                        }
+                    if (!syncResponse.ok) {
+                        throw new Error('Payment status synchronization failed.');
+                    }
+                    const syncData = await syncResponse.json();
+                    if (syncData.redirect) {
+                        stopPolling();
+                        window.location.replace(syncData.redirect);
+                        return;
                     }
                 }
             } catch {

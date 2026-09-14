@@ -579,6 +579,42 @@ it('treats combo quantities as the selected final quantity', function (): void {
         ->and($concession->refresh()->stock)->toBe(2);
 });
 
+it('expires a 3ds hold and releases its resources after the booking ttl', function (): void {
+    $room = ScreeningRoom::factory()->create();
+    $seat = Seat::factory()->for($room, 'room')->create();
+    $screening = app(CreateScreening::class)->execute(Movie::factory()->create(), $room, now()->addDay()->toDateTimeString(), now()->addDay()->addHours(2)->toDateTimeString(), 100000);
+    $booking = app(HoldSeats::class)->execute(User::factory()->create(), $screening, [$seat->id], 'expiry-3ds-hold');
+    $booking->payment()->create([
+        'provider' => 'stripe',
+        'provider_payment_id' => 'pi_requires_action',
+        'status' => PaymentStatus::RequiresAction,
+        'amount_minor_units' => $booking->amount_minor_units,
+        'currency' => 'VND',
+    ]);
+    $booking->forceFill(['expires_at' => now()->subMinute()])->saveQuietly();
+    $screening->screeningSeats()->firstOrFail()->forceFill(['held_until' => now()->subMinute()])->saveQuietly();
+
+    expect(app(ExpireBooking::class)->execute($booking))->toBeTrue()
+        ->and($booking->refresh()->status)->toBe(BookingStatus::Expired)
+        ->and($screening->screeningSeats()->firstOrFail()->refresh()->status)->toBe(ScreeningSeatStatus::Available);
+});
+
+it('allows a combo to be added again after it was removed from a hold', function (): void {
+    $room = ScreeningRoom::factory()->create();
+    $seat = Seat::factory()->for($room, 'room')->create();
+    $screening = app(CreateScreening::class)->execute(Movie::factory()->create(), $room, now()->addDay()->toDateTimeString(), now()->addDay()->addHours(2)->toDateTimeString(), 100000);
+    $booking = app(HoldSeats::class)->execute(User::factory()->create(), $screening, [$seat->id], 'combo-cycle');
+    $concession = Concession::query()->create(['name' => 'Cycle Combo', 'sku' => 'COMBO-CYCLE', 'price_minor_units' => 50000, 'currency' => 'VND', 'stock' => 1, 'is_active' => true]);
+
+    app(AddConcessions::class)->execute($booking, [$concession->id => 1]);
+    app(AddConcessions::class)->execute($booking, [$concession->id => 0]);
+    app(AddConcessions::class)->execute($booking, [$concession->id => 1]);
+
+    expect($booking->refresh()->concessions()->firstOrFail()->quantity)->toBe(1)
+        ->and($concession->refresh()->stock)->toBe(0)
+        ->and(InventoryMovement::query()->where('booking_id', $booking->id)->where('concession_id', $concession->id)->count())->toBe(3);
+});
+
 it('releases all combos when a same-seat edit submits an empty replacement payload', function (): void {
     $room = ScreeningRoom::factory()->create();
     $seat = Seat::factory()->for($room, 'room')->create();

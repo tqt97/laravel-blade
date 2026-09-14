@@ -21,8 +21,8 @@ class DatabaseSeeder extends Seeder
             throw new RuntimeException('Refusing to seed the admin account outside local/testing without SEED_ADMIN_EMAIL and SEED_ADMIN_PASSWORD.');
         }
 
-        $adminEmail = (string) (config('app.seed_admin_email') ?: 'admin@example.test');
-        $adminPassword = (string) (config('app.seed_admin_password') ?: 'password');
+        $adminEmail = (string) (config('app.seed_admin_email') ?: 'admin@gmail.com');
+        $adminPassword = (string) (config('app.seed_admin_password') ?: '12341234');
 
         User::updateOrCreate(['email' => $adminEmail], [
             'name' => 'Administrator',

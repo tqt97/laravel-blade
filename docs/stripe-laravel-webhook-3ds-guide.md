@@ -278,6 +278,40 @@ sequenceDiagram
     API->>S: Create PaymentIntent + Idempotency-Key
     S-->>API: PaymentIntent + client_secret
     API-->>FE: Redirect payment-action
+
+## 9. Các invariant sau khi triển khai reliability
+
+### Hết hạn hold
+
+`expires_at` là giới hạn cứng của tài nguyên ghế. Các trạng thái `requires_action`, `requires_payment_method`, `processing` và `unknown` không được giữ ghế vô hạn. Khi hold hết hạn, Laravel chuyển booking sang `expired` và release ghế/combo/coupon reservation. Nếu Stripe báo thanh toán thành công sau đó, backend không phát vé; payment chuyển sang `requires_refund` để xử lý hoàn tiền.
+
+### Refund
+
+HTTP 2xx từ API tạo refund chưa có nghĩa là tiền đã hoàn tất. Chỉ Refund có `status=succeeded` mới được finalize booking, vé và kho. `pending` hoặc `requires_action` giữ payment ở `refunding` và được reconcile định kỳ. `refund.created`, `refund.updated` và `refund.failed` phải được bật trên Stripe webhook endpoint.
+
+### Retry PaymentIntent
+
+Mỗi `PaymentAttempt` có một idempotency key bất biến. Các provider payment ID của những attempt trước được lưu lại và webhook có thể tìm payment qua cả payment hiện tại lẫn các attempt cũ. Reconciliation phải xử lý mọi attempt còn khả năng thành công; không được bỏ qua PaymentIntent cũ chỉ vì một retry mới đã được tạo.
+
+### Inventory và coupon
+
+Idempotency của request booking khác với idempotency của inventory ledger. Lịch sử hợp lệ `0→1→0→1` phải tạo được ba movement riêng. Coupon capacity được kiểm tra trong transaction có lock trên coupon; release/redeem phải cập nhật reservation và counter cùng transaction.
+
+### Queue và scheduler
+
+Local có thể dùng `composer run dev` để chạy app, Vite, queue, scheduler và Stripe CLI. Production cần process quản lý riêng cho queue worker và `schedule:run` mỗi phút. Các job refund retry/reconcile phải được schedule; không phụ thuộc thao tác thủ công.
+
+### Kiểm thử tối thiểu
+
+- Hai request đồng thời lấy ghế cuối hoặc combo cuối.
+- Apply/release/redeem coupon đồng thời.
+- 3DS bị bỏ dở và hold hết hạn.
+- Provider success đến sau khi hold đã release.
+- Refund trả về `pending`, sau đó `succeeded` hoặc `failed`.
+- Retry payment sau timeout và webhook của PaymentIntent cũ.
+- Add/remove/add lại cùng một combo.
+
+Browser E2E cần chạy trong môi trường có Playwright hoặc Laravel Dusk, có database test, app server, Vite build và Stripe test configuration. Repository hiện chưa cài browser runner; các test backend/HTTP contract không thay thế hoàn toàn kiểm thử trình duyệt thật cho 3DS redirect.
     FE->>S: confirmPayment
     S-->>U: 3DS nếu cần
     S->>W: payment_intent.succeeded
