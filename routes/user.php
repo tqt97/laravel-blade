@@ -2,7 +2,7 @@
 
 // User routes belong here and inherit the user route group's web/auth middleware.
 
-use App\Http\Controllers\Catalog\MovieController;
+use App\Http\Controllers\MovieController;
 use App\Http\Controllers\RedirectToMovieCatalogController;
 use App\Http\Controllers\User\BookingCancellationController;
 use App\Http\Controllers\User\BookingConcessionController;

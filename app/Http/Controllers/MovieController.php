@@ -1,12 +1,11 @@
 <?php
 
-namespace App\Http\Controllers\Catalog;
+namespace App\Http\Controllers;
 
 use App\Actions\Booking\Checkout\EditBookingSelection;
 use App\Enums\Booking\BookingStatus;
 use App\Exceptions\Booking\BookingOperationFailed;
 use App\Exceptions\Booking\SeatHoldConflict;
-use App\Http\Controllers\Controller;
 use App\Http\Requests\User\HoldSeatsRequest;
 use App\Models\Booking\ScreeningSeat;
 use App\Models\Catalog\Movie;
@@ -62,10 +61,13 @@ final class MovieController extends Controller
             ->bookable()
             ->with(['room:id,name,timezone'])
             ->withCount('screeningSeats')
-            ->withCount(['screeningSeats as available_screening_seats_count' => fn ($seatQuery) => $seatQuery->where(function ($availabilityQuery): void {
-                $availabilityQuery->availableForSelection();
-            })])
+            ->withCount([
+                'screeningSeats as available_screening_seats_count' => fn ($seatQuery) => $seatQuery->where(function ($availabilityQuery): void {
+                    $availabilityQuery->availableForSelection();
+                }),
+            ])
             ->orderBy('starts_at')]);
+
         $screeningSummaries = [];
 
         foreach ($movie->screenings as $screening) {
@@ -84,6 +86,7 @@ final class MovieController extends Controller
         abort_unless($screening->isBookable(), 404);
 
         $screening->load(['movie', 'room', 'screeningSeats.seat']);
+
         $seatSummary = $this->seatSummary($screening);
         $activeHold = null;
         $activeHoldSeatIds = [];
@@ -96,6 +99,7 @@ final class MovieController extends Controller
             if ($activeHold?->getRawOriginal('status') === BookingStatus::PendingPayment->value) {
                 return to_route('user.bookings.checkout', $activeHold);
             }
+
             $activeHold?->load(['concessions', 'items.screeningSeat.seat']);
             $activeHoldSeatIds = $activeHold?->getRawOriginal('status') === BookingStatus::Held->value
                 ? $bookingContext->seatIds($activeHold)

@@ -1,10 +1,10 @@
 <?php
 
-use App\Http\Controllers\Catalog\MovieController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\LocaleController;
+use App\Http\Controllers\MovieController;
+use App\Http\Controllers\StripeWebhookController;
 use App\Http\Controllers\TicketVerificationController;
-use App\Http\Controllers\Webhooks\StripeWebhookController;
 use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
 use Illuminate\Support\Facades\Route;
 

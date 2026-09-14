@@ -698,7 +698,7 @@ Nên validate conditional:
 
 ### 11. Guest resume chưa hoàn toàn atomic
 
-[`MovieController.php:175`](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Http/Controllers/Catalog/MovieController.php:175>) dùng `session()->pull()` trước khi execute booking.
+[`MovieController.php:175`](</Users/tuquoctuan/Code/Tuantq/laravel-blade/app/Http/Controllers/MovieController.php:175>) dùng `session()->pull()` trước khi execute booking.
 
 Nếu xảy ra exception ngoài hai loại đã bắt, dữ liệu guest selection bị mất khỏi session.
 

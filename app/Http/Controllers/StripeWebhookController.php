@@ -1,10 +1,9 @@
 <?php
 
-namespace App\Http\Controllers\Webhooks;
+namespace App\Http\Controllers;
 
 use App\Actions\Payment\IngestStripeWebhook;
 use App\Enums\Payment\StripeWebhookIngestResult;
-use App\Http\Controllers\Controller;
 use App\Jobs\ProcessStripeWebhook;
 use App\Support\Payment\StripeWebhookSignatureVerifier;
 use Illuminate\Http\JsonResponse;
@@ -39,11 +38,15 @@ final class StripeWebhookController extends Controller
         $result = $ingestStripeWebhook->execute($data, $eventId);
 
         if ($result === StripeWebhookIngestResult::MissingProviderPaymentId) {
-            return response()->json(['message' => 'Webhook payload is missing a provider payment ID.'], 400);
+            return response()->json([
+                'message' => 'Webhook payload is missing a provider payment ID.',
+            ], 400);
         }
 
         if ($result === StripeWebhookIngestResult::Rejected) {
-            return response()->json(['message' => 'Webhook payment data does not match the local payment.'], 422);
+            return response()->json([
+                'message' => 'Webhook payment data does not match the local payment.',
+            ], 422);
         }
 
         if ($result === StripeWebhookIngestResult::Ignored) {

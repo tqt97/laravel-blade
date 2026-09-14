@@ -2405,7 +2405,7 @@ app/
 Các lớp delivery vẫn ở vị trí chuẩn để dễ nhận biết boundary:
 
 ```text
-app/Http/Controllers/Catalog/     # public catalog/movie HTTP surface
+app/Http/Controllers/      # public HTTP surface
 app/Http/Controllers/Admin/       # admin HTTP surface (CatalogController, BookingController...)
 app/Http/Controllers/User/        # authenticated user HTTP surface
 app/Http/Requests/               # input validation theo HTTP surface
