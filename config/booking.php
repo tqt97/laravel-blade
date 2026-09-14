@@ -83,6 +83,9 @@ return [
     'observability' => [
         // Queries slower than this threshold are reported to logs/metrics.
         'slow_query_ms' => (int) env('BOOKING_SLOW_QUERY_MS', 200),
+        // Payment and webhook records older than this age are operational anomalies.
+        'payment_anomaly_age_minutes' => (int) env('BOOKING_PAYMENT_ANOMALY_AGE_MINUTES', 15),
+        'orphan_webhook_age_minutes' => (int) env('BOOKING_ORPHAN_WEBHOOK_AGE_MINUTES', 15),
     ],
 
     // A delivery lease can be reclaimed when a queue worker dies mid-send.

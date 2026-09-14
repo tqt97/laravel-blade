@@ -25,3 +25,10 @@ test('uses explicit payment submit hooks instead of the coupon submit button', a
     assert.match(source, /data-payment-submit/);
     assert.match(source, /event\.submitter/);
 });
+
+test('refreshes combo availability from both checkout and standalone combo forms', async () => {
+    const source = await readFile(new URL('../../resources/js/modules/booking.js', import.meta.url), 'utf8');
+
+    assert.match(source, /availabilityRoot = checkout \?\? form/);
+    assert.match(source, /availabilityRoot\.dataset\.comboAvailabilityUrl/);
+});

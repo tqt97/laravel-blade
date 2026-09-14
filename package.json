@@ -9,9 +9,11 @@
         "dev:stack": "concurrently --kill-others-on-fail --names app,stripe \"php artisan dev\" \"npm run dev:stripe\"",
         "lint": "eslint resources/js",
         "test:frontend": "node --test tests/frontend/*.test.js",
+        "test:e2e": "playwright test",
         "check": "npm run lint && npm run build"
     },
     "devDependencies": {
+        "@playwright/test": "^1.63.0",
         "@tailwindcss/vite": "^4.0.0",
         "concurrently": "^10.0.3",
         "eslint": "^9.39.5",

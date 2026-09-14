@@ -1,0 +1,49 @@
+name: Booking quality
+
+on:
+    push:
+    pull_request:
+
+jobs:
+    mysql-concurrency:
+        runs-on: ubuntu-latest
+        services:
+            mysql:
+                image: mysql:8.4
+                env:
+                    MYSQL_ROOT_PASSWORD: root
+                    MYSQL_DATABASE: laravel
+                ports:
+                    - 3306:3306
+                options: >-
+                    --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
+                    --health-interval=10s
+                    --health-timeout=5s
+                    --health-retries=10
+        steps:
+            - uses: actions/checkout@v4
+            - uses: shivammathur/setup-php@v2
+              with:
+                  php-version: '8.4'
+                  extensions: pcntl, pdo_mysql
+                  coverage: none
+            - uses: ramsey/composer-install@v3
+            - run: cp .env.example .env
+            - run: php artisan key:generate
+            - run: php artisan migrate --force
+              env:
+                  DB_CONNECTION: mysql
+                  DB_HOST: 127.0.0.1
+                  DB_PORT: 3306
+                  DB_DATABASE: laravel
+                  DB_USERNAME: root
+                  DB_PASSWORD: root
+            - run: php artisan test --compact tests/Feature/MySqlBookingConcurrencyTest.php
+              env:
+                  BOOKING_MYSQL_CONCURRENCY: '1'
+                  DB_CONNECTION: mysql
+                  DB_HOST: 127.0.0.1
+                  DB_PORT: 3306
+                  DB_DATABASE: laravel
+                  DB_USERNAME: root
+                  DB_PASSWORD: root

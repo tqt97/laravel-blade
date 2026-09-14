@@ -10,6 +10,7 @@ use App\Contracts\PaymentStatusRetriever;
 use App\Enums\Booking\BookingStatus;
 use App\Enums\Catalog\Seating\ScreeningSeatStatus;
 use App\Enums\Payment\PaymentAttemptStatus;
+use App\Enums\Payment\PaymentProvider;
 use App\Enums\Payment\PaymentStatus;
 use App\Enums\Payment\RefundAttemptStatus;
 use App\Enums\Ticketing\TicketStatus;
@@ -30,6 +31,7 @@ use App\Support\Payment\StripePaymentGateway;
 use App\ValueObjects\Money;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
 
 uses(RefreshDatabase::class);
@@ -38,6 +40,48 @@ it('formats supported currencies from integer minor units', function (): void {
     expect(Money::fromMinorUnits(1250, 'USD')->format())->toBe('12.50 USD')
         ->and(Money::fromMinorUnits(250000, 'VND')->format())->toBe('250,000 VND')
         ->and(fn () => Money::fromMinorUnits(100, 'XXX')->format())->toThrow(InvalidArgumentException::class);
+});
+
+it('alerts on stuck, unknown, requires-refund and orphan webhook records', function (): void {
+    Log::shouldReceive('warning')
+        ->once()
+        ->with('payments.anomalies', Mockery::on(function (array $context): bool {
+            return $context['stuck_processing'] === 1
+                && $context['unknown'] === 1
+                && $context['requires_refund'] === 1
+                && $context['orphan_webhooks'] === 1;
+        }));
+
+    foreach ([PaymentStatus::Processing, PaymentStatus::Unknown, PaymentStatus::RequiresRefund] as $status) {
+        $booking = Booking::factory()->create();
+        $payment = $booking->payment()->create([
+            'provider' => 'stripe',
+            'status' => $status,
+            'amount_minor_units' => $booking->amount_minor_units,
+            'currency' => $booking->currency,
+            'processing_started_at' => $status === PaymentStatus::Processing ? now()->subHour() : null,
+        ]);
+
+        if ($status === PaymentStatus::Unknown) {
+            $payment->forceFill(['updated_at' => now()->subHour()])->saveQuietly();
+        }
+    }
+    $webhook = PaymentWebhookEvent::query()->create([
+        'provider' => PaymentProvider::Stripe,
+        'event_id' => 'evt_alert_orphan',
+        'provider_payment_id' => 'pi_alert_orphan',
+        'provider_object_type' => 'payment_intent',
+        'payload' => ['id' => 'evt_alert_orphan'],
+    ]);
+    $webhook->forceFill([
+        'created_at' => now()->subHour(),
+        'updated_at' => now()->subHour(),
+    ])->saveQuietly();
+
+    $this->artisan('payments:alert-stuck')
+        ->expectsOutput('Found 1 stuck, 1 unknown, 1 requiring refund and 1 orphan webhook(s).')
+        ->assertExitCode(0);
+
 });
 
 it('retries unknown refunds without a provider refund id through the refund action', function (): void {
@@ -553,6 +597,60 @@ it('creates a Payment Element intent with a durable reconciliation key', functio
             && str_contains($body, 'metadata%5Battempt_key%5D='.$attemptKey)
             && str_contains($body, 'payment_method_types%5B0%5D=card');
     });
+});
+
+it('maps a Stripe requires-action intent for the 3DS browser flow', function (): void {
+    Http::fake([
+        'https://api.stripe.com/v1/payment_intents' => Http::response([
+            'id' => 'pi_requires_action',
+            'status' => 'requires_action',
+            'client_secret' => 'pi_requires_action_secret',
+        ], 200),
+    ]);
+    $payment = Payment::query()->create([
+        'payable_type' => Booking::class,
+        'payable_id' => 999999,
+        'provider' => 'stripe',
+        'amount_minor_units' => 100000,
+        'currency' => 'VND',
+        'status' => PaymentStatus::Processing,
+        'attempts' => 1,
+    ]);
+    $payment->attempts()->create([
+        'attempt_key' => 'booking-payment-3ds',
+        'status' => PaymentAttemptStatus::Processing,
+        'amount_minor_units' => $payment->amount_minor_units,
+        'currency' => $payment->currency,
+    ]);
+
+    $result = app(StripePaymentGateway::class)->charge($payment);
+
+    expect($result->status)->toBe(PaymentStatus::RequiresAction->value)
+        ->and($result->metadata['client_secret'])->toBe('pi_requires_action_secret');
+});
+
+it('does not finalize a failed Stripe refund response', function (): void {
+    Http::fake([
+        'https://api.stripe.com/v1/refunds' => Http::response([
+            'id' => 're_failed',
+            'status' => 'failed',
+            'failure_reason' => 'lost_or_stolen_card',
+        ], 200),
+    ]);
+    $payment = Payment::query()->create([
+        'payable_type' => Booking::class,
+        'payable_id' => 999999,
+        'provider' => 'stripe',
+        'provider_payment_id' => 'pi_refund_failed',
+        'amount_minor_units' => 100000,
+        'currency' => 'VND',
+        'status' => PaymentStatus::RequiresRefund,
+    ]);
+
+    $result = app(StripePaymentGateway::class)->refund($payment);
+
+    expect($result->status)->toBe(PaymentStatus::Failed->value)
+        ->and($result->failureMessage)->toBe('lost_or_stolen_card');
 });
 
 it('reconciles a timeout payment by searching Stripe with its attempt key', function (): void {

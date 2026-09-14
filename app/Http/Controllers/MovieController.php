@@ -8,11 +8,10 @@ use App\Enums\Booking\BookingStatus;
 use App\Exceptions\Booking\BookingOperationFailed;
 use App\Exceptions\Booking\SeatHoldConflict;
 use App\Http\Requests\User\HoldSeatsRequest;
-use App\Models\Booking\ScreeningSeat;
 use App\Models\Catalog\Movie;
 use App\Models\Catalog\Screening;
 use App\Models\User;
-use App\Queries\Booking\ScreeningBookingContextQuery;
+use App\Queries\Catalog\ScreeningAvailabilityQuery;
 use App\Queries\Catalog\ScreeningPageQuery;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -137,34 +136,20 @@ final class MovieController extends Controller
         return to_route('user.bookings.checkout', $booking);
     }
 
-    public function availability(Request $request, Movie $movie, Screening $screening, ScreeningBookingContextQuery $bookingContext): JsonResponse
+    public function availability(Request $request, Movie $movie, Screening $screening, ScreeningAvailabilityQuery $availabilityQuery): JsonResponse
     {
         abort_unless($screening->movie_id === $movie->id, 404);
         abort_unless($screening->isBookable(), 404);
 
-        $ownedSeatIds = [];
-        if ($request->user() !== null) {
-            /** @var User $user */
-            $user = $request->user();
-            $ownedSeatIds = array_map('strval', $bookingContext->ownedSeatIds($user, $screening));
-        }
-
-        $seats = ScreeningSeat::query()
-            ->where('screening_id', $screening->getKey())
-            ->get(['seat_id', 'status', 'held_until'])
-            ->mapWithKeys(function (ScreeningSeat $seat) use ($ownedSeatIds): array {
-                return [(string) $seat->seat_id => [
-                    'available' => $seat->isAvailableForSelection(),
-                    'owned_by_current_booking' => in_array((string) $seat->seat_id, $ownedSeatIds, true),
-                ]];
-            })
-            ->all();
+        /** @var User|null $user */
+        $user = $request->user();
+        $availability = $availabilityQuery->execute($screening, $user);
 
         $serverNow = now();
 
         return response()->json([
-            'seats' => $seats,
-            'availability_version' => hash('sha256', json_encode($seats, JSON_THROW_ON_ERROR)),
+            ...$availability,
+            'availability_version' => hash('sha256', json_encode($availability, JSON_THROW_ON_ERROR)),
             'updated_at' => $serverNow->toIso8601String(),
             'server_now' => $serverNow->toIso8601String(),
         ])->header('Cache-Control', 'no-store');

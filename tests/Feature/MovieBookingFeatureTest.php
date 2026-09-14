@@ -339,7 +339,10 @@ it('sends a held booking through checkout and then to the ticket success page af
         'idempotency_key' => 'checkout-flow',
         'quantities' => [$concession->id => 1],
     ])->assertRedirect(route('user.bookings.checkout', $booking));
-    $this->actingAs($user)->get(route('user.bookings.combos', $booking))->assertOk()->assertSee('Large Popcorn');
+    $this->actingAs($user)->get(route('user.bookings.combos', $booking))
+        ->assertOk()
+        ->assertSee('Large Popcorn')
+        ->assertSee('data-combo-availability-url');
     $this->actingAs($user)->get(route('user.bookings.checkout', $booking))->assertOk()->assertSee('Large Popcorn')->assertDontSee('data-combo-increase');
 
     $paymentResponse = $this->actingAs($user)->post(route('user.bookings.pay', $booking), ['quantities' => [$concession->id => 1]]);
@@ -845,11 +848,21 @@ it('exposes expired held seats as available to the live availability endpoint', 
     $booking = app(HoldSeats::class)->execute(User::factory()->create(), $screening, [$seat->id], 'availability-expired-hold');
     $screeningSeat = $screening->screeningSeats()->firstOrFail();
     $screeningSeat->forceFill(['held_until' => now()->subMinute()])->save();
+    $concession = Concession::query()->create([
+        'name' => 'Live Availability Combo',
+        'sku' => 'LIVE-AVAILABILITY-COMBO',
+        'price_minor_units' => 50000,
+        'currency' => 'VND',
+        'stock' => 4,
+        'is_active' => true,
+    ]);
 
     $response = $this->getJson(route('cinema.screenings.availability', [$screening->movie, $screening]));
 
     $response->assertOk()->assertJsonPath('seats.'.$seat->id.'.available', true)
-        ->assertJsonPath('seats.'.$seat->id.'.owned_by_current_booking', false);
+        ->assertJsonPath('seats.'.$seat->id.'.owned_by_current_booking', false)
+        ->assertJsonPath('concessions.'.$concession->id.'.stock', 4)
+        ->assertJsonPath('concessions.'.$concession->id.'.max', 4);
     expect($booking->refresh()->status)->toBe(BookingStatus::Held);
 });
 
@@ -858,13 +871,24 @@ it('reports the current users held seats as server-owned availability state', fu
     $seat = Seat::factory()->for($room, 'room')->create();
     $screening = app(CreateScreening::class)->execute(Movie::factory()->create(), $room, now()->addDay()->toDateTimeString(), now()->addDay()->addHours(2)->toDateTimeString(), 100000);
     $user = User::factory()->create();
-    app(HoldSeats::class)->execute($user, $screening, [$seat->id], 'availability-owned-hold');
+    $booking = app(HoldSeats::class)->execute($user, $screening, [$seat->id], 'availability-owned-hold');
+    $concession = Concession::query()->create([
+        'name' => 'Owned Hold Combo',
+        'sku' => 'OWNED-HOLD-COMBO',
+        'price_minor_units' => 50000,
+        'currency' => 'VND',
+        'stock' => 2,
+        'is_active' => true,
+    ]);
+    app(SyncBookingConcessions::class)->execute($booking, [$concession->id => 1]);
 
     $this->actingAs($user)
         ->getJson(route('cinema.screenings.availability', [$screening->movie, $screening]))
         ->assertOk()
         ->assertJsonPath('seats.'.$seat->id.'.available', false)
-        ->assertJsonPath('seats.'.$seat->id.'.owned_by_current_booking', true);
+        ->assertJsonPath('seats.'.$seat->id.'.owned_by_current_booking', true)
+        ->assertJsonPath('concessions.'.$concession->id.'.selected', 1)
+        ->assertJsonPath('concessions.'.$concession->id.'.max', 2);
 });
 
 it('prevents a second user from acquiring a seat already held by another user', function (): void {

@@ -142,6 +142,11 @@
                         aria-live="polite">
                         {{ __('cinema.seats.availability_refresh_failed') }}
                     </p>
+                    <p data-combo-availability-status
+                        class="mt-2 hidden rounded-xl bg-warning-soft p-3 text-xs text-warning-foreground" role="status"
+                        aria-live="polite">
+                        {{ __('booking.combos.availability_refresh_failed') }}
+                    </p>
                 </section>
                 <section class="rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-8 lg:col-start-1">
                     <div class="flex items-start justify-between gap-4">

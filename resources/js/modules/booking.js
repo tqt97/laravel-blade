@@ -115,7 +115,8 @@ export const initComboTotals = () => {
         update();
 
         const checkout = form.closest('[data-booking-checkout]');
-        const availabilityUrl = checkout?.dataset.comboAvailabilityUrl;
+        const availabilityRoot = checkout ?? form;
+        const availabilityUrl = availabilityRoot.dataset.comboAvailabilityUrl;
         let availabilityTimer;
         let availabilityController;
         let lastComboAvailabilityVersion;
@@ -127,7 +128,7 @@ export const initComboTotals = () => {
                 const response = await fetch(availabilityUrl, {headers: {Accept: 'application/json'}, cache: 'no-store', signal: availabilityController.signal});
                 if (!response.ok) return;
                 const payload = await response.json();
-                if (payload.server_now) checkout.dataset.serverNow = payload.server_now;
+                if (payload.server_now) availabilityRoot.dataset.serverNow = payload.server_now;
                 if (payload.availability_version && payload.availability_version === lastComboAvailabilityVersion) return;
                 lastComboAvailabilityVersion = payload.availability_version;
                 Object.entries(payload.concessions ?? {}).forEach(([id, availability]) => {
@@ -149,7 +150,7 @@ export const initComboTotals = () => {
                 update();
             } catch (error) {
                 if (error.name !== 'AbortError') {
-                    checkout?.querySelector('[data-availability-status]')?.classList.remove('hidden');
+                    availabilityRoot.querySelector('[data-availability-status]')?.classList.remove('hidden');
                 }
             }
         };

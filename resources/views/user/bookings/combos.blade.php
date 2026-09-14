@@ -15,7 +15,8 @@
         <x-auth.feedback />
 
         <form method="POST" action="{{ route('user.bookings.combos.store', $booking) }}"
-            class="space-y-4 rounded-2xl border border-border bg-card p-6 shadow-sm sm:p-8">
+            class="space-y-4 rounded-2xl border border-border bg-card p-6 shadow-sm sm:p-8"
+            data-combo-availability-url="{{ route('user.bookings.combo-availability', $booking) }}">
             @csrf
             @forelse ($concessions as $concession)
                 @php($selectedQuantity = (int) ($booking->concessions->firstWhere('concession_id', $concession->id)?->quantity ?? 0))
@@ -48,6 +49,12 @@
             @empty
                 <p class="text-sm text-muted-foreground">{{ __('booking.combos.empty') }}</p>
             @endforelse
+
+            <p data-availability-status
+                class="hidden rounded-xl bg-warning-soft p-3 text-xs text-warning-foreground" role="status"
+                aria-live="polite">
+                {{ __('booking.combos.availability_refresh_failed') }}
+            </p>
 
             <div class="flex flex-col gap-4 border-t border-border pt-6 sm:flex-row sm:items-center sm:justify-between">
                 <p class="text-sm font-semibold"><span data-combo-count>0</span>

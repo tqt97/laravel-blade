@@ -24,6 +24,17 @@ final class AvailableConcessionsQuery
     {
         $selectedQuantities = $booking->concessions()->pluck('quantity', 'concession_id');
         $currency = strtoupper((string) ($booking->pricing_currency ?? $booking->currency));
+
+        return $this->availabilityForCurrency($currency, $selectedQuantities->all());
+    }
+
+    /**
+     * @param  array<int|string, int>  $selectedQuantities
+     * @return array<string, array{stock: int|null, selected: int, max: int}>
+     */
+    public function availabilityForCurrency(string $currency, array $selectedQuantities = []): array
+    {
+        $currency = strtoupper($currency);
         $maxQuantity = (int) config('booking.limits.max_combo_quantity');
         $availability = [];
 

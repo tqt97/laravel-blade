@@ -204,9 +204,28 @@ export const initSeatPickers = () => {
                     picker.before(notice);
                     window.setTimeout(() => notice.remove(), 6000);
                 }
+
+                Object.entries(data.concessions ?? {}).forEach(([id, availability]) => {
+                    const input = picker.querySelector(`input[name="quantities[${id}]"]`);
+                    if (!input) return;
+
+                    const selected = Number(input.value ?? 0);
+                    const maximum = Number(availability.max ?? 0);
+                    const unavailable = Number(availability.stock) === 0 && selected === 0;
+                    input.max = String(Math.max(selected, maximum));
+                    input.disabled = unavailable;
+                    const card = input.closest('[data-combo-card]');
+                    card?.classList.toggle('opacity-60', unavailable);
+                    card?.classList.toggle('grayscale', unavailable);
+                    card?.querySelector('[data-combo-sold-out]')?.classList.toggle('hidden', !unavailable);
+                    const status = input.closest('[data-combo-control]')?.querySelector('[data-combo-quantity-status]');
+                    if (status) status.dataset.availableLabel = input.max;
+                });
+                sync();
             } catch (error) {
                 if (error?.name !== 'AbortError') {
                     picker.querySelector('[data-availability-status]')?.classList.remove('hidden');
+                    picker.querySelector('[data-combo-availability-status]')?.classList.remove('hidden');
                 }
             }
         };
