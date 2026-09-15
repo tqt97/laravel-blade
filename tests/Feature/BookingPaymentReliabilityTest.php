@@ -2,11 +2,13 @@
 
 use App\Actions\Booking\Checkout\HoldSeats;
 use App\Actions\Booking\Checkout\PayBooking;
+use App\Actions\Booking\Payment\FinalizeRefund;
 use App\Actions\Booking\Payment\FinalizeSuccessfulPayment;
 use App\Actions\Booking\Payment\RecoverStuckPayment;
 use App\Actions\Catalog\CreateScreening;
 use App\Contracts\PaymentGateway;
 use App\Contracts\PaymentStatusRetriever;
+use App\Contracts\RefundStatusRetriever;
 use App\Enums\Booking\BookingStatus;
 use App\Enums\Catalog\Seating\ScreeningSeatStatus;
 use App\Enums\Payment\PaymentAttemptStatus;
@@ -27,6 +29,7 @@ use App\Models\Payment\PaymentWebhookEvent;
 use App\Models\User;
 use App\Support\Payment\PaymentResult;
 use App\Support\Payment\ProviderPaymentStatus;
+use App\Support\Payment\ProviderRefundStatus;
 use App\Support\Payment\StripePaymentGateway;
 use App\ValueObjects\Money;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -849,6 +852,83 @@ it('does not regress a succeeded payment when an older Stripe event arrives', fu
 
     $response->assertNoContent();
     expect($payment->refresh()->status)->toBe(PaymentStatus::Succeeded);
+});
+
+it('clears a stale processing timestamp when a Stripe success webhook is applied', function (): void {
+    $room = ScreeningRoom::factory()->create();
+    $seat = Seat::factory()->for($room, 'room')->create();
+    $screening = app(CreateScreening::class)->execute(Movie::factory()->create(), $room, now()->addDay()->toDateTimeString(), now()->addDay()->addHours(2)->toDateTimeString(), 100000);
+    $booking = app(HoldSeats::class)->execute(User::factory()->create(), $screening, [$seat->id], 'webhook-stale-processing');
+    $payment = $booking->payment()->create([
+        'provider' => 'stripe',
+        'provider_payment_id' => 'pi_webhook_stale_processing',
+        'status' => PaymentStatus::Processing,
+        'amount_minor_units' => $booking->amount_minor_units,
+        'currency' => $booking->currency,
+        'processing_started_at' => now()->subHour(),
+    ]);
+    $payment->attempts()->create([
+        'attempt_key' => 'webhook-stale-processing-attempt',
+        'status' => PaymentAttemptStatus::Processing,
+        'provider_payment_id' => 'pi_webhook_stale_processing',
+        'amount_minor_units' => $payment->amount_minor_units,
+        'currency' => $payment->currency,
+    ]);
+    PaymentWebhookEvent::query()->create([
+        'provider' => PaymentProvider::Stripe,
+        'event_id' => 'evt_webhook_stale_processing',
+        'provider_payment_id' => 'pi_webhook_stale_processing',
+        'provider_object_type' => 'payment_intent',
+        'payload' => [
+            'id' => 'evt_webhook_stale_processing',
+            'type' => 'payment_intent.succeeded',
+            'data' => ['object' => [
+                'id' => 'pi_webhook_stale_processing',
+                'status' => 'succeeded',
+                'amount_received' => 100000,
+                'currency' => 'vnd',
+                'metadata' => [
+                    'payable_type' => Booking::class,
+                    'payable_id' => (string) $booking->id,
+                ],
+            ]],
+        ],
+    ]);
+
+    (new ProcessStripeWebhook('evt_webhook_stale_processing'))->handle(app(FinalizeSuccessfulPayment::class));
+
+    expect($payment->refresh()->status)->toBe(PaymentStatus::Succeeded)
+        ->and($payment->processing_started_at)->toBeNull();
+});
+
+it('does not apply a stale refund reconciliation response after the attempt completed', function (): void {
+    $booking = Booking::factory()->create();
+    $payment = $booking->payment()->create([
+        'provider' => 'stripe',
+        'provider_payment_id' => 'pi_refund_race',
+        'status' => PaymentStatus::Refunded,
+        'amount_minor_units' => $booking->amount_minor_units,
+        'currency' => $booking->currency,
+    ]);
+    $attempt = $payment->refundAttempts()->create([
+        'attempt_key' => 'refund-race-attempt',
+        'provider_refund_id' => 're_refund_race',
+        'status' => RefundAttemptStatus::Pending,
+        'next_reconcile_at' => now()->subMinute(),
+    ]);
+    $retriever = new class implements RefundStatusRetriever
+    {
+        public function retrieveRefund(string $providerRefundId): ProviderRefundStatus
+        {
+            return new ProviderRefundStatus('pending', $providerRefundId, 'pi_refund_race');
+        }
+    };
+
+    (new ReconcileRefund($attempt->id))->handle($retriever, app(FinalizeRefund::class));
+
+    expect($payment->refresh()->status)->toBe(PaymentStatus::Refunded)
+        ->and($attempt->refresh()->status)->toBe(RefundAttemptStatus::Pending)
+        ->and($attempt->next_reconcile_at)->toBeNull();
 });
 
 it('renders the user dashboard when upcoming bookings are joined to screenings', function (): void {

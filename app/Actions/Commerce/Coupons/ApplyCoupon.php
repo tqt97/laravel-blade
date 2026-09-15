@@ -2,9 +2,7 @@
 
 namespace App\Actions\Commerce\Coupons;
 
-use App\Enums\Commerce\CouponPricingScope;
 use App\Enums\Commerce\CouponReservationStatus;
-use App\Enums\Commerce\CouponType;
 use App\Exceptions\Booking\BookingOperationFailed;
 use App\Models\Booking\Booking;
 use App\Models\Commerce\Coupon;
@@ -15,7 +13,10 @@ use Illuminate\Support\Facades\DB;
 
 final class ApplyCoupon
 {
-    public function __construct(private readonly BookingMutationGuard $mutationGuard) {}
+    public function __construct(
+        private readonly BookingMutationGuard $mutationGuard,
+        private readonly CalculateBookingDiscount $discountCalculator,
+    ) {}
 
     public function execute(Booking $booking, string $code): Booking
     {
@@ -96,20 +97,11 @@ final class ApplyCoupon
                     ->update(['status' => CouponReservationStatus::Released]);
             }
 
-            $scope = CouponPricingScope::tryFrom((string) $coupon->getRawOriginal('pricing_scope')) ?? CouponPricingScope::All;
-            $gross = $this->grossForScope($booking, $scope);
-            $couponType = CouponType::from((string) $coupon->getRawOriginal('type'));
-            $couponValue = (int) $coupon->getAttribute('value');
-
-            $discount = $couponType === CouponType::Percentage
-                ? intdiv($gross * min(100, $couponValue), 100)
-                : $couponValue;
-
-            if ($coupon->maximum_discount_minor_units !== null) {
-                $discount = min($discount, $coupon->maximum_discount_minor_units);
-            }
-
-            $discount = min($discount, $gross);
+            $discount = $this->discountCalculator->execute(
+                $booking,
+                $coupon,
+                (int) $booking->subtotal_minor_units,
+            );
 
             if ($targetReservation === null) {
                 CouponReservation::query()->create([
@@ -149,14 +141,5 @@ final class ApplyCoupon
 
             return $booking->refresh();
         }, 3);
-    }
-
-    private function grossForScope(Booking $booking, CouponPricingScope $scope): int
-    {
-        return match ($scope) {
-            CouponPricingScope::All => (int) $booking->subtotal_minor_units,
-            CouponPricingScope::TicketsOnly => (int) $booking->items()->sum('price_minor_units'),
-            CouponPricingScope::ConcessionsOnly => (int) $booking->concessions()->sum('total_minor_units'),
-        };
     }
 }

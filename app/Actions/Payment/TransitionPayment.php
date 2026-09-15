@@ -29,7 +29,10 @@ final class TransitionPayment
             $failureMessage,
             $targetStatus,
         ): Payment {
-            $payment = Payment::query()->whereKey($payment->getKey())->lockForUpdate()->firstOrFail();
+            $payment = Payment::query()
+                ->whereKey($payment->getKey())
+                ->lockForUpdate()
+                ->firstOrFail();
             $currentStatus = PaymentStatus::from((string) $payment->getRawOriginal('status'));
 
             if ($targetStatus !== null && ! $this->stateMachine->canTransition($currentStatus, $targetStatus)) {
@@ -41,13 +44,17 @@ final class TransitionPayment
 
             if ($targetStatus !== null) {
                 $payment->setAttribute('status', $targetStatus);
+
+                if (! $targetStatus->isProcessingState()) {
+                    $payment->setAttribute('processing_started_at', null);
+                }
             }
 
             $attempt = $payment->attempts()->latest('id')->lockForUpdate()->first();
             $now = BookingClock::now();
             if ($attempt === null) {
                 $payment->attempts()->create([
-                    'attempt_key' => config('booking.payment.attempt_key_prefix', 'booking-payment-').Str::uuid(),
+                    'attempt_key' => config('booking.payment.attempt_key_prefix', 'booking-payment-') . Str::uuid(),
                     'status' => $attemptStatus,
                     'provider_payment_id' => $providerPaymentId,
                     'amount_minor_units' => $payment->getAttribute('amount_minor_units'),

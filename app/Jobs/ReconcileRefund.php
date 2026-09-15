@@ -53,6 +53,17 @@ class ReconcileRefund implements ShouldQueue
                 ->lockForUpdate()
                 ->firstOrFail();
 
+            $lockedStatus = RefundAttemptStatus::tryFrom((string) $locked->getRawOriginal('status'));
+            if ($lockedStatus === null || ! $lockedStatus->isOpen()) {
+                return null;
+            }
+
+            if ($payment->getRawOriginal('status') === PaymentStatus::Refunded->value) {
+                $locked->forceFill(['next_reconcile_at' => null])->save();
+
+                return null;
+            }
+
             if ($provider->providerRefundId !== $locked->getAttribute('provider_refund_id') || $provider->providerPaymentId !== null && $provider->providerPaymentId !== $payment->getAttribute('provider_payment_id')) {
                 $locked->forceFill(['status' => RefundAttemptStatus::Unknown, 'failure_message' => __('booking.messages.refund_provider_identity_mismatch'), 'next_reconcile_at' => BookingClock::now()->addMinutes((int) config('booking.payment.refund_reconciliation_retry_minutes', 5))])->save();
 
@@ -80,14 +91,14 @@ class ReconcileRefund implements ShouldQueue
             if ($manualReview) {
                 $payment->forceFill([
                     'status' => PaymentStatus::RequiresRefund,
-                    'failure_message' => __('booking.messages.refund_reconciliation_expired')
+                    'failure_message' => __('booking.messages.refund_reconciliation_expired'),
                 ])->save();
             }
 
             if ($status === RefundAttemptStatus::Failed) {
                 $payment->forceFill([
                     'status' => PaymentStatus::RequiresRefund,
-                    'failure_message' => $provider->failureMessage ?? __('booking.messages.refund_failed')
+                    'failure_message' => $provider->failureMessage ?? __('booking.messages.refund_failed'),
                 ])->save();
             } elseif ($status === RefundAttemptStatus::Pending) {
                 $payment->forceFill(['status' => PaymentStatus::Refunding])->save();

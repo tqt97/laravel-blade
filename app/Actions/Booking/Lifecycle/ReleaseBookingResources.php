@@ -23,11 +23,16 @@ final class ReleaseBookingResources
      */
     public function execute(Booking $booking): void
     {
-        foreach ($booking->items()->lockForUpdate()->get() as $item) {
-            $seat = ScreeningSeat::query()
-                ->whereKey($item->getAttribute('screening_seat_id'))
-                ->lockForUpdate()
-                ->first();
+        $items = $booking->items()->lockForUpdate()->get();
+        $seats = ScreeningSeat::query()
+            ->whereIn('id', $items->pluck('screening_seat_id')->unique()->values())
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get()
+            ->keyBy('id');
+
+        foreach ($items as $item) {
+            $seat = $seats->get($item->getAttribute('screening_seat_id'));
 
             if (
                 $seat !== null &&
@@ -48,18 +53,32 @@ final class ReleaseBookingResources
             }
         }
 
-        foreach ($booking->concessions()->lockForUpdate()->get() as $line) {
-            $concession = Concession::query()
-                ->whereKey($line->getAttribute('concession_id'))
-                ->lockForUpdate()
-                ->first();
+        $lines = $booking->concessions()->lockForUpdate()->get();
+        $concessions = Concession::query()
+            ->whereIn('id', $lines->pluck('concession_id')->unique()->values())
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get()
+            ->keyBy('id');
+
+        $movementKeys = $lines->mapWithKeys(fn ($line): array => [
+            'booking-release-'.$booking->getKey().'-'.$line->getAttribute('concession_id') => true,
+        ]);
+
+        $existingMovementKeys = InventoryMovement::query()
+            ->whereIn('idempotency_key', $movementKeys->keys())
+            ->pluck('idempotency_key')
+            ->flip();
+
+        foreach ($lines as $line) {
+            $concession = $concessions->get($line->getAttribute('concession_id'));
 
             $idempotencyKey = 'booking-release-'.$booking->getKey().'-'.$line->getAttribute('concession_id');
 
             if (
                 $concession !== null &&
                 $concession->getAttribute('stock') !== null &&
-                ! InventoryMovement::query()->where('idempotency_key', $idempotencyKey)->exists()
+                ! $existingMovementKeys->has($idempotencyKey)
             ) {
                 $stockBefore = (int) $concession->stock;
                 $concession->increment('stock', (int) $line->getAttribute('quantity'));

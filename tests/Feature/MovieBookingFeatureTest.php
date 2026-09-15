@@ -50,6 +50,7 @@ use App\Support\Ticketing\TicketQrCode;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\URL;
@@ -298,6 +299,34 @@ it('records combo reservations with explicit finite or unlimited stock semantics
         ->and(InventoryMovement::query()->where('booking_id', $booking->id)->where('type', InventoryMovementType::Reserve)->where('stock_mode', InventoryStockMode::Unlimited)->count())->toBe(1)
         ->and(InventoryMovement::query()->where('booking_id', $booking->id)->where('stock_mode', InventoryStockMode::Unlimited)->firstOrFail()->stock_before)->toBeNull()
         ->and(InventoryMovement::query()->where('booking_id', $booking->id)->where('stock_mode', InventoryStockMode::Unlimited)->firstOrFail()->stock_after)->toBeNull();
+});
+
+it('loads all concessions once when syncing multiple combo lines', function (): void {
+    $room = ScreeningRoom::factory()->create();
+    $seat = Seat::factory()->for($room, 'room')->create();
+    $screening = app(CreateScreening::class)->execute(Movie::factory()->create(), $room, now()->addDay()->toDateTimeString(), now()->addDay()->addHours(2)->toDateTimeString(), 100000);
+    $booking = app(HoldSeats::class)->execute(User::factory()->create(), $screening, [$seat->id], 'combo-query-count');
+    $concessions = Concession::factory()->count(3)->create([
+        'currency' => 'VND',
+        'stock' => 10,
+        'is_active' => true,
+    ]);
+    $concessionSelects = 0;
+
+    DB::listen(function ($query) use (&$concessionSelects): void {
+        $sql = strtolower($query->sql);
+        $fromConcessions = str_contains($sql, 'from "concessions"')
+            || str_contains($sql, 'from '.chr(96).'concessions'.chr(96))
+            || str_contains($sql, 'from concessions');
+        if (str_starts_with(trim($sql), 'select') && $fromConcessions) {
+            $concessionSelects++;
+        }
+    });
+
+    app(SyncBookingConcessions::class)->execute($booking, $concessions->pluck('id')->mapWithKeys(fn (int $id): array => [$id => 1])->all());
+
+    expect($concessionSelects)->toBe(1)
+        ->and($booking->refresh()->concessions)->toHaveCount(3);
 });
 
 it('replaces a held booking when the user edits the selected seats', function (): void {

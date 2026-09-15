@@ -77,7 +77,7 @@ class ProcessStripeWebhook implements ShouldQueue
                 ->forProvider(PaymentProvider::Stripe)
                 ->where(function ($query) use ($providerPaymentId): void {
                     $query->where('provider_payment_id', $providerPaymentId)
-                        ->orWhereHas('attempts', fn($attempts) => $attempts->where('provider_payment_id', $providerPaymentId));
+                        ->orWhereHas('attempts', fn ($attempts) => $attempts->where('provider_payment_id', $providerPaymentId));
                 })
                 ->first();
 
@@ -95,7 +95,7 @@ class ProcessStripeWebhook implements ShouldQueue
             if ($payment->getAttribute('payable_type') !== Booking::class) {
                 $event->forceFill([
                     'processed_at' => BookingClock::now(),
-                    'orphaned_at' => null
+                    'orphaned_at' => null,
                 ])->save();
 
                 return ['status' => StripeWebhookProcessingResult::Done];
@@ -146,6 +146,7 @@ class ProcessStripeWebhook implements ShouldQueue
 
                 if ($target === PaymentStatus::Succeeded) {
                     $payment->setAttribute('paid_at', BookingClock::now());
+                    $payment->setAttribute('processing_started_at', null);
                 }
 
                 if ($target === PaymentStatus::Failed) {
@@ -184,7 +185,7 @@ class ProcessStripeWebhook implements ShouldQueue
 
             return [
                 'status' => StripeWebhookProcessingResult::Finalize,
-                'payment_id' => $payment->getKey()
+                'payment_id' => $payment->getKey(),
             ];
         }, 3);
 
@@ -250,7 +251,7 @@ class ProcessStripeWebhook implements ShouldQueue
             $payment = Payment::query()->forProvider(PaymentProvider::Stripe)
                 ->where(function ($query) use ($paymentIntentId): void {
                     $query->where('provider_payment_id', $paymentIntentId)
-                        ->orWhereHas('attempts', fn($attempts) => $attempts->where('provider_payment_id', $paymentIntentId));
+                        ->orWhereHas('attempts', fn ($attempts) => $attempts->where('provider_payment_id', $paymentIntentId));
                 })
                 ->lockForUpdate()
                 ->first();
@@ -269,13 +270,13 @@ class ProcessStripeWebhook implements ShouldQueue
 
             $attempt = $payment->refundAttempts()->where('provider_refund_id', $refundId)->lockForUpdate()->first()
                 ?? RefundAttempt::query()->where('payment_id', $payment->getKey())
-                ->whereIn('status', RefundAttemptStatus::openStatuses())
-                ->latest('id')->lockForUpdate()->first();
+                    ->whereIn('status', RefundAttemptStatus::openStatuses())
+                    ->latest('id')->lockForUpdate()->first();
 
             if ($attempt === null) {
                 $attempt = $payment->refundAttempts()
                     ->create([
-                        'attempt_key' => config('booking.payment.refund_webhook_attempt_key_prefix', 'stripe-webhook-refund-') . $refundId,
+                        'attempt_key' => config('booking.payment.refund_webhook_attempt_key_prefix', 'stripe-webhook-refund-').$refundId,
                         'status' => RefundAttemptStatus::Processing,
                         'started_at' => BookingClock::now(),
                     ]);
@@ -304,7 +305,7 @@ class ProcessStripeWebhook implements ShouldQueue
 
             $lockedEvent->forceFill([
                 'processed_at' => BookingClock::now(),
-                'orphaned_at' => null
+                'orphaned_at' => null,
             ])->save();
 
             return $attemptStatus === RefundAttemptStatus::Succeeded ? $payment->getKey() : null;

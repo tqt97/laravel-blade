@@ -207,14 +207,7 @@ final class PayBooking
 
             app(TransitionPayment::class)->execute(
                 $payment,
-                match ($status) {
-                    PaymentStatus::Succeeded => PaymentAttemptStatus::Succeeded,
-                    PaymentStatus::RequiresAction => PaymentAttemptStatus::RequiresAction,
-                    PaymentStatus::RequiresPaymentMethod => PaymentAttemptStatus::RequiresPaymentMethod,
-                    PaymentStatus::Processing => PaymentAttemptStatus::Processing,
-                    PaymentStatus::Unknown => PaymentAttemptStatus::Unknown,
-                    default => PaymentAttemptStatus::Failed,
-                },
+                PaymentAttemptStatus::fromPaymentStatus($status),
                 $result->providerPaymentId,
                 $result->failureMessage,
                 $status,
@@ -226,14 +219,7 @@ final class PayBooking
 
             if ($attempt !== null && $attempt->getRawOriginal('status') === PaymentAttemptStatus::Processing->value) {
                 $attempt->forceFill([
-                    'status' => match ($status) {
-                        PaymentStatus::Succeeded => PaymentAttemptStatus::Succeeded,
-                        PaymentStatus::RequiresAction => PaymentAttemptStatus::RequiresAction,
-                        PaymentStatus::RequiresPaymentMethod => PaymentAttemptStatus::RequiresPaymentMethod,
-                        PaymentStatus::Processing => PaymentAttemptStatus::Processing,
-                        PaymentStatus::Unknown => PaymentAttemptStatus::Unknown,
-                        default => PaymentAttemptStatus::Failed,
-                    },
+                    'status' => PaymentAttemptStatus::fromPaymentStatus($status),
                     'provider_payment_id' => $result->providerPaymentId,
                     'response_metadata' => $providerMetadata,
                     'failure_message' => $payment->failure_message,

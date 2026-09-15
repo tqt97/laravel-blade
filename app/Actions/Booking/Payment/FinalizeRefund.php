@@ -35,6 +35,12 @@ final class FinalizeRefund
                 ->firstOrFail();
 
             $items = $booking->items()->lockForUpdate()->get();
+            $seats = ScreeningSeat::query()
+                ->whereIn('id', $items->pluck('screening_seat_id')->unique()->values())
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('id');
 
             if ($items->contains(fn ($item): bool => $item->getAttribute('status') === TicketStatus::CheckedIn)) {
                 throw new BookingOperationFailed(__('booking.messages.checked_in_cannot_refund'));
@@ -49,10 +55,7 @@ final class FinalizeRefund
             }
 
             foreach ($items as $item) {
-                $seat = ScreeningSeat::query()
-                    ->whereKey($item->getAttribute('screening_seat_id'))
-                    ->lockForUpdate()
-                    ->first();
+                $seat = $seats->get($item->getAttribute('screening_seat_id'));
 
                 if ($seat !== null && $seat->getAttribute('status') === ScreeningSeatStatus::Sold) {
                     $seat->forceFill([
@@ -67,18 +70,30 @@ final class FinalizeRefund
                 }
             }
 
-            foreach ($booking->concessions()->lockForUpdate()->get() as $line) {
-                $concession = Concession::query()
-                    ->whereKey($line->getAttribute('concession_id'))
-                    ->lockForUpdate()
-                    ->first();
+            $lines = $booking->concessions()->lockForUpdate()->get();
+            $concessions = Concession::query()
+                ->whereIn('id', $lines->pluck('concession_id')->unique()->values())
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('id');
+            $movementKeys = $lines->mapWithKeys(fn ($line): array => [
+                'payment-refund-'.$payment->getKey().'-'.$line->getAttribute('concession_id') => true,
+            ]);
+            $existingMovementKeys = InventoryMovement::query()
+                ->whereIn('idempotency_key', $movementKeys->keys())
+                ->pluck('idempotency_key')
+                ->flip();
+
+            foreach ($lines as $line) {
+                $concession = $concessions->get($line->getAttribute('concession_id'));
 
                 if ($concession === null || $concession->getAttribute('stock') === null) {
                     continue;
                 }
 
                 $idempotencyKey = 'payment-refund-'.$payment->getKey().'-'.$line->getAttribute('concession_id');
-                if (InventoryMovement::query()->where('idempotency_key', $idempotencyKey)->exists()) {
+                if ($existingMovementKeys->has($idempotencyKey)) {
                     continue;
                 }
 

@@ -82,18 +82,25 @@ final class FinalizeSuccessfulPayment
             }
 
             $items = $booking->items()->lockForUpdate()->get();
-            $seats = [];
-            // Lock all booking items first, then seats in item order. This
-            // preserves the shared lock order used by hold/edit/refund flows.
-            foreach ($items as $item) {
-                $seat = ScreeningSeat::query()
-                    ->whereKey($item->getAttribute('screening_seat_id'))
-                    ->lockForUpdate()
-                    ->firstOrFail();
-                $seats[] = [$item, $seat];
-            }
+            // Lock all booking items first, then all seats in a stable order.
+            // This avoids one query per ticket while preserving a consistent
+            // lock order for hold/edit/refund flows.
+            $seats = ScreeningSeat::query()
+                ->whereIn('id', $items->pluck('screening_seat_id')->unique()->values())
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('id');
 
-            foreach ($seats as [, $seat]) {
+            foreach ($items as $item) {
+                $seat = $seats->get($item->getAttribute('screening_seat_id'));
+
+                if ($seat === null) {
+                    $this->expireAndReleaseBooking($booking);
+
+                    return $this->markRequiresRefund($payment, __('booking.messages.seat_released_before_payment_finalization'));
+                }
+
                 if (
                     $seat->getAttribute('status') !== ScreeningSeatStatus::Held ||
                     (int) $seat->getAttribute('held_by_booking_id') !== $booking->getKey()
@@ -117,7 +124,13 @@ final class FinalizeSuccessfulPayment
                 app(TransitionBooking::class)->execute($booking, BookingStatus::Confirmed);
             }
 
-            foreach ($seats as [$item, $seat]) {
+            foreach ($items as $item) {
+                $seat = $seats->get($item->getAttribute('screening_seat_id'));
+
+                if ($seat === null) {
+                    continue;
+                }
+
                 $seat->forceFill([
                     'status' => ScreeningSeatStatus::Sold,
                     'held_until' => null,
@@ -142,9 +155,15 @@ final class FinalizeSuccessfulPayment
                     ->where('status', CouponReservationStatus::Reserved)
                     ->lockForUpdate()
                     ->get();
+                $coupons = Coupon::query()
+                    ->whereIn('id', $redeemedReservations->pluck('coupon_id')->unique()->values())
+                    ->lockForUpdate()
+                    ->get()
+                    ->keyBy('id');
+
                 foreach ($redeemedReservations as $reservation) {
                     $reservation->update(['status' => CouponReservationStatus::Redeemed]);
-                    $coupon = Coupon::query()->whereKey($reservation->coupon_id)->lockForUpdate()->first();
+                    $coupon = $coupons->get($reservation->coupon_id);
                     $coupon?->increment('redeemed_count');
                     $coupon?->decrement('reserved_count');
                     CouponUserUsage::query()
