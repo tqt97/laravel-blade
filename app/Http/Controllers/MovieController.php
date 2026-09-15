@@ -1,0 +1,193 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Actions\Booking\Checkout\EditBookingSelection;
+use App\DTO\Booking\BookingSelectionData;
+use App\Enums\Booking\BookingStatus;
+use App\Exceptions\Booking\BookingOperationFailed;
+use App\Exceptions\Booking\SeatHoldConflict;
+use App\Http\Requests\User\HoldSeatsRequest;
+use App\Models\Catalog\Movie;
+use App\Models\Catalog\Screening;
+use App\Models\User;
+use App\Queries\Catalog\ScreeningAvailabilityQuery;
+use App\Queries\Catalog\ScreeningPageQuery;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Http\Response;
+use Illuminate\Validation\ValidationException;
+use Illuminate\View\View;
+
+final class MovieController extends Controller
+{
+    public function index(Request $request): View
+    {
+        $movies = Movie::query()
+            ->active()
+            ->when($request->filled('search'), function ($query) use ($request): void {
+                $search = '%'.$request->string('search')->trim().'%';
+                $query->where(function ($query) use ($search): void {
+                    $query->where('title', 'like', $search)->orWhere('synopsis', 'like', $search);
+                });
+            })
+            ->hasBookableScreenings()
+            ->with(['screenings' => fn ($query) => $query->bookable()
+                ->orderBy('starts_at')
+                ->limit((int) config('booking.listing.screening_preview_limit'))])
+            ->orderByDesc('release_date')
+            ->paginate((int) config('booking.listing.movies_per_page'));
+
+        return view('cinema.movies.index', compact('movies'));
+    }
+
+    public function sitemap(): Response
+    {
+        $movies = Movie::query()
+            ->active()
+            ->hasBookableScreenings()
+            ->with(['screenings' => fn ($query) => $query->bookable()->orderBy('starts_at')])
+            ->get();
+
+        return response()
+            ->view('seo.sitemap', compact('movies'))
+            ->header('Content-Type', 'application/xml');
+    }
+
+    public function show(Movie $movie): View
+    {
+        abort_unless($movie->is_active, 404);
+
+        $movie->load(['screenings' => fn ($query) => $query
+            ->bookable()
+            ->with(['room:id,name,timezone'])
+            ->withCount('screeningSeats')
+            ->withCount([
+                'screeningSeats as available_screening_seats_count' => fn ($seatQuery) => $seatQuery->where(function ($availabilityQuery): void {
+                    $availabilityQuery->availableForSelection();
+                }),
+            ])
+            ->orderBy('starts_at')]);
+
+        $screeningSummaries = [];
+
+        foreach ($movie->screenings as $screening) {
+            $screeningSummaries[$screening->id] = [
+                'available' => (int) $screening->getAttribute('available_screening_seats_count'),
+                'total' => (int) $screening->getAttribute('screening_seats_count'),
+            ];
+        }
+
+        return view('cinema.movies.show', compact('movie', 'screeningSummaries'));
+    }
+
+    public function screening(Request $request, Movie $movie, Screening $screening, ScreeningPageQuery $screeningPage): View|RedirectResponse
+    {
+        abort_unless($screening->movie_id === $movie->id, 404);
+        abort_unless($screening->isBookable(), 404);
+
+        $page = $screeningPage->execute($screening, $request->user());
+        $activeHold = $page['activeHold'];
+
+        if ($activeHold?->getRawOriginal('status') === BookingStatus::PendingPayment->value) {
+            return to_route('user.bookings.checkout', $activeHold);
+        }
+
+        return view('cinema.screenings.show', ['screening' => $screening, ...$page]);
+    }
+
+    public function hold(HoldSeatsRequest $request, Movie $movie, Screening $screening, EditBookingSelection $editBookingSelection): RedirectResponse
+    {
+        abort_unless($screening->movie_id === $movie->id, 404);
+
+        if ($request->user() === null) {
+            $selection = BookingSelectionData::fromArray($request->validated());
+            $request->session()->put('cinema.pending_hold', [
+                'screening_id' => $screening->id,
+                'seat_ids' => $selection->seatIds,
+                'idempotency_key' => $selection->idempotencyKey,
+                'quantities' => $selection->quantities,
+            ]);
+
+            $request->session()->put('url.intended', route('user.cinema.hold.resume'));
+
+            return redirect()->route('login');
+        }
+
+        /** @var User $user */
+        $user = $request->user();
+        $selection = BookingSelectionData::fromArray($request->validated());
+
+        try {
+            $booking = $editBookingSelection->execute(
+                $user,
+                $screening,
+                $selection->seatIds,
+                $selection->idempotencyKey,
+                $selection->quantities,
+            );
+        } catch (SeatHoldConflict $exception) {
+            throw ValidationException::withMessages(['seat_ids' => $exception->getMessage()]);
+        } catch (BookingOperationFailed $exception) {
+            throw ValidationException::withMessages(['quantities' => $exception->getMessage()]);
+        }
+
+        return to_route('user.bookings.checkout', $booking);
+    }
+
+    public function availability(Request $request, Movie $movie, Screening $screening, ScreeningAvailabilityQuery $availabilityQuery): JsonResponse
+    {
+        abort_unless($screening->movie_id === $movie->id, 404);
+        abort_unless($screening->isBookable(), 404);
+
+        /** @var User|null $user */
+        $user = $request->user();
+        $availability = $availabilityQuery->execute($screening, $user);
+
+        $serverNow = now();
+
+        return response()->json([
+            ...$availability,
+            'availability_version' => hash('sha256', json_encode($availability, JSON_THROW_ON_ERROR)),
+            'updated_at' => $serverNow->toIso8601String(),
+            'server_now' => $serverNow->toIso8601String(),
+        ])->header('Cache-Control', 'no-store');
+    }
+
+    public function resumeHold(Request $request, EditBookingSelection $editBookingSelection): RedirectResponse
+    {
+        $pending = $request->session()->get('cinema.pending_hold');
+
+        if (! is_array($pending) || ! isset($pending['screening_id'], $pending['seat_ids'], $pending['idempotency_key']) || $request->user() === null) {
+            return to_route('cinema.movies.index');
+        }
+
+        $screening = Screening::query()->find((int) $pending['screening_id']);
+        if ($screening === null) {
+            return to_route('cinema.movies.index')->withErrors(['booking' => __('booking.messages.screening_unavailable')]);
+        }
+        $screening->load('movie');
+        /** @var User $user */
+        $user = $request->user();
+        $selection = BookingSelectionData::fromArray($pending);
+
+        try {
+            $booking = $editBookingSelection->execute($user, $screening, $selection->seatIds, $selection->idempotencyKey, $selection->quantities);
+        } catch (SeatHoldConflict $exception) {
+            $request->session()->put('cinema.pending_hold', $pending);
+
+            return to_route('cinema.screenings.show', [$screening->movie, $screening])
+                ->withErrors(['seat_ids' => $exception->getMessage()]);
+        } catch (BookingOperationFailed $exception) {
+            $request->session()->put('cinema.pending_hold', $pending);
+
+            return to_route('cinema.screenings.show', [$screening->movie, $screening])
+                ->withErrors(['quantities' => $exception->getMessage()]);
+        }
+
+        $request->session()->forget('cinema.pending_hold');
+
+        return to_route('cinema.screenings.show', [$screening->movie, $screening])->with('booking_resume', true);
+    }
+}

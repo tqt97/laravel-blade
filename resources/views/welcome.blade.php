@@ -5,6 +5,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    <meta name="description" content="{{ __('booking.landing.description') }}">
+    <meta name="robots" content="index,follow">
+    <link rel="canonical" href="{{ url('/') }}">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="{{ config('app.movie_name') }}">
+    <meta property="og:description" content="{{ __('booking.landing.description') }}">
+    <meta property="og:url" content="{{ url('/') }}">
+    <meta name="twitter:card" content="summary">
     <script>
         (() => {
             const theme = localStorage.getItem('app-theme');
@@ -15,7 +23,7 @@
             }
         })();
     </script>
-    <title>{{ config('app.name', 'Laravel') }}</title>
+    <title>{{ config('app.movie_name') }}</title>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 
@@ -27,6 +35,7 @@
         <header class="mx-auto flex max-w-7xl items-center justify-between px-5 py-6 sm:px-8 lg:px-12">
             <x-ui.brand-mark />
             <div class="flex items-center gap-2">
+                <x-cinema.public-menu />
                 <x-ui.language-switcher />
                 <x-ui.theme-toggle />
                 @auth
@@ -35,13 +44,13 @@
                         icon="arrow-right">{{ __('ui.dashboard.home') }}</x-admin.button>
                 @else
                     @if (Route::has('login'))
-                        <x-admin.button href="{{ route('login') }}" variant="secondary"
-                            compact>{{ __('ui.auth_pages.login_title') }}</x-admin.button>
+                        <x-admin.button href="{{ route('login') }}" variant="secondary" icon="arrow-right" iconOnly
+                            title="{{ __('cinema.public.login') }}" compact />
                     @endif
                 @endauth
             </div>
         </header>
-        <main class="mx-auto flex max-w-7xl flex-col gap-16 px-5 pb-16 pt-16 sm:px-8 lg:px-12 lg:pt-24">
+        <main id="main-content" class="mx-auto flex max-w-7xl flex-col gap-16 px-5 pb-16 pt-16 sm:px-8 lg:px-12 lg:pt-24">
             <section class="grid items-center gap-12 lg:grid-cols-[1.1fr_0.9fr]">
                 <div class="max-w-2xl">
                     <p
@@ -94,6 +103,25 @@
                         </div>
                     </div>
                 </div>
+            </section>
+            <section id="booking" class="grid gap-8 rounded-3xl border border-primary/15 bg-primary-soft/40 p-6 sm:p-10 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
+                <div>
+                    <p class="text-sm font-semibold text-primary">{{ __('booking.landing.eyebrow') }}</p>
+                    <h2 class="mt-3 text-3xl font-semibold tracking-tight text-foreground">{{ __('booking.landing.title') }}</h2>
+                    <p class="mt-4 text-sm leading-7 text-muted-foreground">{{ __('booking.landing.description') }}</p>
+                    @auth
+                        <x-admin.button href="{{ auth()->user()->is_admin ? route('admin.cinema.index') : route('cinema.movies.index') }}" icon="arrow-right" class="mt-6">
+                            {{ __('booking.landing.cta') }}
+                        </x-admin.button>
+                    @else
+                        @if (Route::has('login'))
+                            <x-admin.button href="{{ route('cinema.movies.index') }}" icon="arrow-right" class="mt-6">
+                                {{ __('booking.landing.cta') }}
+                            </x-admin.button>
+                        @endif
+                    @endauth
+                </div>
+                <div class="grid gap-4 sm:grid-cols-3">@foreach (['browse', 'hold', 'manage'] as $step)<div class="rounded-2xl border border-border bg-card p-5 shadow-sm"><div class="flex size-9 items-center justify-center rounded-xl bg-primary text-sm font-bold text-primary-foreground">{{ $loop->iteration }}</div><h3 class="mt-4 font-semibold text-card-foreground">{{ __('booking.landing.steps.'.$step.'.title') }}</h3><p class="mt-2 text-sm leading-6 text-muted-foreground">{{ __('booking.landing.steps.'.$step.'.description') }}</p></div>@endforeach</div>
             </section>
             <section id="features" class="grid gap-4 md:grid-cols-3">
                 @foreach ([['title' => __('ui.dashboard.continue_learning'), 'description' => __('ui.dashboard.description')], ['title' => __('ui.dashboard.shortcuts'), 'description' => __('ui.dashboard.coming_soon_description')], ['title' => __('ui.dashboard.recent_activity'), 'description' => __('ui.dashboard.completed_lesson')]] as $feature)

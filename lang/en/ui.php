@@ -33,6 +33,8 @@ return [
         'close' => 'Close',
         'reset' => 'Reset',
         'save' => 'Save changes',
+        'create' => 'Create',
+        'edit' => 'Edit',
         'no_actions' => 'No actions yet',
     ],
     'modal' => [
@@ -52,6 +54,7 @@ return [
         'close_notification' => 'Close notification',
         'check_information' => 'Please check the information and try again.',
     ],
+    'validation' => ['fix_errors' => 'Please fix the highlighted information and try again.'],
     'password' => ['generate' => 'Generate password', 'show' => 'Show password', 'hide' => 'Hide password'],
     'bulk_actions' => 'Bulk actions',
     'blank' => [
@@ -112,6 +115,7 @@ return [
     ],
     'users' => [
         'title' => 'Users',
+        'status' => 'Status',
         'management' => 'User management',
         'management_description' => 'Search, filter and manage users from one place.',
         'add' => 'Add new',

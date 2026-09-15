@@ -1,0 +1,207 @@
+const poll = (root) => {
+    const statusUrl = root.dataset.statusUrl;
+    let timer;
+    let redirecting = false;
+    let attempts = 0;
+    let transportFailures = 0;
+    const terminalStatuses = new Set((root.dataset.terminalStatuses ?? '').split(',').filter(Boolean));
+    const pollInterval = Number(root.dataset.pollIntervalMs ?? 3000);
+    const errorRetryInterval = Number(root.dataset.errorRetryIntervalMs ?? 5000);
+    const maxUnknownAttempts = Number(root.dataset.maxUnknownAttempts ?? 20);
+
+    const check = async () => {
+        if (redirecting) return;
+        try {
+            const response = await fetch(statusUrl, { headers: { Accept: 'application/json' } });
+            if (!response.ok) {
+                if ([401, 403, 419].includes(response.status)) {
+                    root.dispatchEvent(new CustomEvent('payment:session-error', { detail: response.status }));
+                    return;
+                }
+                transportFailures += 1;
+                const delay = Math.min(errorRetryInterval * (2 ** Math.min(transportFailures, 4)), 30000);
+                timer = window.setTimeout(check, delay);
+                return;
+            }
+            const data = await response.json();
+            transportFailures = 0;
+            attempts += 1;
+            if (data.redirect) {
+                redirecting = true;
+                window.location.replace(data.redirect);
+                return;
+            }
+            if (data.status === 'requires_payment_method') {
+                root.dispatchEvent(new CustomEvent('payment:method-required'));
+                return;
+            }
+            if (terminalStatuses.has(data.status)) {
+                root.dispatchEvent(new CustomEvent('payment:terminal', { detail: data.status }));
+                return;
+            }
+            // Unknown is intentionally not terminal, but the browser must
+            // not spin forever when the queue/provider is unavailable.
+            if (data.status === 'unknown' && attempts >= maxUnknownAttempts) {
+                root.dispatchEvent(new CustomEvent('payment:stalled'));
+                return;
+            }
+            timer = window.setTimeout(check, pollInterval);
+        } catch {
+            transportFailures += 1;
+            const delay = Math.min(errorRetryInterval * (2 ** Math.min(transportFailures, 4)), 30000);
+            timer = window.setTimeout(check, delay);
+        }
+    };
+
+    check();
+    return () => window.clearTimeout(timer);
+};
+
+export const initPaymentStatus = () => {
+    document.querySelectorAll('[data-payment-status]').forEach((root) => {
+        if (root.dataset.initialized === 'true') return;
+        root.dataset.initialized = 'true';
+        const stopPolling = poll(root);
+        const syncUrl = root.dataset.syncUrl;
+        const button = root.querySelector('[data-stripe-confirm]');
+        const stripeKey = root.dataset.stripeKey;
+        const clientSecret = root.dataset.clientSecret;
+        let stripe;
+        let elements;
+        const showError = (message) => {
+            const error = root.querySelector('[data-payment-error]');
+            if (!error) return;
+            error.textContent = message;
+            error.classList.remove('hidden');
+        };
+        const loading = root.querySelector('[data-payment-loading]');
+        const processing = root.querySelector('[data-payment-processing]');
+        const processingText = root.querySelector('[data-payment-processing-text]');
+        const processingDelayed = root.querySelector('[data-payment-processing-delayed]');
+        const buttonLabel = root.querySelector('[data-payment-button-label]');
+        const buttonSpinner = root.querySelector('[data-payment-button-spinner]');
+        let delayedTimer;
+        const setSubmitting = (isSubmitting) => {
+            if (!button) return;
+            button.disabled = isSubmitting;
+            button.setAttribute('aria-busy', String(isSubmitting));
+            buttonLabel?.classList.toggle('hidden', isSubmitting);
+            buttonSpinner?.classList.toggle('hidden', !isSubmitting);
+        };
+        const setProcessing = (isProcessing, message = root.dataset.processingLabel ?? '') => {
+            if (!processing) return;
+            processing.classList.toggle('hidden', !isProcessing);
+            if (processingText && message) processingText.textContent = message;
+            processingDelayed?.classList.toggle('hidden', !isProcessing);
+            window.clearTimeout(delayedTimer);
+            if (isProcessing && processingDelayed) {
+                delayedTimer = window.setTimeout(() => {
+                    processingDelayed.classList.remove('hidden');
+                }, Number(root.dataset.delayedNoticeMs ?? 45000));
+            }
+        };
+        root.addEventListener('payment:terminal', (event) => {
+            setSubmitting(false);
+            setProcessing(false);
+            const messages = {
+                failed: root.dataset.failedLabel,
+                requires_refund: root.dataset.requiresRefundLabel,
+                refunded: root.dataset.refundedLabel,
+            };
+            showError(messages[event.detail] ?? root.dataset.errorLabel ?? '');
+        }, { once: true });
+        root.addEventListener('payment:stalled', () => {
+            setSubmitting(false);
+            setProcessing(false);
+            showError(root.dataset.unknownStalledLabel ?? root.dataset.errorLabel ?? '');
+        }, { once: true });
+        root.addEventListener('payment:method-required', () => {
+            setSubmitting(false);
+            setProcessing(false);
+        }, { once: true });
+        root.addEventListener('payment:session-error', () => {
+            setSubmitting(false);
+            setProcessing(false);
+            showError(root.dataset.sessionErrorLabel ?? root.dataset.errorLabel ?? '');
+        }, { once: true });
+
+        try {
+            if (window.Stripe && stripeKey && clientSecret) {
+                stripe = window.Stripe(stripeKey);
+                elements = stripe.elements({ clientSecret });
+                const paymentElement = root.querySelector('[data-payment-element]');
+                if (paymentElement) {
+                    elements.create('payment').mount(paymentElement);
+                }
+            }
+            loading?.classList.add('hidden');
+        } catch {
+            loading?.classList.add('hidden');
+            showError(root.dataset.unavailableLabel ?? '');
+        }
+        root.querySelectorAll('[data-copy-test-card]').forEach((copyButton) => {
+            copyButton.addEventListener('click', async () => {
+                const cardNumber = copyButton.dataset.copyTestCard;
+                if (!cardNumber) return;
+                try {
+                    await navigator.clipboard.writeText(cardNumber);
+                    const status = root.querySelector('[data-copy-test-card-status]');
+                    if (!status) return;
+                    status.textContent = root.dataset.copySuccessLabel ?? '';
+                    status.classList.remove('hidden');
+                } catch {
+                    showError(root.dataset.unavailableLabel ?? '');
+                }
+            });
+        });
+        button?.addEventListener('click', async () => {
+            setSubmitting(true);
+            setProcessing(true);
+            if (!stripe || !elements) {
+                showError(root.dataset.unavailableLabel ?? '');
+                setSubmitting(false);
+                setProcessing(false);
+                return;
+            }
+            try {
+                const result = await stripe.confirmPayment({
+                    elements,
+                    confirmParams: { return_url: root.dataset.returnUrl },
+                    redirect: 'if_required',
+                });
+                if (result.error) {
+                    showError(result.error.message ?? root.dataset.errorLabel ?? root.dataset.unavailableLabel ?? '');
+                    setSubmitting(false);
+                    setProcessing(false);
+                    return;
+                }
+                if (syncUrl) {
+                    const syncResponse = await fetch(syncUrl, {
+                        method: 'POST',
+                        headers: {
+                            Accept: 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content ?? '',
+                        },
+                    });
+                    if (!syncResponse.ok) {
+                        throw new Error('Payment status synchronization failed.');
+                    }
+                    const syncData = await syncResponse.json();
+                    if (syncData.redirect) {
+                        stopPolling();
+                        window.location.replace(syncData.redirect);
+                        return;
+                    }
+                }
+            } catch {
+                showError(root.dataset.errorLabel ?? root.dataset.unavailableLabel ?? '');
+                setSubmitting(false);
+                setProcessing(false);
+            }
+        });
+        window.addEventListener('beforeunload', () => {
+            stopPolling();
+            window.clearTimeout(delayedTimer);
+        }, { once: true });
+    });
+};

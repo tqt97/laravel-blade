@@ -33,6 +33,8 @@ return [
         'close' => 'Đóng',
         'reset' => 'Đặt lại',
         'save' => 'Lưu thay đổi',
+        'create' => 'Tạo mới',
+        'edit' => 'Chỉnh sửa',
         'no_actions' => 'Chưa có thao tác',
     ],
     'modal' => [
@@ -52,6 +54,7 @@ return [
         'close_notification' => 'Đóng thông báo',
         'check_information' => 'Vui lòng kiểm tra lại thông tin.',
     ],
+    'validation' => ['fix_errors' => 'Vui lòng sửa các thông tin được đánh dấu rồi thử lại.'],
     'password' => ['generate' => 'Tạo mật khẩu', 'show' => 'Hiện mật khẩu', 'hide' => 'Ẩn mật khẩu'],
     'bulk_actions' => 'Thao tác hàng loạt',
     'blank' => [
@@ -141,6 +144,7 @@ return [
     ],
     'users' => [
         'title' => 'Người dùng',
+        'status' => 'Trạng thái',
         'management' => 'Quản lý người dùng',
         'management_description' => 'Tìm kiếm, lọc và quản lý người dùng tại một nơi.',
         'add' => 'Thêm người dùng',
@@ -171,6 +175,7 @@ return [
         'per_page_label' => 'Số dòng mỗi trang',
         'apply' => 'Áp dụng',
         'select_all' => 'Chọn tất cả người dùng trong trang này',
+        'select_user_disabled' => 'Không thể chọn tài khoản đang hoạt động của chính bạn: :name',
         'select_user' => 'Chọn :name',
         'role' => 'Vai trò',
         'verification' => 'Xác minh',
@@ -199,6 +204,7 @@ return [
         'new_password_optional' => 'Mật khẩu mới (không bắt buộc)',
         'administrator_access' => 'Quyền quản trị viên',
         'administrator_description' => 'Cho phép người dùng này truy cập quản lý người dùng.',
+        'self_admin_warning' => 'Quyền quản trị của tài khoản hiện tại đã bị khóa để tránh mất quyền truy cập workspace.',
     ],
     'user_warnings' => [
         'self_admin_warning' => 'Quyền quản trị của tài khoản hiện tại đã bị khóa để tránh mất quyền truy cập workspace.',

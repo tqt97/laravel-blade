@@ -21,21 +21,27 @@ class DatabaseSeeder extends Seeder
             throw new RuntimeException('Refusing to seed the admin account outside local/testing without SEED_ADMIN_EMAIL and SEED_ADMIN_PASSWORD.');
         }
 
-        $adminEmail = (string) (config('app.seed_admin_email') ?: 'admin@example.test');
-        $adminPassword = (string) (config('app.seed_admin_password') ?: 'password');
+        $adminEmail = (string) (config('app.seed_admin_email') ?: 'admin@gmail.com');
+        $adminPassword = (string) (config('app.seed_admin_password') ?: '12341234');
 
         User::updateOrCreate(['email' => $adminEmail], [
             'name' => 'Administrator',
             'password' => Hash::make($adminPassword),
             'is_admin' => true,
         ]);
+        User::updateOrCreate(['email' => 'user@gmail.com'], [
+            'name' => 'User',
+            'password' => Hash::make('12341234'),
+        ]);
 
-        $targetUsers = 10000;
+        $targetUsers = 10;
         $existingUsers = User::query()->regularUsers()->count();
         $remainingUsers = max(0, $targetUsers - $existingUsers);
 
         if ($remainingUsers > 0) {
             User::factory()->count($remainingUsers)->create();
         }
+
+        $this->call(CinemaSeeder::class);
     }
 }

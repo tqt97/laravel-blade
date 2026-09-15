@@ -1,0 +1,229 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "CinePass runtime architecture",
+    "output": "movie-booking-runtime-architecture.html",
+    "quality_profile": "showcase",
+    "locale": "en",
+    "viewBox": [1360, 780],
+    "repository": {
+      "url": "https://github.com/tqt97/laravel-blade",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "7bf27e96fb9c7aefab24c15c1cd5f3e12fd490d2"
+    },
+    "views": [
+      {
+        "id": "primary-booking-path",
+        "label": "Primary booking path",
+        "focus": ["browser", "http", "booking", "database", "stripe"],
+        "note": "Follow a booking from the browser through seat hold, payment, and durable state."
+      },
+      {
+        "id": "identity-and-boundaries",
+        "label": "Identity and trust",
+        "focus": ["browser", "http", "fortify", "booking", "database"],
+        "note": "See where authentication, authorization, and server-side invariants are enforced."
+      },
+      {
+        "id": "async-delivery",
+        "label": "Async delivery",
+        "focus": ["booking", "outbox", "worker", "mail", "scheduler"],
+        "note": "Trace outbox-backed notifications and scheduled reliability work."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "browser",
+      "type": "external",
+      "label": "Customer browser",
+      "sublabel": "Blade UI / session state",
+      "tag": "untrusted client",
+      "sources": [
+        { "path": "routes/web.php", "line": 15, "label": "public storefront" },
+        { "path": "resources/views/user/bookings/checkout.blade.php", "label": "checkout UI" }
+      ],
+      "pos": [40, 320],
+      "size": [160, 76]
+    },
+    {
+      "id": "http",
+      "type": "backend",
+      "label": "Laravel HTTP / Blade",
+      "sublabel": "web + user + admin routes",
+      "tag": "PHP 8.4 / Laravel 13",
+      "sources": [
+        { "path": "bootstrap/app.php", "line": 13, "label": "route wiring" },
+        { "path": "routes/user.php", "line": 35, "label": "booking routes" },
+        { "path": "routes/admin.php", "line": 44, "label": "protected mutations" }
+      ],
+      "pos": [270, 320],
+      "size": [180, 76]
+    },
+    {
+      "id": "fortify",
+      "type": "security",
+      "label": "Fortify authentication",
+      "sublabel": "login / 2FA / passkeys",
+      "tag": "auth boundary",
+      "sources": [
+        { "path": "config/fortify.php", "label": "Fortify config" },
+        { "path": "app/Providers/FortifyServiceProvider.php", "label": "auth actions" }
+      ],
+      "pos": [270, 120],
+      "size": [180, 76]
+    },
+    {
+      "id": "booking",
+      "type": "backend",
+      "label": "Booking domain actions",
+      "sublabel": "hold / pay / refund / ticket",
+      "tag": "transaction + idempotency",
+      "sources": [
+        { "path": "app/Actions/Booking/Checkout/HoldSeats.php", "label": "seat hold" },
+        { "path": "app/Actions/Booking/Checkout/PayBooking.php", "label": "payment claim" },
+        { "path": "app/Actions/Booking/Payment/FinalizeSuccessfulPayment.php", "label": "ticket issue" }
+      ],
+      "pos": [510, 320],
+      "size": [190, 76]
+    },
+    {
+      "id": "database",
+      "type": "database",
+      "label": "Relational database",
+      "sublabel": "booking source of truth",
+      "tag": "locks + unique constraints",
+      "sources": [
+        { "path": "database/migrations/2026_09_10_130004_create_booking_domain_schema.php", "label": "booking schema" },
+        { "path": "database/migrations/2026_09_10_130007_create_payment_domain_schema.php", "label": "payment schema" },
+        { "path": "database/migrations/2026_09_10_130008_create_infrastructure_domain_schema.php", "label": "outbox schema" }
+      ],
+      "pos": [760, 320],
+      "size": [180, 76]
+    },
+    {
+      "id": "stripe",
+      "type": "external",
+      "label": "Stripe",
+      "sublabel": "PaymentIntent + refunds",
+      "tag": "provider boundary",
+      "sources": [
+        { "path": "app/Support/Payment/StripePaymentGateway.php", "label": "charge gateway" },
+        { "path": "app/Http/Controllers/StripeWebhookController.php", "label": "webhook ingress" },
+        { "path": "config/services.php", "line": 29, "label": "Stripe config" }
+      ],
+      "pos": [1000, 320],
+      "size": [170, 76]
+    },
+    {
+      "id": "outbox",
+      "type": "messagebus",
+      "label": "Transactional outbox",
+      "sublabel": "versioned domain events",
+      "tag": "after-commit dispatch",
+      "sources": [
+        { "path": "app/Models/Infrastructure/OutboxMessage.php", "label": "outbox dispatch" },
+        { "path": "app/Models/Infrastructure/OutboxDelivery.php", "label": "delivery state" }
+      ],
+      "pos": [760, 560],
+      "size": [180, 76]
+    },
+    {
+      "id": "worker",
+      "type": "backend",
+      "label": "Queue worker",
+      "sublabel": "PublishOutboxMessage",
+      "tag": "retry + lease",
+      "sources": [
+        { "path": "app/Jobs/PublishOutboxMessage.php", "label": "queued delivery" },
+        { "path": "config/queue.php", "line": 21, "label": "queue backends" }
+      ],
+      "pos": [980, 560],
+      "size": [170, 76]
+    },
+    {
+      "id": "mail",
+      "type": "external",
+      "label": "Mail provider",
+      "sublabel": "booking confirmation / reminder",
+      "tag": "delivery dependency",
+      "sources": [
+        { "path": "app/Mail/BookingConfirmationMail.php", "label": "confirmation" },
+        { "path": "app/Mail/BookingReminderMail.php", "label": "reminder" },
+        { "path": "config/services.php", "line": 12, "label": "mail services" }
+      ],
+      "pos": [1180, 560],
+      "size": [180, 76]
+    },
+    {
+      "id": "scheduler",
+      "type": "cloud",
+      "label": "Laravel scheduler",
+      "sublabel": "expiry / reconciliation / alerts",
+      "tag": "one-server jobs",
+      "sources": [
+        { "path": "routes/console.php", "line": 13, "label": "scheduled maintenance" },
+        { "path": "app/Console/Commands/ExpireBookings.php", "label": "expire holds" },
+        { "path": "app/Console/Commands/ReconcilePayments.php", "label": "reconcile payments" }
+      ],
+      "pos": [40, 120],
+      "size": [190, 76]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "security-group",
+      "label": "Untrusted client boundary",
+      "wraps": ["browser"],
+      "pad": 24
+    },
+    {
+      "kind": "security-group",
+      "label": "Laravel application trust boundary",
+      "wraps": ["http", "fortify", "booking", "database", "outbox", "worker", "scheduler"],
+      "pad": 28
+    }
+  ],
+  "connections": [
+    { "id": "browse-and-submit", "from": "browser", "to": "http", "label": "HTTPS requests", "variant": "emphasis", "labelAt": [235, 300] },
+    { "id": "authenticate", "from": "http", "to": "fortify", "label": "authenticate / authorize", "variant": "security", "fromSide": "top", "toSide": "bottom", "labelAt": [480, 220] },
+    { "id": "invoke-booking", "from": "http", "to": "booking", "label": "Form Request → Action", "labelAt": [480, 300] },
+    { "id": "persist-invariants", "from": "booking", "to": "database", "label": "lock + transact", "labelAt": [730, 300] },
+    { "id": "charge-payment", "from": "booking", "to": "stripe", "label": "PaymentIntent / refund", "variant": "emphasis", "fromSide": "bottom", "toSide": "bottom", "via": [[605, 450], [1085, 450]], "labelAt": [845, 450] },
+    { "id": "stripe-webhook", "from": "stripe", "to": "http", "label": "signed webhook", "variant": "security", "fromSide": "top", "toSide": "top", "via": [[1085, 240], [470, 240], [470, 280], [360, 280]], "labelAt": [820, 228] },
+    { "id": "emit-event", "from": "booking", "to": "outbox", "label": "after commit", "variant": "dashed", "fromSide": "bottom", "toSide": "top", "labelAt": [705, 480] },
+    { "id": "dispatch-delivery", "from": "outbox", "to": "worker", "label": "queued delivery", "variant": "dashed", "labelAt": [970, 650] },
+    { "id": "send-notification", "from": "worker", "to": "mail", "label": "email", "variant": "dashed", "labelAt": [1195, 650] }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Booking invariants",
+      "items": [
+        "ScreeningSeat is the inventory source of truth",
+        "Mutations use actions, transactions, row locks, and idempotency keys",
+        "Prices are snapshotted in minor currency units"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Trust boundaries",
+      "items": [
+        "Client selection, hidden prices, and payment redirects are untrusted",
+        "Admin routes require auth plus can:admin.access",
+        "Stripe webhooks bypass CSRF but require signature and event idempotency"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Reliability",
+      "items": [
+        "Outbox dispatch occurs after commit",
+        "Workers retry deliveries with leases and idempotency keys",
+        "Scheduler expires holds and reconciles uncertain payments"
+      ]
+    }
+  ]
+}

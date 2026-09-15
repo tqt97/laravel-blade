@@ -22,6 +22,10 @@
 </head>
 
 <body class="min-h-full bg-background font-sans text-foreground antialiased transition-colors duration-300">
+    <a href="#admin-main-content"
+        class="sr-only z-50 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground focus:not-sr-only focus:fixed focus:left-4 focus:top-4">
+        {{ __('cinema.public.skip_to_content') }}
+    </a>
     <div class="admin-shell min-h-screen lg:flex" data-admin-shell data-sidebar-collapsed="false"
         data-mobile-sidebar-open="false">
         <div data-sidebar-mobile-backdrop
@@ -108,6 +112,31 @@
                     </div>
                 </div>
 
+                <div data-sidebar-group class="mb-6">
+                    <button type="button" data-sidebar-group-button aria-expanded="true"
+                        class="flex w-full items-center justify-between rounded-lg px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground transition hover:text-foreground">
+                        <span data-sidebar-label>{{ __('booking.nav.group') }}</span>
+                        <svg data-sidebar-chevron class="size-4 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+                    </button>
+                    <div data-sidebar-group-content class="mt-2 space-y-1">
+                        <x-admin.nav-item :label="__('cinema.admin.title')" href="{{ route('admin.cinema.index') }}" :active="request()->routeIs('admin.cinema.*')">
+                            <x-slot:icon><svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m4 5 16 0M4 19l16 0M6 5v14M18 5v14M9 8h6M9 16h6" /></svg></x-slot:icon>
+                        </x-admin.nav-item>
+                        <x-admin.nav-item :label="__('cinema.admin.concessions_title')" href="{{ route('admin.cinema.concessions.index') }}" :active="request()->routeIs('admin.cinema.concessions.*')">
+                            <x-slot:icon><svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 5h16v14H4z" /><path d="M8 9h8M8 13h5" /></svg></x-slot:icon>
+                        </x-admin.nav-item>
+                        <x-admin.nav-item :label="__('cinema.admin.coupons_title')" href="{{ route('admin.cinema.coupons.index') }}" :active="request()->routeIs('admin.cinema.coupons.*')">
+                            <x-slot:icon><svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v3a2 2 0 1 0 0 4v3a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-3a2 2 0 1 0 0-4V7Z" /><path d="M9 9h6M9 15h6" /></svg></x-slot:icon>
+                        </x-admin.nav-item>
+                        <x-admin.nav-item :label="__('booking.admin.bookings_title')" href="{{ route('admin.bookings.index') }}" :active="request()->routeIs('admin.bookings.*')">
+                            <x-slot:icon><svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M16 3v4M8 3v4M3 10h18" /></svg></x-slot:icon>
+                        </x-admin.nav-item>
+                        <x-admin.nav-item :label="__('cinema.reports.title')" href="{{ route('admin.reports.index') }}" :active="request()->routeIs('admin.reports.*')">
+                            <x-slot:icon><svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 19V5M4 19h16" /><path d="m7 15 3-4 3 2 4-6" /></svg></x-slot:icon>
+                        </x-admin.nav-item>
+                    </div>
+                </div>
+
                 <div data-sidebar-group>
                     <button type="button" data-sidebar-group-button aria-expanded="true"
                         class="flex w-full items-center justify-between rounded-lg px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground transition hover:text-foreground">
@@ -188,7 +217,7 @@
                             </svg></button></form>
                 </div>
             </header>
-            <main class="p-5 sm:p-8">{{ $slot }}</main>
+            <main id="admin-main-content" class="p-5 sm:p-8">{{ $slot }}</main>
         </div>
     </div>
 </body>

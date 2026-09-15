@@ -146,6 +146,9 @@ export const initModals = () => {
                 input.value = id;
                 form.append(input);
             });
+            modal.querySelectorAll('[data-modal-input]').forEach((field) => {
+                if (field.name && field.value.trim() !== '') appendHiddenInput(field.name, field.value.trim());
+            });
             confirmButton.disabled = true;
             document.body.append(form);
             form.submit();

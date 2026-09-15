@@ -1,17 +1,59 @@
 <?php
 
+use App\Http\Controllers\Admin\BookingController;
+use App\Http\Controllers\Admin\BookingReportController;
+use App\Http\Controllers\Admin\CatalogController;
+use App\Http\Controllers\Admin\ConcessionController;
+use App\Http\Controllers\Admin\CouponController;
+use App\Http\Controllers\Admin\RedirectToDashboardController;
+use App\Http\Controllers\Admin\TicketController;
 use App\Http\Controllers\Admin\UserController;
 use Illuminate\Support\Facades\Route;
 
-Route::get('/', fn () => redirect()->route('admin.dashboard'))->name('home');
+// Admin landing and static workspace pages.
+Route::get('/', RedirectToDashboardController::class)->name('home');
 
 Route::view('/dashboard', 'dashboard')->name('dashboard');
 Route::view('/samples', 'admin.samples')->name('samples');
 Route::view('/blank', 'admin.blank')->name('blank');
+
+// Booking operations and reports.
+Route::middleware('can:view-bookings')->group(function (): void {
+    Route::get('/bookings', [BookingController::class, 'index'])->name('bookings.index');
+    Route::get('/reports', BookingReportController::class)->name('reports.index');
+});
+
+// Catalog management: movies, rooms, screenings and coupons.
+Route::middleware('can:manage-cinema')->group(function (): void {
+    Route::get('/cinema', [CatalogController::class, 'index'])->name('cinema.index');
+    Route::get('/cinema/coupons', [CouponController::class, 'index'])->name('cinema.coupons.index');
+    Route::post('/cinema/movies', [CatalogController::class, 'storeMovie'])->name('cinema.movies.store');
+    Route::post('/cinema/rooms', [CatalogController::class, 'storeRoom'])->name('cinema.rooms.store');
+    Route::post('/cinema/screenings', [CatalogController::class, 'storeScreening'])->name('cinema.screenings.store');
+    Route::post('/cinema/coupons', [CouponController::class, 'store'])->name('cinema.coupons.store');
+});
+
+// Commerce inventory management: concessions and stock adjustments.
+Route::middleware('can:manage-inventory')->group(function (): void {
+    Route::get('/cinema/concessions', [ConcessionController::class, 'index'])->name('cinema.concessions.index');
+    Route::post('/cinema/concessions', [ConcessionController::class, 'store'])->name('cinema.concessions.store');
+    Route::patch('/cinema/concessions/{concession}', [ConcessionController::class, 'update'])->name('cinema.concessions.update');
+});
+
+// Booking cancellation/refund operations.
+Route::middleware(['can:refund-bookings', 'throttle:booking-mutations'])->group(function (): void {
+    Route::patch('/bookings/{booking}/cancel', [BookingController::class, 'cancel'])->name('bookings.cancel');
+    Route::post('/bookings/{booking}/refund', [BookingController::class, 'refund'])->name('bookings.refund');
+});
+
+// Ticket operations and protected settings.
+Route::post('/tickets/check-in', TicketController::class)->middleware(['can:check-in-tickets', 'throttle:booking-mutations'])->name('tickets.check-in');
 Route::view('/settings/security', 'admin.settings.security')
     ->middleware('password.confirm')
     ->name('settings.security');
 
+// User management requires the explicit admin ability in addition to the
+// parent authenticated/admin route group from bootstrap/app.php.
 Route::middleware('can:manage-users')->group(function (): void {
     Route::patch('/users/bulk-restore', [UserController::class, 'bulkRestore'])->name('users.bulk-restore');
     Route::delete('/users/bulk-force-delete', [UserController::class, 'bulkForceDestroy'])->name('users.bulk-force-delete');

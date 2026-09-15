@@ -21,11 +21,12 @@ class UserManagementAuditLogger
             'metadata' => $metadata,
         ]);
 
-        Log::channel(config('audit.monitoring.log_channel', 'stack'))->info('user_management.audit_recorded', [
-            'action' => $action,
-            'actor_id' => $actor?->getKey(),
-            'target_user_id' => $target?->getKey(),
-        ]);
+        Log::channel(config('audit.monitoring.log_channel', 'stack'))
+            ->info('user_management.audit_recorded', [
+                'action' => $action,
+                'actor_id' => $actor?->getKey(),
+                'target_user_id' => $target?->getKey(),
+            ]);
     }
 
     /**
@@ -52,11 +53,12 @@ class UserManagementAuditLogger
         if ($rows !== []) {
             UserManagementAudit::query()->insert($rows);
 
-            Log::channel(config('audit.monitoring.log_channel', 'stack'))->info('user_management.bulk_audit_recorded', [
-                'action' => $action,
-                'actor_id' => $actor?->getKey(),
-                'count' => count($rows),
-            ]);
+            Log::channel(config('audit.monitoring.log_channel', 'stack'))
+                ->info('user_management.bulk_audit_recorded', [
+                    'action' => $action,
+                    'actor_id' => $actor?->getKey(),
+                    'count' => count($rows),
+                ]);
         }
     }
 }
