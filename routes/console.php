@@ -18,6 +18,7 @@ Schedule::command('payments:recover-stuck')->everyMinute()->withoutOverlapping()
 Schedule::command('payments:alert-stuck')->everyFiveMinutes()->withoutOverlapping()->onOneServer();
 Schedule::command('payments:retry-refunds')->everyFiveMinutes()->withoutOverlapping()->onOneServer();
 Schedule::command('booking:send-reminders')->everyMinute()->withoutOverlapping()->onOneServer();
+Schedule::command('payments:prune-webhooks')->dailyAt('03:30')->withoutOverlapping()->onOneServer();
 
 DevCommands::artisan('schedule:work', 'scheduler');
 DevCommands::artisan('queue:work --tries=3 --timeout=90', 'queue');

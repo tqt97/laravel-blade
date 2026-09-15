@@ -62,7 +62,7 @@ final class CheckInTicket
             }
 
             $item->setAttribute('status', TicketStatus::CheckedIn);
-            $item->setAttribute('checked_in_at', now());
+            $item->setAttribute('checked_in_at', BookingClock::now());
             $item->setAttribute('checked_in_by', $staffId);
 
             $item->save();

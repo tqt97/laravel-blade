@@ -36,4 +36,9 @@ enum PaymentAttemptStatus: string
             self::Failed => false,
         };
     }
+
+    public function isTerminal(): bool
+    {
+        return ! $this->isOpen();
+    }
 }

@@ -7,9 +7,11 @@ use App\Enums\Payment\PaymentStatus;
 use App\Enums\Payment\RefundAttemptStatus;
 use App\Enums\Ticketing\TicketStatus;
 use App\Exceptions\Booking\BookingOperationFailed;
+use App\Jobs\FinalizeRefundAttempt;
 use App\Models\Booking\Booking;
 use App\Models\Payment\Payment;
 use App\Models\Payment\RefundAttempt;
+use App\Support\Booking\BookingClock;
 use App\Support\Payment\PaymentResult;
 use App\Support\Payment\PaymentStateMachine;
 use Illuminate\Support\Facades\DB;
@@ -64,7 +66,7 @@ final class RefundBooking
                 return ['payment' => $payment, 'attempt' => null, 'provider_already_refunded' => false];
             }
             if ($existing?->getRawOriginal('status') === RefundAttemptStatus::Unknown->value) {
-                $existing->forceFill(['status' => RefundAttemptStatus::Processing, 'failure_message' => null, 'started_at' => now()])->save();
+                $existing->forceFill(['status' => RefundAttemptStatus::Processing, 'failure_message' => null, 'started_at' => BookingClock::now()])->save();
 
                 return ['payment' => $payment, 'attempt' => $existing, 'provider_already_refunded' => false];
             }
@@ -82,7 +84,7 @@ final class RefundBooking
             $attempt = $payment->refundAttempts()->create([
                 'attempt_key' => config('booking.payment.refund_idempotency_key_prefix', 'booking-refund-').$payment->id.'-'.$attemptNumber,
                 'status' => RefundAttemptStatus::Processing,
-                'started_at' => now(),
+                'started_at' => BookingClock::now(),
             ]);
             if ($this->stateMachine->canTransition($paymentStatus, PaymentStatus::Refunding)) {
                 $payment->setAttribute('status', PaymentStatus::Refunding);
@@ -102,7 +104,7 @@ final class RefundBooking
             try {
                 $result = $this->gateway->refund($payment);
             } catch (Throwable $exception) {
-                $claim['attempt']->forceFill(['status' => RefundAttemptStatus::Unknown, 'failure_message' => __('booking.messages.refund_provider_unavailable'), 'next_reconcile_at' => now()->addMinutes((int) config('booking.payment.refund_reconciliation_retry_minutes', 5))])->save();
+                $claim['attempt']->forceFill(['status' => RefundAttemptStatus::Unknown, 'failure_message' => __('booking.messages.refund_provider_unavailable'), 'next_reconcile_at' => BookingClock::now()->addMinutes((int) config('booking.payment.refund_reconciliation_retry_minutes', 5))])->save();
                 report($exception);
 
                 return $payment->refresh();
@@ -114,14 +116,14 @@ final class RefundBooking
                 'status' => RefundAttemptStatus::Pending,
                 'provider_refund_id' => $result->providerPaymentId,
                 'metadata' => $result->metadata,
-                'next_reconcile_at' => now()->addMinutes((int) config('booking.payment.refund_reconciliation_retry_minutes', 5)),
+                'next_reconcile_at' => BookingClock::now()->addMinutes((int) config('booking.payment.refund_reconciliation_retry_minutes', 5)),
             ])->save();
 
             return $payment->refresh();
         }
 
         if ($result->status !== 'refunded') {
-            $claim['attempt']->forceFill(['status' => RefundAttemptStatus::Failed, 'failure_message' => $result->failureMessage, 'metadata' => $result->metadata, 'completed_at' => now()])->save();
+            $claim['attempt']->forceFill(['status' => RefundAttemptStatus::Failed, 'failure_message' => $result->failureMessage, 'metadata' => $result->metadata, 'completed_at' => BookingClock::now()])->save();
             $payment->forceFill([
                 'status' => PaymentStatus::RequiresRefund,
                 'failure_message' => $result->failureMessage,
@@ -139,7 +141,8 @@ final class RefundBooking
             return $payment->refresh();
         }
 
-        $claim['attempt']->forceFill(['status' => RefundAttemptStatus::Succeeded, 'provider_refund_id' => $result->providerPaymentId, 'metadata' => $result->metadata, 'completed_at' => now()])->save();
+        $claim['attempt']->forceFill(['status' => RefundAttemptStatus::Succeeded, 'provider_refund_id' => $result->providerPaymentId, 'metadata' => $result->metadata, 'completed_at' => BookingClock::now()])->save();
+        FinalizeRefundAttempt::dispatch($claim['attempt']->getKey())->afterCommit();
 
         return $this->finalizeRefund->execute($payment, $result->metadata);
     }

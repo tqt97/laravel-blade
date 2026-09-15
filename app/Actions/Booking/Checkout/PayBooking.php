@@ -4,6 +4,7 @@ namespace App\Actions\Booking\Checkout;
 
 use App\Actions\Booking\Lifecycle\TransitionBooking;
 use App\Actions\Booking\Payment\FinalizeSuccessfulPayment;
+use App\Actions\Booking\Payment\MarkPaymentProviderUnknown;
 use App\Actions\Commerce\Concessions\SyncBookingConcessions;
 use App\Actions\Payment\TransitionPayment;
 use App\Contracts\PaymentGateway;
@@ -29,6 +30,7 @@ final class PayBooking
     public function __construct(
         private readonly PaymentGateway $gateway,
         private readonly FinalizeSuccessfulPayment $finalizeSuccessfulPayment,
+        private readonly MarkPaymentProviderUnknown $markPaymentProviderUnknown,
         private readonly SyncBookingConcessions $syncBookingConcessions,
         private readonly PaymentStateMachine $stateMachine,
     ) {}
@@ -136,24 +138,10 @@ final class PayBooking
         try {
             $result = $this->gateway->charge($payment);
         } catch (Throwable $exception) {
-            $claim['attempt']?->forceFill([
-                'status' => PaymentAttemptStatus::Unknown,
-                'failure_message' => __('booking.messages.payment_provider_unavailable'),
-            ])->save();
-
-            app(TransitionPayment::class)->execute(
-                $payment,
-                PaymentAttemptStatus::Unknown,
-                failureMessage: __('booking.messages.payment_provider_unavailable'),
-            );
-
-            $payment->forceFill([
-                // Keep the claim processing so a retry cannot create a
-                // second provider intent before reconciliation identifies
-                // the first one by its attempt key.
-                'status' => PaymentStatus::Processing,
-                'failure_message' => __('booking.messages.payment_provider_unavailable'),
-            ])->save();
+            // The provider may have accepted the intent before the client
+            // observed a timeout. Only mark the exact claimed attempt and
+            // never overwrite a concurrent succeeded/refunded payment.
+            $payment = $this->markPaymentProviderUnknown->execute($payment, $claim['attempt']?->getKey());
 
             ReconcilePayment::dispatch($payment->getKey())->afterCommit();
 

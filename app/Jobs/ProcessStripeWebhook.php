@@ -16,6 +16,7 @@ use App\Models\Booking\Booking;
 use App\Models\Payment\Payment;
 use App\Models\Payment\PaymentWebhookEvent;
 use App\Models\Payment\RefundAttempt;
+use App\Support\Booking\BookingClock;
 use App\Support\Payment\PaymentStateMachine;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -65,7 +66,7 @@ class ProcessStripeWebhook implements ShouldQueue
 
             $event->forceFill([
                 'processing_attempts' => ((int) $event->processing_attempts) + 1,
-                'last_attempt_at' => now(),
+                'last_attempt_at' => BookingClock::now(),
             ])->save();
 
             $providerPaymentId = (string) $event->provider_payment_id;
@@ -79,7 +80,7 @@ class ProcessStripeWebhook implements ShouldQueue
                 ->first();
 
             if ($payment === null) {
-                $event->forceFill(['orphaned_at' => now()])->save();
+                $event->forceFill(['orphaned_at' => BookingClock::now()])->save();
 
                 return ['status' => StripeWebhookProcessingResult::Orphan];
             }
@@ -90,7 +91,7 @@ class ProcessStripeWebhook implements ShouldQueue
             $eventType = (string) ($payload['type'] ?? '');
 
             if ($payment->getAttribute('payable_type') !== Booking::class) {
-                $event->forceFill(['processed_at' => now(), 'orphaned_at' => null])->save();
+                $event->forceFill(['processed_at' => BookingClock::now(), 'orphaned_at' => null])->save();
 
                 return ['status' => StripeWebhookProcessingResult::Done];
             }
@@ -98,7 +99,7 @@ class ProcessStripeWebhook implements ShouldQueue
             $booking = Booking::query()->whereKey($payment->getAttribute('payable_id'))->lockForUpdate()->first();
             if ($booking === null) {
                 $event->forceFill([
-                    'failed_at' => now(),
+                    'failed_at' => BookingClock::now(),
                     'failure_message' => __('booking.messages.payment_webhook_booking_missing'),
                 ])->save();
 
@@ -110,7 +111,7 @@ class ProcessStripeWebhook implements ShouldQueue
             $webhookEventType = StripeWebhookEventType::tryFromPayload($eventType);
             if ($webhookEventType !== null && ! $this->matchesPayment($payment, $object, $webhookEventType->usesReceivedAmount())) {
                 $event->forceFill([
-                    'failed_at' => now(),
+                    'failed_at' => BookingClock::now(),
                     'failure_message' => __('booking.messages.payment_webhook_mismatch'),
                 ])->save();
 
@@ -133,7 +134,7 @@ class ProcessStripeWebhook implements ShouldQueue
                 $payment->setAttribute('provider_payment_id', $providerPaymentId);
 
                 if ($target === PaymentStatus::Succeeded) {
-                    $payment->setAttribute('paid_at', now());
+                    $payment->setAttribute('paid_at', BookingClock::now());
                 }
 
                 if ($target === PaymentStatus::Failed) {
@@ -142,7 +143,7 @@ class ProcessStripeWebhook implements ShouldQueue
                 }
 
                 if ($target->isProcessingState()) {
-                    $payment->setAttribute('processing_started_at', $payment->processing_started_at ?? now());
+                    $payment->setAttribute('processing_started_at', $payment->processing_started_at ?? BookingClock::now());
                 }
 
                 if ($target->requiresClientAction()) {
@@ -163,7 +164,7 @@ class ProcessStripeWebhook implements ShouldQueue
 
             if ($target !== PaymentStatus::Succeeded || ($current !== PaymentStatus::Succeeded && $shouldApply === false)) {
                 $event->forceFill([
-                    'processed_at' => now(),
+                    'processed_at' => BookingClock::now(),
                     'orphaned_at' => null,
                 ])->save();
 
@@ -179,7 +180,7 @@ class ProcessStripeWebhook implements ShouldQueue
             } else {
                 PaymentWebhookEvent::query()->forProvider(PaymentProvider::Stripe)
                     ->where('event_id', $this->eventId)
-                    ->update(['failed_at' => now(), 'failure_message' => __('booking.messages.payment_webhook_orphan_retry_exhausted')]);
+                    ->update(['failed_at' => BookingClock::now(), 'failure_message' => __('booking.messages.payment_webhook_orphan_retry_exhausted')]);
             }
 
             return;
@@ -195,7 +196,7 @@ class ProcessStripeWebhook implements ShouldQueue
         PaymentWebhookEvent::query()
             ->forProvider(PaymentProvider::Stripe)
             ->where('event_id', $this->eventId)
-            ->update(['processed_at' => now(), 'orphaned_at' => null]);
+            ->update(['processed_at' => BookingClock::now(), 'orphaned_at' => null]);
     }
 
     private function handleRefundWebhook(StripeWebhookEventType $eventType, ?PaymentWebhookEvent $event, FinalizeRefund $finalizeRefund): void
@@ -211,6 +212,17 @@ class ProcessStripeWebhook implements ShouldQueue
         $paymentIntentId = (string) ($object['payment_intent'] ?? '');
         $status = StripeRefundStatus::tryFrom((string) ($object['status'] ?? ($eventType === StripeWebhookEventType::RefundFailed ? StripeRefundStatus::Failed->value : '')));
 
+        if ($refundId === '' || $paymentIntentId === '') {
+            DB::transaction(function () use ($event): void {
+                PaymentWebhookEvent::query()->whereKey($event->getKey())->lockForUpdate()->firstOrFail()->forceFill([
+                    'failed_at' => BookingClock::now(),
+                    'failure_message' => __('booking.messages.refund_webhook_missing_payment_intent'),
+                ])->save();
+            }, 3);
+
+            return;
+        }
+
         $paymentId = DB::transaction(function () use ($event, $object, $refundId, $paymentIntentId, $status): ?int {
             $lockedEvent = PaymentWebhookEvent::query()->whereKey($event->getKey())->lockForUpdate()->firstOrFail();
             $payment = Payment::query()->forProvider(PaymentProvider::Stripe)
@@ -221,13 +233,13 @@ class ProcessStripeWebhook implements ShouldQueue
                 ->lockForUpdate()
                 ->first();
             if ($payment === null || blank($refundId)) {
-                $lockedEvent->forceFill(['failed_at' => now(), 'failure_message' => __('booking.messages.refund_webhook_unlinked')])->save();
+                $lockedEvent->forceFill(['failed_at' => BookingClock::now(), 'failure_message' => __('booking.messages.refund_webhook_unlinked')])->save();
 
                 return null;
             }
 
             if ($payment->getRawOriginal('status') === PaymentStatus::Refunded->value) {
-                $lockedEvent->forceFill(['processed_at' => now(), 'orphaned_at' => null])->save();
+                $lockedEvent->forceFill(['processed_at' => BookingClock::now(), 'orphaned_at' => null])->save();
 
                 return null;
             }
@@ -240,7 +252,7 @@ class ProcessStripeWebhook implements ShouldQueue
                 $attempt = $payment->refundAttempts()->create([
                     'attempt_key' => config('booking.payment.refund_webhook_attempt_key_prefix', 'stripe-webhook-refund-').$refundId,
                     'status' => RefundAttemptStatus::Processing,
-                    'started_at' => now(),
+                    'started_at' => BookingClock::now(),
                 ]);
             }
 
@@ -254,8 +266,8 @@ class ProcessStripeWebhook implements ShouldQueue
                 'provider_refund_id' => $refundId,
                 'metadata' => $object,
                 'failure_message' => $attemptStatus === RefundAttemptStatus::Failed ? (string) ($object['failure_reason'] ?? 'Stripe refund failed.') : null,
-                'completed_at' => $attemptStatus === RefundAttemptStatus::Pending ? null : now(),
-                'next_reconcile_at' => $attemptStatus === RefundAttemptStatus::Pending ? now()->addMinutes((int) config('booking.payment.refund_reconciliation_retry_minutes', 5)) : null,
+                'completed_at' => $attemptStatus === RefundAttemptStatus::Pending ? null : BookingClock::now(),
+                'next_reconcile_at' => $attemptStatus === RefundAttemptStatus::Pending ? BookingClock::now()->addMinutes((int) config('booking.payment.refund_reconciliation_retry_minutes', 5)) : null,
             ])->save();
 
             if ($attemptStatus === RefundAttemptStatus::Failed) {
@@ -263,7 +275,7 @@ class ProcessStripeWebhook implements ShouldQueue
             } elseif ($attemptStatus === RefundAttemptStatus::Pending) {
                 $payment->forceFill(['status' => PaymentStatus::Refunding])->save();
             }
-            $lockedEvent->forceFill(['processed_at' => now(), 'orphaned_at' => null])->save();
+            $lockedEvent->forceFill(['processed_at' => BookingClock::now(), 'orphaned_at' => null])->save();
 
             return $attemptStatus === RefundAttemptStatus::Succeeded ? $payment->getKey() : null;
         }, 3);

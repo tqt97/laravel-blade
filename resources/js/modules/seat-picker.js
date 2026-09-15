@@ -218,6 +218,7 @@ export const initSeatPickers = () => {
 
                     const selected = Number(input.value ?? 0);
                     const maximum = Number(availability.max ?? 0);
+                    comboStockLimits.set(input, Math.max(0, maximum));
                     const unavailable = Number(availability.stock) === 0 && selected === 0;
                     input.max = String(Math.max(selected, maximum));
                     input.disabled = unavailable;

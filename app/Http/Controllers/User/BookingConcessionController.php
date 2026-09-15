@@ -3,11 +3,13 @@
 namespace App\Http\Controllers\User;
 
 use App\Actions\Commerce\Concessions\SyncBookingConcessions;
+use App\Enums\Booking\BookingStatus;
 use App\Exceptions\Booking\BookingOperationFailed;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\User\SyncBookingConcessionsRequest;
 use App\Models\Booking\Booking;
 use App\Queries\Commerce\AvailableConcessionsQuery;
+use App\Support\Booking\BookingClock;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Validation\ValidationException;
@@ -19,10 +21,10 @@ final class BookingConcessionController extends Controller
     {
         $this->authorize('changeCombos', $booking);
 
-        abort_unless($booking->getRawOriginal('status') === 'held', 404);
+        abort_unless(BookingStatus::tryFrom((string) $booking->getRawOriginal('status')) === BookingStatus::Held, 404);
 
         $concessions = $concessionsQuery->availability($booking);
-        $serverNow = now();
+        $serverNow = BookingClock::now();
 
         return response()->json([
             'concessions' => $concessions,
@@ -36,7 +38,7 @@ final class BookingConcessionController extends Controller
     {
         $this->authorize('view', $booking);
 
-        abort_unless($booking->getRawOriginal('status') === 'held', 404);
+        abort_unless(BookingStatus::tryFrom((string) $booking->getRawOriginal('status')) === BookingStatus::Held, 404);
 
         $booking->load([
             'screening.movie',

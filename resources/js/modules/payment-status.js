@@ -3,6 +3,7 @@ const poll = (root) => {
     let timer;
     let redirecting = false;
     let attempts = 0;
+    let transportFailures = 0;
     const terminalStatuses = new Set((root.dataset.terminalStatuses ?? '').split(',').filter(Boolean));
     const pollInterval = Number(root.dataset.pollIntervalMs ?? 3000);
     const errorRetryInterval = Number(root.dataset.errorRetryIntervalMs ?? 5000);
@@ -13,10 +14,17 @@ const poll = (root) => {
         try {
             const response = await fetch(statusUrl, { headers: { Accept: 'application/json' } });
             if (!response.ok) {
-                timer = window.setTimeout(check, errorRetryInterval);
+                if ([401, 403, 419].includes(response.status)) {
+                    root.dispatchEvent(new CustomEvent('payment:session-error', { detail: response.status }));
+                    return;
+                }
+                transportFailures += 1;
+                const delay = Math.min(errorRetryInterval * (2 ** Math.min(transportFailures, 4)), 30000);
+                timer = window.setTimeout(check, delay);
                 return;
             }
             const data = await response.json();
+            transportFailures = 0;
             attempts += 1;
             if (data.redirect) {
                 redirecting = true;
@@ -39,7 +47,9 @@ const poll = (root) => {
             }
             timer = window.setTimeout(check, pollInterval);
         } catch {
-            timer = window.setTimeout(check, errorRetryInterval);
+            transportFailures += 1;
+            const delay = Math.min(errorRetryInterval * (2 ** Math.min(transportFailures, 4)), 30000);
+            timer = window.setTimeout(check, delay);
         }
     };
 
@@ -90,10 +100,15 @@ export const initPaymentStatus = () => {
                 }, Number(root.dataset.delayedNoticeMs ?? 45000));
             }
         };
-        root.addEventListener('payment:terminal', () => {
+        root.addEventListener('payment:terminal', (event) => {
             setSubmitting(false);
             setProcessing(false);
-            showError(root.dataset.errorLabel ?? '');
+            const messages = {
+                failed: root.dataset.failedLabel,
+                requires_refund: root.dataset.requiresRefundLabel,
+                refunded: root.dataset.refundedLabel,
+            };
+            showError(messages[event.detail] ?? root.dataset.errorLabel ?? '');
         }, { once: true });
         root.addEventListener('payment:stalled', () => {
             setSubmitting(false);
@@ -103,6 +118,11 @@ export const initPaymentStatus = () => {
         root.addEventListener('payment:method-required', () => {
             setSubmitting(false);
             setProcessing(false);
+        }, { once: true });
+        root.addEventListener('payment:session-error', () => {
+            setSubmitting(false);
+            setProcessing(false);
+            showError(root.dataset.sessionErrorLabel ?? root.dataset.errorLabel ?? '');
         }, { once: true });
 
         try {

@@ -25,7 +25,7 @@ final class TicketController extends Controller
             'screeningSeat.seat',
         ]);
 
-        abort_unless($ticket->booking->getAttribute('user_id') === auth()->id(), 403);
+        $this->authorize('view', $ticket);
 
         abort_unless(BookingStatus::tryFrom((string) $ticket->booking->getRawOriginal('status'))?->isTicketAccessible() === true, 404);
 
@@ -35,7 +35,7 @@ final class TicketController extends Controller
         $verificationGraceHours = (int) config('booking.ticket.verification_grace_hours', 24);
         $verificationExpiresAt = $rawEndsAt !== null
             ? BookingClock::parseStored((string) $rawEndsAt)?->addHours($verificationGraceHours)
-            : now()->addHours($verificationGraceHours);
+            : BookingClock::now()->addHours($verificationGraceHours);
 
         $verifyUrl = URL::temporarySignedRoute('user.tickets.verify', $verificationExpiresAt, ['ticket' => $ticket->ticket_code]);
 

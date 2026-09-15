@@ -86,6 +86,7 @@ return [
         // Payment and webhook records older than this age are operational anomalies.
         'payment_anomaly_age_minutes' => (int) env('BOOKING_PAYMENT_ANOMALY_AGE_MINUTES', 15),
         'orphan_webhook_age_minutes' => (int) env('BOOKING_ORPHAN_WEBHOOK_AGE_MINUTES', 15),
+        'webhook_retention_days' => (int) env('BOOKING_WEBHOOK_RETENTION_DAYS', 90),
     ],
 
     // A delivery lease can be reclaimed when a queue worker dies mid-send.

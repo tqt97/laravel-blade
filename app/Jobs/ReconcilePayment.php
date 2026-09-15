@@ -71,7 +71,7 @@ class ReconcilePayment implements ShouldQueue
                     'provider_payment_id' => $providerStatus->providerPaymentId,
                     'provider_metadata' => $providerMetadata,
                     'reconciliation_attempted_at' => null,
-                    'next_reconcile_at' => now(),
+                    'next_reconcile_at' => BookingClock::now(),
                     'reconciliation_deadline' => BookingClock::parseStored($payment->getRawOriginal('reconciliation_deadline'))
                         ?? BookingClock::now()->addMinutes((int) config('booking.payment.reconciliation_deadline_minutes', 30)),
                 ])->save();
@@ -101,13 +101,13 @@ class ReconcilePayment implements ShouldQueue
             $error = $providerStatus->failureMessage ?? __('booking.messages.payment_provider_unavailable');
             $payment->forceFill([
                 'reconciliation_attempts' => ((int) $payment->reconciliation_attempts) + 1,
-                'reconciliation_attempted_at' => now(),
+                'reconciliation_attempted_at' => BookingClock::now(),
                 'reconciliation_deadline' => $deadline,
                 'last_reconciliation_error' => $error,
-                'next_reconcile_at' => now()->addSeconds($this->retryDelay($deadline)),
+                'next_reconcile_at' => BookingClock::now()->addSeconds($this->retryDelay($deadline)),
             ])->save();
 
-            if (now()->greaterThanOrEqualTo($deadline)) {
+            if (BookingClock::now()->greaterThanOrEqualTo($deadline)) {
                 $payment->forceFill([
                     'status' => PaymentStatus::Unknown,
                     'next_reconcile_at' => null,
@@ -160,7 +160,7 @@ class ReconcilePayment implements ShouldQueue
                 'last_reconciliation_error' => null,
                 'failure_message' => $providerStatus->failureMessage,
                 'processing_started_at' => $status === PaymentStatus::Succeeded || $status === PaymentStatus::Failed ? null : $locked->processing_started_at,
-                'paid_at' => $status === PaymentStatus::Succeeded ? now() : $locked->paid_at,
+                'paid_at' => $status === PaymentStatus::Succeeded ? BookingClock::now() : $locked->paid_at,
             ])->save();
             app(TransitionPayment::class)->execute(
                 $locked,
@@ -195,7 +195,7 @@ class ReconcilePayment implements ShouldQueue
 
     private function retryDelay(CarbonImmutable $deadline): int
     {
-        $now = now();
+        $now = BookingClock::now();
         $windowStart = $deadline->subMinutes((int) config('booking.payment.reconciliation_deadline_minutes', 30));
         $fastWindowEnd = $windowStart->addMinutes((int) config('booking.payment.reconciliation_fast_window_minutes', 5));
 

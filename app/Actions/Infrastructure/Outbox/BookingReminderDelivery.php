@@ -6,24 +6,15 @@ use App\Contracts\OutboxDeliveryHandler;
 use App\Mail\BookingReminderMail;
 use App\Models\Booking\Booking;
 use App\Models\User;
-use App\Notifications\BookingNotification;
 use Illuminate\Support\Facades\Mail;
 
 final class BookingReminderDelivery implements OutboxDeliveryHandler
 {
+    public function __construct(private readonly NotifyBookingOnce $notifyBookingOnce) {}
+
     public function execute(User $user, Booking $booking): void
     {
-        $this->notifyOnce($user, $booking, 'booking_reminder');
+        $this->notifyBookingOnce->execute($user, $booking, 'booking_reminder');
         Mail::to($user)->send(new BookingReminderMail($booking));
-    }
-
-    private function notifyOnce(User $user, Booking $booking, string $event): void
-    {
-        $key = $event.':'.$booking->getKey();
-        if ($user->notifications()->where('data->key', $key)->exists()) {
-            return;
-        }
-
-        $user->notify(new BookingNotification($booking, $event));
     }
 }

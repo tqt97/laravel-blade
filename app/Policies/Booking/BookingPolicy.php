@@ -51,6 +51,10 @@ final class BookingPolicy
             return true;
         }
 
+        if ($status === null) {
+            return false;
+        }
+
         if (! $status->isPayable()) {
             return false;
         }

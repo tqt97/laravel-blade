@@ -31,7 +31,11 @@
         data-action-label="{{ __('booking.checkout.payment_action_button') }}"
         data-unavailable-label="{{ __('booking.checkout.payment_action_unavailable') }}"
         data-error-label="{{ __('booking.checkout.payment_action_failed') }}"
-        data-unknown-stalled-label="{{ __('booking.checkout.payment_unknown_stalled') }}">
+        data-unknown-stalled-label="{{ __('booking.checkout.payment_unknown_stalled') }}"
+        data-failed-label="{{ __('booking.checkout.payment_failed_status') }}"
+        data-requires-refund-label="{{ __('booking.checkout.payment_requires_refund_status') }}"
+        data-refunded-label="{{ __('booking.checkout.payment_refunded_status') }}"
+        data-session-error-label="{{ __('booking.checkout.payment_session_error') }}">
 
         <x-cinema.booking-stepper current="payment" />
         <a href="{{ route('user.bookings.checkout', $booking) }}"

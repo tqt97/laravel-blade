@@ -7,8 +7,10 @@ use App\Contracts\PaymentStatusRetriever;
 use App\Contracts\RefundStatusRetriever;
 use App\Enums\Payment\PaymentProvider;
 use App\Models\Booking\Booking;
+use App\Models\Booking\BookingItem;
 use App\Models\User;
 use App\Policies\Booking\BookingPolicy;
+use App\Policies\BookingItemPolicy;
 use App\Support\Payment\FakePaymentGateway;
 use App\Support\Payment\StripePaymentGateway;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -63,6 +65,13 @@ class AppServiceProvider extends ServiceProvider
             Gate::define($ability, fn (User $user): bool => $user->is_admin);
         }
         Gate::policy(Booking::class, BookingPolicy::class);
+        Gate::policy(BookingItem::class, BookingItemPolicy::class);
+
+        RateLimiter::for('payment-sync', function (Request $request): Limit {
+            $user = $request->user();
+
+            return Limit::perMinute(12)->by((string) ($user !== null ? $user->id : $request->ip()));
+        });
 
         RateLimiter::for('booking-mutations', function (Request $request): Limit {
             $user = $request->user();

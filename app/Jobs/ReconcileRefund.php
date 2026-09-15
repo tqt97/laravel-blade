@@ -43,7 +43,7 @@ class ReconcileRefund implements ShouldQueue
             $payment = Payment::query()->whereKey($locked->getAttribute('payment_id'))->lockForUpdate()->firstOrFail();
 
             if ($provider->providerRefundId !== $locked->getAttribute('provider_refund_id') || $provider->providerPaymentId !== null && $provider->providerPaymentId !== $payment->getAttribute('provider_payment_id')) {
-                $locked->forceFill(['status' => RefundAttemptStatus::Unknown, 'failure_message' => __('booking.messages.refund_provider_identity_mismatch'), 'next_reconcile_at' => now()->addMinutes((int) config('booking.payment.refund_reconciliation_retry_minutes', 5))])->save();
+                $locked->forceFill(['status' => RefundAttemptStatus::Unknown, 'failure_message' => __('booking.messages.refund_provider_identity_mismatch'), 'next_reconcile_at' => BookingClock::now()->addMinutes((int) config('booking.payment.refund_reconciliation_retry_minutes', 5))])->save();
 
                 return null;
             }
@@ -61,8 +61,8 @@ class ReconcileRefund implements ShouldQueue
                 'status' => $status,
                 'metadata' => $provider->metadata,
                 'failure_message' => $provider->failureMessage,
-                'completed_at' => $status->isCompleted() ? now() : null,
-                'next_reconcile_at' => ! $manualReview && ! $status->isCompleted() ? now()->addMinutes((int) config('booking.payment.refund_reconciliation_retry_minutes', 5)) : null,
+                'completed_at' => $status->isCompleted() ? BookingClock::now() : null,
+                'next_reconcile_at' => ! $manualReview && ! $status->isCompleted() ? BookingClock::now()->addMinutes((int) config('booking.payment.refund_reconciliation_retry_minutes', 5)) : null,
             ])->save();
 
             if ($manualReview) {
@@ -79,7 +79,9 @@ class ReconcileRefund implements ShouldQueue
         }, 3);
 
         if ($paymentId !== null) {
-            $finalizeRefund->execute(Payment::query()->findOrFail($paymentId), $provider->metadata);
+            $payment = Payment::query()->findOrFail($paymentId);
+            FinalizeRefundAttempt::dispatch($this->refundAttemptId)->afterCommit();
+            $finalizeRefund->execute($payment, $provider->metadata);
         }
     }
 }

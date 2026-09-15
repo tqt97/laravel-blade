@@ -8,6 +8,7 @@ use App\Enums\Payment\StripeWebhookIngestResult;
 use App\Models\Booking\Booking;
 use App\Models\Payment\Payment;
 use App\Models\Payment\PaymentWebhookEvent;
+use App\Support\Booking\BookingClock;
 use Illuminate\Support\Facades\DB;
 
 final class IngestStripeWebhook
@@ -21,6 +22,15 @@ final class IngestStripeWebhook
                 'event_id' => $eventId,
             ], ['payload' => $data]);
 
+            if (! $event->wasRecentlyCreated && hash('sha256', json_encode($event->payload, JSON_THROW_ON_ERROR)) !== hash('sha256', json_encode($data, JSON_THROW_ON_ERROR))) {
+                $event->forceFill([
+                    'failed_at' => BookingClock::now(),
+                    'failure_message' => __('booking.messages.payment_webhook_duplicate_payload'),
+                ])->save();
+
+                return StripeWebhookIngestResult::Rejected;
+            }
+
             if ($event->processed_at !== null) {
                 return StripeWebhookIngestResult::Ready;
             }
@@ -32,7 +42,7 @@ final class IngestStripeWebhook
             $eventType = StripeWebhookEventType::tryFromPayload($data['type'] ?? null);
             if ($eventType === null) {
                 $event->forceFill([
-                    'processed_at' => now(),
+                    'processed_at' => BookingClock::now(),
                     'failure_message' => __('booking.messages.payment_webhook_unsupported'),
                 ])->save();
 
@@ -44,7 +54,7 @@ final class IngestStripeWebhook
 
             if (! is_string($providerPaymentId) || $providerPaymentId === '') {
                 $event->forceFill([
-                    'failed_at' => now(),
+                    'failed_at' => BookingClock::now(),
                     'failure_message' => __('booking.messages.payment_webhook_missing_id'),
                 ])->save();
 
@@ -53,6 +63,16 @@ final class IngestStripeWebhook
 
             $isRefund = $eventType->isRefund();
             $paymentIntentId = $object['payment_intent'] ?? null;
+            if ($isRefund && (! is_string($paymentIntentId) || $paymentIntentId === '')) {
+                $event->forceFill([
+                    'provider_payment_id' => $providerPaymentId,
+                    'provider_object_type' => 'refund',
+                    'orphaned_at' => BookingClock::now(),
+                    'failure_message' => __('booking.messages.refund_webhook_missing_payment_intent'),
+                ])->save();
+
+                return StripeWebhookIngestResult::Orphan;
+            }
             $linkedPaymentId = $isRefund ? $paymentIntentId : $providerPaymentId;
             $event->forceFill([
                 'provider_payment_id' => $providerPaymentId,
@@ -62,7 +82,7 @@ final class IngestStripeWebhook
                         $query->where('provider_payment_id', $linkedPaymentId)
                             ->orWhereHas('attempts', fn ($attempts) => $attempts->where('provider_payment_id', $linkedPaymentId));
                     })
-                    ->exists() ? null : now(),
+                    ->exists() ? null : BookingClock::now(),
             ])->save();
 
             $payment = Payment::query()->forProvider(PaymentProvider::Stripe)
@@ -78,7 +98,7 @@ final class IngestStripeWebhook
                 && ! $this->matchesPayment($payment, $object, $eventType->usesReceivedAmount())
             ) {
                 $event->forceFill([
-                    'failed_at' => now(),
+                    'failed_at' => BookingClock::now(),
                     'orphaned_at' => null,
                     'failure_message' => __('booking.messages.payment_webhook_mismatch'),
                 ])->save();
