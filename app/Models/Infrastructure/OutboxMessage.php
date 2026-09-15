@@ -4,6 +4,7 @@ namespace App\Models\Infrastructure;
 
 use App\Enums\Infrastructure\OutboxEventType;
 use App\Jobs\PublishOutboxMessage;
+use App\Support\Booking\BookingClock;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -15,7 +16,7 @@ class OutboxMessage extends Model
     {
         static::creating(function (self $message): void {
             if ($message->getAttribute('available_at') === null) {
-                $message->setAttribute('available_at', now());
+                $message->setAttribute('available_at', BookingClock::now());
             }
         });
 

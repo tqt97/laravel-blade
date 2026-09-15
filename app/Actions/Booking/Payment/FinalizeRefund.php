@@ -15,6 +15,7 @@ use App\Models\Booking\ScreeningSeat;
 use App\Models\Commerce\Concession;
 use App\Models\Inventory\InventoryMovement;
 use App\Models\Payment\Payment;
+use App\Support\Booking\BookingClock;
 use Illuminate\Support\Facades\DB;
 
 final class FinalizeRefund
@@ -42,7 +43,7 @@ final class FinalizeRefund
             if ($payment->getRawOriginal('status') !== PaymentStatus::Refunded->value) {
                 $payment->forceFill([
                     'status' => PaymentStatus::Refunded,
-                    'refunded_at' => $payment->refunded_at ?? now(),
+                    'refunded_at' => $payment->refunded_at ?? BookingClock::now(),
                     'metadata' => $metadata ?? $payment->metadata,
                 ])->save();
             }

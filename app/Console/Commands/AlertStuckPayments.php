@@ -4,8 +4,12 @@ namespace App\Console\Commands;
 
 use App\Enums\Payment\PaymentProvider;
 use App\Enums\Payment\PaymentStatus;
+use App\Enums\Payment\RefundAttemptStatus;
+use App\Models\Infrastructure\OutboxDelivery;
+use App\Models\Infrastructure\OutboxMessage;
 use App\Models\Payment\Payment;
 use App\Models\Payment\PaymentWebhookEvent;
+use App\Models\Payment\RefundAttempt;
 use App\Support\Booking\BookingClock;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
@@ -46,12 +50,26 @@ class AlertStuckPayments extends Command
                     });
             })
             ->count();
+        $unknownRefundCount = RefundAttempt::query()
+            ->where('status', RefundAttemptStatus::Unknown)
+            ->where('updated_at', '<=', $cutoff)
+            ->count();
+        $failedOutboxCount = OutboxMessage::query()
+            ->whereNotNull('failed_at')
+            ->where('failed_at', '<=', $cutoff)
+            ->count()
+            + OutboxDelivery::query()
+                ->where('status', 'failed')
+                ->where('updated_at', '<=', $cutoff)
+                ->count();
 
         $anomalies = [
             'stuck_processing' => $stuckCount,
             'unknown' => $unknownCount,
             'requires_refund' => $requiresRefundCount,
             'orphan_webhooks' => $orphanWebhookCount,
+            'unknown_refunds' => $unknownRefundCount,
+            'failed_outbox_deliveries' => $failedOutboxCount,
         ];
 
         if (array_sum($anomalies) > 0) {
@@ -63,11 +81,13 @@ class AlertStuckPayments extends Command
         }
 
         $this->info(sprintf(
-            'Found %d stuck, %d unknown, %d requiring refund and %d orphan webhook(s).',
+            'Found %d stuck, %d unknown, %d requiring refund, %d orphan webhook(s), %d unknown refund(s) and %d failed outbox delivery/message(s).',
             $stuckCount,
             $unknownCount,
             $requiresRefundCount,
             $orphanWebhookCount,
+            $unknownRefundCount,
+            $failedOutboxCount,
         ));
 
         return self::SUCCESS;

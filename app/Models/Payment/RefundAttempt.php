@@ -3,6 +3,7 @@
 namespace App\Models\Payment;
 
 use App\Enums\Payment\RefundAttemptStatus;
+use App\Support\Booking\BookingClock;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -20,7 +21,7 @@ class RefundAttempt extends Model
     public function scopeReconciliationDue(Builder $query): void
     {
         $query->whereIn('status', RefundAttemptStatus::openStatuses())->where(function (Builder $query): void {
-            $query->whereNull('next_reconcile_at')->orWhere('next_reconcile_at', '<=', now());
+            $query->whereNull('next_reconcile_at')->orWhere('next_reconcile_at', '<=', BookingClock::now());
         });
     }
 

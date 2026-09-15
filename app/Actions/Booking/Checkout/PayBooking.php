@@ -233,7 +233,7 @@ final class PayBooking
             );
 
             if ($status === PaymentStatus::Succeeded) {
-                $payment->setAttribute('paid_at', now());
+                $payment->setAttribute('paid_at', BookingClock::now());
             }
 
             if ($attempt !== null && $attempt->getRawOriginal('status') === PaymentAttemptStatus::Processing->value) {
@@ -249,7 +249,7 @@ final class PayBooking
                     'provider_payment_id' => $result->providerPaymentId,
                     'response_metadata' => $providerMetadata,
                     'failure_message' => $payment->failure_message,
-                    'completed_at' => $status->isProcessingState() ? null : now(),
+                    'completed_at' => $status->isProcessingState() ? null : BookingClock::now(),
                 ])->save();
             }
             $payment->save();

@@ -7,13 +7,17 @@ use App\Mail\BookingConfirmationMail;
 use App\Models\Booking\Booking;
 use App\Models\User;
 use App\Notifications\BookingNotification;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 
 final class BookingPaymentSucceededDelivery implements OutboxDeliveryHandler
 {
     public function execute(User $user, Booking $booking): void
     {
-        $this->notifyOnce($user, $booking, 'booking_confirmed');
+        DB::transaction(function () use ($user, $booking): void {
+            $lockedUser = User::query()->whereKey($user->getKey())->lockForUpdate()->firstOrFail();
+            $this->notifyOnce($lockedUser, $booking, 'booking_confirmed');
+        }, 3);
         Mail::to($user)->send(new BookingConfirmationMail($booking));
     }
 

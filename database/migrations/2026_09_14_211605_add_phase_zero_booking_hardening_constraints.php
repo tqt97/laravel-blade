@@ -11,9 +11,18 @@ return new class extends Migration
     {
         Schema::table('coupon_reservations', function (Blueprint $table): void {
             $table->unsignedBigInteger('reserved_booking_id')->nullable()
-                ->storedAs("CASE WHEN status = 'reserved' THEN booking_id ELSE NULL END");
+                ->comment('Booking id only while this reservation is active; maintained by migration triggers.');
+        });
+
+        DB::table('coupon_reservations')->update([
+            'reserved_booking_id' => DB::raw("CASE WHEN status = 'reserved' THEN booking_id ELSE NULL END"),
+        ]);
+
+        Schema::table('coupon_reservations', function (Blueprint $table): void {
             $table->unique('reserved_booking_id', 'coupon_reservations_one_reserved_booking_unique');
         });
+
+        $this->createCouponReservationTriggers();
 
         if (DB::connection()->getDriverName() === 'mysql') {
             foreach ([
@@ -49,6 +58,7 @@ return new class extends Migration
 
     public function down(): void
     {
+        $this->dropCouponReservationTriggers();
         $this->dropBookingItemScreeningTriggers();
 
         Schema::table('coupon_reservations', function (Blueprint $table): void {
@@ -90,6 +100,25 @@ return new class extends Migration
 
         DB::unprepared("CREATE TRIGGER booking_items_screening_match_insert BEFORE INSERT ON booking_items FOR EACH ROW BEGIN IF (SELECT screening_id FROM bookings WHERE id = NEW.booking_id) <> (SELECT screening_id FROM screening_seats WHERE id = NEW.screening_seat_id) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'booking item screening mismatch'; END IF; END");
         DB::unprepared("CREATE TRIGGER booking_items_screening_match_update BEFORE UPDATE ON booking_items FOR EACH ROW BEGIN IF (SELECT screening_id FROM bookings WHERE id = NEW.booking_id) <> (SELECT screening_id FROM screening_seats WHERE id = NEW.screening_seat_id) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'booking item screening mismatch'; END IF; END");
+    }
+
+    private function createCouponReservationTriggers(): void
+    {
+        if (DB::connection()->getDriverName() === 'sqlite') {
+            DB::unprepared("CREATE TRIGGER coupon_reservations_reserved_booking_insert AFTER INSERT ON coupon_reservations BEGIN UPDATE coupon_reservations SET reserved_booking_id = CASE WHEN NEW.status = 'reserved' THEN NEW.booking_id ELSE NULL END WHERE id = NEW.id; END");
+            DB::unprepared("CREATE TRIGGER coupon_reservations_reserved_booking_update AFTER UPDATE OF booking_id, status ON coupon_reservations BEGIN UPDATE coupon_reservations SET reserved_booking_id = CASE WHEN NEW.status = 'reserved' THEN NEW.booking_id ELSE NULL END WHERE id = NEW.id; END");
+
+            return;
+        }
+
+        DB::unprepared("CREATE TRIGGER coupon_reservations_reserved_booking_insert BEFORE INSERT ON coupon_reservations FOR EACH ROW SET NEW.reserved_booking_id = CASE WHEN NEW.status = 'reserved' THEN NEW.booking_id ELSE NULL END");
+        DB::unprepared("CREATE TRIGGER coupon_reservations_reserved_booking_update BEFORE UPDATE ON coupon_reservations FOR EACH ROW SET NEW.reserved_booking_id = CASE WHEN NEW.status = 'reserved' THEN NEW.booking_id ELSE NULL END");
+    }
+
+    private function dropCouponReservationTriggers(): void
+    {
+        DB::unprepared('DROP TRIGGER IF EXISTS coupon_reservations_reserved_booking_insert');
+        DB::unprepared('DROP TRIGGER IF EXISTS coupon_reservations_reserved_booking_update');
     }
 
     /** @return array<string, string> */

@@ -29,6 +29,8 @@ use App\Exceptions\Booking\SeatHoldConflict;
 use App\Jobs\PublishOutboxMessage;
 use App\Mail\BookingConfirmationMail;
 use App\Models\Booking\Booking;
+use App\Models\Booking\BookingItem;
+use App\Models\Booking\ScreeningSeat;
 use App\Models\Catalog\Movie;
 use App\Models\Catalog\ScreeningRoom;
 use App\Models\Catalog\Seat;
@@ -45,6 +47,7 @@ use App\Support\Booking\BookingClock;
 use App\Support\Payment\PaymentResult;
 use App\Support\Ticketing\TicketQrCode;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Queue;
@@ -104,6 +107,60 @@ it('transitions payment and its open attempt together', function (): void {
     expect($payment->refresh()->status)->toBe(PaymentStatus::Succeeded)
         ->and($payment->attempts()->latest('id')->firstOrFail()->status)->toBe(PaymentAttemptStatus::Succeeded)
         ->and($payment->attempts()->latest('id')->firstOrFail()->provider_payment_id)->toBe('pi_transition');
+});
+
+it('keeps a payment attempt synchronized when 3ds completes', function (): void {
+    $payment = Payment::query()->create([
+        'payable_type' => Booking::class,
+        'payable_id' => 999998,
+        'provider' => 'stripe',
+        'status' => PaymentStatus::RequiresAction,
+        'amount_minor_units' => 100000,
+        'currency' => 'VND',
+    ]);
+    $payment->attempts()->create([
+        'attempt_key' => 'transition-3ds-attempt',
+        'status' => PaymentAttemptStatus::RequiresAction,
+        'amount_minor_units' => $payment->amount_minor_units,
+        'currency' => $payment->currency,
+        'started_at' => now(),
+    ]);
+
+    app(TransitionPayment::class)->execute($payment, PaymentAttemptStatus::Succeeded, 'pi_3ds_done', targetStatus: PaymentStatus::Succeeded);
+
+    expect($payment->refresh()->status)->toBe(PaymentStatus::Succeeded)
+        ->and($payment->attempts()->latest('id')->firstOrFail()->status)->toBe(PaymentAttemptStatus::Succeeded)
+        ->and($payment->attempts()->latest('id')->firstOrFail()->provider_payment_id)->toBe('pi_3ds_done');
+});
+
+it('enforces one active booking item per screening seat at database level', function (): void {
+    $room = ScreeningRoom::factory()->create();
+    $seatDefinition = Seat::factory()->for($room, 'room')->create();
+    $screening = app(CreateScreening::class)->execute(
+        Movie::factory()->create(),
+        $room,
+        now()->addDay()->toDateTimeString(),
+        now()->addDay()->addHours(2)->toDateTimeString(),
+        100000,
+    );
+    $seat = ScreeningSeat::query()
+        ->where('screening_id', $screening->id)
+        ->where('seat_id', $seatDefinition->id)
+        ->firstOrFail();
+    $firstBooking = Booking::factory()->create(['screening_id' => $screening->id]);
+    $secondBooking = Booking::factory()->create(['screening_id' => $screening->id]);
+
+    BookingItem::factory()->create([
+        'booking_id' => $firstBooking->id,
+        'screening_seat_id' => $seat->id,
+        'status' => TicketStatus::Issued,
+    ]);
+
+    expect(fn () => BookingItem::factory()->create([
+        'booking_id' => $secondBooking->id,
+        'screening_seat_id' => $seat->id,
+        'status' => TicketStatus::Issued,
+    ]))->toThrow(QueryException::class);
 });
 
 it('lets guests browse movies and seats before requiring authentication to hold them', function (): void {

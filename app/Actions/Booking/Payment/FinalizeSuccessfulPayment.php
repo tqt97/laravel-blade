@@ -123,7 +123,7 @@ final class FinalizeSuccessfulPayment
                     'held_until' => null,
                     'hold_token' => null,
                     'held_by_booking_id' => null,
-                    'sold_at' => now(),
+                    'sold_at' => BookingClock::now(),
                 ])->save();
 
                 if (str_starts_with((string) $item->getAttribute('ticket_code'), 'HOLD-')) {

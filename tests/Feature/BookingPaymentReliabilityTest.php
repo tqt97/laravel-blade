@@ -79,7 +79,7 @@ it('alerts on stuck, unknown, requires-refund and orphan webhook records', funct
     ])->saveQuietly();
 
     $this->artisan('payments:alert-stuck')
-        ->expectsOutput('Found 1 stuck, 1 unknown, 1 requiring refund and 1 orphan webhook(s).')
+        ->expectsOutput('Found 1 stuck, 1 unknown, 1 requiring refund, 1 orphan webhook(s), 0 unknown refund(s) and 0 failed outbox delivery/message(s).')
         ->assertExitCode(0);
 
 });

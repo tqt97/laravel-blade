@@ -26,6 +26,14 @@ enum PaymentAttemptStatus: string
 
     public function isOpen(): bool
     {
-        return in_array($this, [self::Processing, self::Unknown], true);
+        return match ($this) {
+            self::Processing,
+            self::Pending,
+            self::RequiresAction,
+            self::RequiresPaymentMethod,
+            self::Unknown => true,
+            self::Succeeded,
+            self::Failed => false,
+        };
     }
 }

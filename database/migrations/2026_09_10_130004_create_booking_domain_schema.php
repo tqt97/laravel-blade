@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -130,6 +131,8 @@ return new class extends Migration
 
             $table->index(['booking_id', 'created_at']);
         });
+
+        $this->enforceActiveScreeningSeatOwnership();
     }
 
     public function down(): void
@@ -139,5 +142,32 @@ return new class extends Migration
         Schema::dropIfExists('booking_items');
         Schema::dropIfExists('screening_seats');
         Schema::dropIfExists('bookings');
+    }
+
+    private function enforceActiveScreeningSeatOwnership(): void
+    {
+        $driver = Schema::getConnection()->getDriverName();
+
+        if ($driver === 'mysql') {
+            Schema::table('booking_items', function (Blueprint $table): void {
+                $table->unsignedTinyInteger('active_seat_guard')
+                    ->storedAs("CASE WHEN status IN ('reserved', 'issued', 'checked_in') THEN 1 ELSE NULL END")
+                    ->comment('Generated guard: only active tickets participate in the unique seat constraint.');
+                $table->unique(
+                    ['screening_seat_id', 'active_seat_guard'],
+                    'booking_items_active_screening_seat_unique'
+                );
+            });
+
+            return;
+        }
+
+        if ($driver === 'sqlite') {
+            DB::statement(
+                'CREATE UNIQUE INDEX booking_items_active_screening_seat_unique '
+                .'ON booking_items (screening_seat_id) '
+                ."WHERE status IN ('reserved', 'issued', 'checked_in')"
+            );
+        }
     }
 };

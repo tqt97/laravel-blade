@@ -9,6 +9,7 @@ use App\Models\Booking\Booking;
 use App\Models\Infrastructure\OutboxDelivery;
 use App\Models\Infrastructure\OutboxMessage;
 use App\Models\User;
+use App\Support\Booking\BookingClock;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -60,7 +61,7 @@ class PublishOutboxMessage implements ShouldBeUnique, ShouldQueue
 
         $channel = $eventType->channel();
         if ($channel === null) {
-            $message->forceFill(['published_at' => now(), 'claimed_at' => null])->save();
+            $message->forceFill(['published_at' => BookingClock::now(), 'claimed_at' => null])->save();
 
             return;
         }
@@ -75,7 +76,7 @@ class PublishOutboxMessage implements ShouldBeUnique, ShouldQueue
             $delivery->forceFill(['idempotency_key' => $idempotencyKey])->save();
         }
         if ($delivery->getRawOriginal('status') === OutboxDeliveryStatus::Sent->value) {
-            $message->forceFill(['published_at' => now(), 'claimed_at' => null])->save();
+            $message->forceFill(['published_at' => BookingClock::now(), 'claimed_at' => null])->save();
 
             return;
         }
@@ -86,10 +87,10 @@ class PublishOutboxMessage implements ShouldBeUnique, ShouldQueue
                 $query->whereIn('status', [OutboxDeliveryStatus::Pending, OutboxDeliveryStatus::Failed])
                     ->orWhere(function ($sendingQuery): void {
                         $sendingQuery->where('status', OutboxDeliveryStatus::Sending)
-                            ->where('claimed_at', '<=', now()->subMinutes((int) config('booking.outbox.delivery_lease_minutes', 60)));
+                            ->where('claimed_at', '<=', BookingClock::now()->subMinutes((int) config('booking.outbox.delivery_lease_minutes', 60)));
                     });
             })
-            ->update(['status' => OutboxDeliveryStatus::Sending, 'claimed_at' => now(), 'last_error' => null]);
+            ->update(['status' => OutboxDeliveryStatus::Sending, 'claimed_at' => BookingClock::now(), 'last_error' => null]);
 
         if ($claimed !== 1) {
             return;
@@ -132,7 +133,7 @@ class PublishOutboxMessage implements ShouldBeUnique, ShouldQueue
         }
         $delivery->forceFill([
             'status' => OutboxDeliveryStatus::Sent,
-            'sent_at' => now(),
+            'sent_at' => BookingClock::now(),
             'message_id' => $messageId,
         ])->save();
         Log::info('outbox.delivery_sent', [
@@ -141,7 +142,7 @@ class PublishOutboxMessage implements ShouldBeUnique, ShouldQueue
             'idempotency_key' => $idempotencyKey,
         ]);
         $message->forceFill([
-            'published_at' => now(),
+            'published_at' => BookingClock::now(),
             'claimed_at' => null,
         ])->save();
     }
@@ -149,7 +150,7 @@ class PublishOutboxMessage implements ShouldBeUnique, ShouldQueue
     public function failed(Throwable $exception): void
     {
         OutboxMessage::query()->whereKey($this->outboxMessageId)->update([
-            'failed_at' => now(),
+            'failed_at' => BookingClock::now(),
             'claimed_at' => null,
             'last_error' => mb_substr($exception->getMessage(), 0, 65535),
         ]);
