@@ -28,6 +28,7 @@ use App\Exceptions\Booking\InvalidBookingTransition;
 use App\Exceptions\Booking\SeatHoldConflict;
 use App\Jobs\PublishOutboxMessage;
 use App\Mail\BookingConfirmationMail;
+use App\Mail\BookingReminderMail;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingItem;
 use App\Models\Booking\ScreeningSeat;
@@ -822,23 +823,30 @@ it('claims an outbox message only once when the publisher runs repeatedly', func
     expect($message->refresh()->claimed_at)->not->toBeNull();
 });
 
-it('does not send the same outbox email twice when the delivery job is retried', function (): void {
+it('uses a stable idempotency key when a booking reminder delivery is retried', function (): void {
     Mail::fake();
+    Queue::fake();
     $room = ScreeningRoom::factory()->create();
     $seat = Seat::factory()->for($room, 'room')->create();
     $screening = app(CreateScreening::class)->execute(Movie::factory()->create(), $room, now()->addDay()->toDateTimeString(), now()->addDay()->addHours(2)->toDateTimeString(), 100000);
     $booking = app(HoldSeats::class)->execute(User::factory()->create(), $screening, [$seat->id], 'outbox-delivery-idempotency');
-    $message = OutboxMessage::query()->where('aggregate_id', $booking->id)->where('event_type', 'booking.created')->latest('id')->firstOrFail();
+    $message = OutboxMessage::query()->create([
+        'aggregate_type' => Booking::class,
+        'aggregate_id' => $booking->id,
+        'event_type' => OutboxEventType::BookingReminderDue,
+        'payload' => ['booking_id' => $booking->id],
+    ]);
     $job = new PublishOutboxMessage($message->id);
 
     $job->handle();
     $job->handle();
 
-    Mail::assertNothingSent();
+    Mail::assertSent(BookingReminderMail::class, fn (BookingReminderMail $mail): bool => $mail->headers()->messageId === 'booking-reminder-'.$booking->id.'@'.parse_url((string) config('app.url'), PHP_URL_HOST)
+        && $mail->headers()->text['X-Idempotency-Key'] === 'booking.reminder_due:'.$booking->id);
     expect($message->refresh()->published_at)->not->toBeNull()
-        ->and($message->deliveries()->where('channel', 'booking-created')->where('status', 'sent')->count())->toBe(1)
-        ->and($message->deliveries()->where('channel', 'booking-created')->value('idempotency_key'))->toBe('booking.created:'.$booking->id)
-        ->and($message->deliveries()->where('channel', 'booking-created')->value('attempts'))->toBe(1);
+        ->and($message->deliveries()->where('channel', 'booking-reminder')->where('status', 'sent')->count())->toBe(1)
+        ->and($message->deliveries()->where('channel', 'booking-reminder')->value('idempotency_key'))->toBe('booking.reminder_due:'.$booking->id)
+        ->and($message->deliveries()->where('channel', 'booking-reminder')->value('attempts'))->toBe(1);
 });
 
 it('checks in a paid ticket once inside the configured screening window', function (): void {
@@ -1002,7 +1010,8 @@ it('creates an in-app notification when a booking payment succeeds', function ()
 
     app(PublishOutboxMessage::class, ['outboxMessageId' => $message->id])->handle();
 
-    Mail::assertSent(BookingConfirmationMail::class, fn (BookingConfirmationMail $mail): bool => $mail->headers()->messageId === 'booking-confirmation-'.$booking->id.'@'.parse_url((string) config('app.url'), PHP_URL_HOST));
+    Mail::assertSent(BookingConfirmationMail::class, fn (BookingConfirmationMail $mail): bool => $mail->headers()->messageId === 'booking-confirmation-'.$booking->id.'@'.parse_url((string) config('app.url'), PHP_URL_HOST)
+        && $mail->headers()->text['X-Idempotency-Key'] === 'booking.payment_succeeded:'.$booking->id);
 
     expect($user->notifications()->count())->toBe(1)
         ->and($user->notifications()->firstOrFail()->data['event'])->toBe('booking_confirmed');

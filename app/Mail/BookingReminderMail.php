@@ -18,8 +18,10 @@ class BookingReminderMail extends Mailable
     /**
      * Create a new message instance.
      */
-    public function __construct(public readonly Booking $booking)
-    {
+    public function __construct(
+        public readonly Booking $booking,
+        public readonly string $idempotencyKey,
+    ) {
         //
     }
 
@@ -47,6 +49,7 @@ class BookingReminderMail extends Mailable
     {
         return new Headers(
             messageId: 'booking-reminder-'.$this->booking->getKey().'@'.parse_url((string) config('app.url'), PHP_URL_HOST),
+            text: ['X-Idempotency-Key' => $this->idempotencyKey],
         );
     }
 

@@ -19,8 +19,10 @@ final class BookingConfirmationMail extends Mailable
     /** @var array<int, array{seat: string, verify_url: string, qr_base64: string}> */
     public readonly array $tickets;
 
-    public function __construct(public readonly Booking $booking)
-    {
+    public function __construct(
+        public readonly Booking $booking,
+        public readonly string $idempotencyKey,
+    ) {
         $booking->loadMissing(['items.screeningSeat.seat', 'screening.movie', 'screening.room', 'concessions.concession']);
         $endsAt = $booking->screening->ends_at ?? now()->addDay();
         $verificationGraceHours = (int) config('booking.ticket.verification_grace_hours', 24);
@@ -50,6 +52,7 @@ final class BookingConfirmationMail extends Mailable
     {
         return new Headers(
             messageId: 'booking-confirmation-'.$this->booking->getKey().'@'.parse_url((string) config('app.url'), PHP_URL_HOST),
+            text: ['X-Idempotency-Key' => $this->idempotencyKey],
         );
     }
 }

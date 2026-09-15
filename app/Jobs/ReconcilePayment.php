@@ -82,7 +82,7 @@ class ReconcilePayment implements ShouldQueue
             $attemptProviderIds = $payment->attempts()
                 ->whereNotNull('provider_payment_id')
                 ->pluck('provider_payment_id')
-                ->filter(fn ($providerId): bool => $providerId !== $payment->provider_payment_id)
+                ->filter(fn($providerId): bool => $providerId !== $payment->provider_payment_id)
                 ->unique()
                 ->values();
             foreach ($attemptProviderIds as $attemptProviderId) {
@@ -108,11 +108,27 @@ class ReconcilePayment implements ShouldQueue
             ])->save();
 
             if (BookingClock::now()->greaterThanOrEqualTo($deadline)) {
-                $payment->forceFill([
-                    'status' => PaymentStatus::Unknown,
-                    'next_reconcile_at' => null,
-                    'failure_message' => __('booking.messages.payment_reconciliation_expired'),
-                ])->save();
+                DB::transaction(function () use ($payment): void {
+                    $locked = Payment::query()
+                        ->whereKey($payment->getKey())
+                        ->lockForUpdate()
+                        ->firstOrFail();
+
+                    $failureMessage = __('booking.messages.payment_reconciliation_expired');
+
+                    $transitioned = app(TransitionPayment::class)->execute(
+                        $locked,
+                        PaymentAttemptStatus::Unknown,
+                        failureMessage: $failureMessage,
+                        targetStatus: PaymentStatus::Unknown,
+                    );
+
+                    $transitioned->forceFill([
+                        'processing_started_at' => null,
+                        'next_reconcile_at' => null,
+                        'failure_message' => $failureMessage,
+                    ])->save();
+                }, 3);
 
                 return;
             }
@@ -125,7 +141,11 @@ class ReconcilePayment implements ShouldQueue
         }
         if (! $this->matchesPayment($payment, $providerStatus)) {
             DB::transaction(function () use ($payment): void {
-                $locked = Payment::query()->whereKey($payment->getKey())->lockForUpdate()->firstOrFail();
+                $locked = Payment::query()
+                    ->whereKey($payment->getKey())
+                    ->lockForUpdate()
+                    ->firstOrFail();
+
                 $locked->forceFill([
                     'status' => PaymentStatus::Unknown,
                     'processing_started_at' => null,
@@ -133,22 +153,37 @@ class ReconcilePayment implements ShouldQueue
                     'last_reconciliation_error' => __('booking.messages.payment_webhook_mismatch'),
                     'next_reconcile_at' => null,
                 ])->save();
-                app(TransitionPayment::class)->execute($locked, PaymentAttemptStatus::Unknown, failureMessage: $locked->failure_message, targetStatus: PaymentStatus::Unknown);
+
+                app(TransitionPayment::class)->execute(
+                    $locked,
+                    PaymentAttemptStatus::Unknown,
+                    failureMessage: $locked->failure_message,
+                    targetStatus: PaymentStatus::Unknown
+                );
             }, 3);
 
             return;
         }
         $payment = DB::transaction(function () use ($payment, $providerStatus, $stateMachine): Payment {
-            $locked = Payment::query()->whereKey($payment->getKey())->lockForUpdate()->firstOrFail();
+            $locked = Payment::query()
+                ->whereKey($payment->getKey())
+                ->lockForUpdate()
+                ->firstOrFail();
+
             $providerMetadata = $providerStatus->metadata;
+
             unset($providerMetadata['client_secret']);
+
             if ($locked->getRawOriginal('status') === PaymentStatus::Succeeded->value) {
                 return $locked;
             }
+
             $status = PaymentStatus::tryFrom($providerStatus->status) ?? PaymentStatus::Unknown;
+
             if (! $stateMachine->canTransition(PaymentStatus::from((string) $locked->getRawOriginal('status')), $status)) {
                 return $locked;
             }
+
             $locked->forceFill([
                 'status' => $status,
                 'provider_status' => $providerStatus->status,
@@ -162,6 +197,7 @@ class ReconcilePayment implements ShouldQueue
                 'processing_started_at' => $status === PaymentStatus::Succeeded || $status === PaymentStatus::Failed ? null : $locked->processing_started_at,
                 'paid_at' => $status === PaymentStatus::Succeeded ? BookingClock::now() : $locked->paid_at,
             ])->save();
+
             app(TransitionPayment::class)->execute(
                 $locked,
                 PaymentAttemptStatus::fromPaymentStatus($status),

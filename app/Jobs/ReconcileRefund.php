@@ -24,23 +24,34 @@ class ReconcileRefund implements ShouldQueue
     {
         $attempt = RefundAttempt::query()->find($this->refundAttemptId);
         $attemptStatus = $attempt === null ? null : RefundAttemptStatus::tryFrom((string) $attempt->getRawOriginal('status'));
+
         if ($attempt === null || $attemptStatus === null || ! $attemptStatus->isOpen()) {
             return;
         }
         $nextReconcileAt = BookingClock::parseStored($attempt->getRawOriginal('next_reconcile_at'));
+
         if ($nextReconcileAt?->isFuture()) {
             return;
         }
+
         if (blank($attempt->provider_refund_id)) {
             return;
         }
 
         $provider = $retriever->retrieveRefund((string) $attempt->provider_refund_id);
+
         $paymentId = DB::transaction(function () use ($attempt, $provider): ?int {
-            $locked = RefundAttempt::query()->whereKey($attempt->getKey())->lockForUpdate()->firstOrFail();
+            $locked = RefundAttempt::query()
+                ->whereKey($attempt->getKey())
+                ->lockForUpdate()
+                ->firstOrFail();
             $locked->increment('reconciliation_attempts');
             $locked->refresh();
-            $payment = Payment::query()->whereKey($locked->getAttribute('payment_id'))->lockForUpdate()->firstOrFail();
+
+            $payment = Payment::query()
+                ->whereKey($locked->getAttribute('payment_id'))
+                ->lockForUpdate()
+                ->firstOrFail();
 
             if ($provider->providerRefundId !== $locked->getAttribute('provider_refund_id') || $provider->providerPaymentId !== null && $provider->providerPaymentId !== $payment->getAttribute('provider_payment_id')) {
                 $locked->forceFill(['status' => RefundAttemptStatus::Unknown, 'failure_message' => __('booking.messages.refund_provider_identity_mismatch'), 'next_reconcile_at' => BookingClock::now()->addMinutes((int) config('booking.payment.refund_reconciliation_retry_minutes', 5))])->save();
@@ -57,6 +68,7 @@ class ReconcileRefund implements ShouldQueue
             };
             $maxAttempts = (int) config('booking.payment.refund_reconciliation_max_attempts', 20);
             $manualReview = $status === RefundAttemptStatus::Unknown && $locked->reconciliation_attempts >= $maxAttempts;
+
             $locked->forceFill([
                 'status' => $status,
                 'metadata' => $provider->metadata,
@@ -66,11 +78,17 @@ class ReconcileRefund implements ShouldQueue
             ])->save();
 
             if ($manualReview) {
-                $payment->forceFill(['status' => PaymentStatus::RequiresRefund, 'failure_message' => __('booking.messages.refund_reconciliation_expired')])->save();
+                $payment->forceFill([
+                    'status' => PaymentStatus::RequiresRefund,
+                    'failure_message' => __('booking.messages.refund_reconciliation_expired')
+                ])->save();
             }
 
             if ($status === RefundAttemptStatus::Failed) {
-                $payment->forceFill(['status' => PaymentStatus::RequiresRefund, 'failure_message' => $provider->failureMessage ?? __('booking.messages.refund_failed')])->save();
+                $payment->forceFill([
+                    'status' => PaymentStatus::RequiresRefund,
+                    'failure_message' => $provider->failureMessage ?? __('booking.messages.refund_failed')
+                ])->save();
             } elseif ($status === RefundAttemptStatus::Pending) {
                 $payment->forceFill(['status' => PaymentStatus::Refunding])->save();
             }

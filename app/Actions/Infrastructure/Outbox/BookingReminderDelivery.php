@@ -12,9 +12,10 @@ final class BookingReminderDelivery implements OutboxDeliveryHandler
 {
     public function __construct(private readonly NotifyBookingOnce $notifyBookingOnce) {}
 
-    public function execute(User $user, Booking $booking): void
+    public function execute(User $user, Booking $booking, string $idempotencyKey): void
     {
         $this->notifyBookingOnce->execute($user, $booking, 'booking_reminder');
-        Mail::to($user)->send(new BookingReminderMail($booking));
+
+        Mail::to($user)->send(new BookingReminderMail($booking, $idempotencyKey));
     }
 }

@@ -40,6 +40,7 @@ final class SyncBookingConcessions
      * This is used by the payment transaction so stock validation, booking
      * totals, and the payment claim commit or roll back together.
      *
+     * @param Booking $booking
      * @param  array<int, int>  $quantitiesByConcession
      */
     public function executeForLockedBooking(Booking $booking, array $quantitiesByConcession): Booking
@@ -157,8 +158,7 @@ final class SyncBookingConcessions
                 'reference' => 'booking-'.$booking->getKey(),
                 // Request idempotency belongs to the booking mutation. The
                 // inventory ledger must allow a valid 0->1->0->1 history.
-                'idempotency_key' => 'booking:'.$booking->getKey().':concession:'.$concession->getKey().':mutation:'.
-                    (string) Str::uuid(),
+                'idempotency_key' => 'booking:'.$booking->getKey().':concession:'.$concession->getKey().':mutation:'. (string) Str::uuid(),
             ]);
 
             $totalDelta += $newTotal - $currentTotal;

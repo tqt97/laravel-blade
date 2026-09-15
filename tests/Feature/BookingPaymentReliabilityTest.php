@@ -382,12 +382,14 @@ it('moves an unavailable reconciliation to manual review after its deadline', fu
         'currency' => 'VND',
         'reconciliation_deadline' => now()->subMinute(),
         'next_reconcile_at' => now()->subMinute(),
+        'processing_started_at' => now()->subHour(),
     ]);
     $payment->attempts()->create([
         'attempt_key' => 'deadline-reconciliation-attempt',
-        'status' => PaymentAttemptStatus::Unknown,
+        'status' => PaymentAttemptStatus::Processing,
         'amount_minor_units' => $payment->amount_minor_units,
         'currency' => $payment->currency,
+        'started_at' => now()->subHour(),
     ]);
     $retriever = new class implements PaymentStatusRetriever
     {
@@ -405,6 +407,8 @@ it('moves an unavailable reconciliation to manual review after its deadline', fu
     (new ReconcilePayment($payment->id))->handle($retriever, app(FinalizeSuccessfulPayment::class));
 
     expect($payment->refresh()->status)->toBe(PaymentStatus::Unknown)
+        ->and($payment->processing_started_at)->toBeNull()
+        ->and($payment->attempts()->latest('id')->firstOrFail()->status)->toBe(PaymentAttemptStatus::Unknown)
         ->and($payment->failure_message)->toContain('Manual review')
         ->and($payment->next_reconcile_at)->toBeNull()
         ->and($payment->last_reconciliation_error)->toBe('Stripe search is eventually consistent.');

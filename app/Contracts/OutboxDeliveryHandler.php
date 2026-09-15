@@ -7,5 +7,5 @@ use App\Models\User;
 
 interface OutboxDeliveryHandler
 {
-    public function execute(User $user, Booking $booking): void;
+    public function execute(User $user, Booking $booking, string $idempotencyKey): void;
 }

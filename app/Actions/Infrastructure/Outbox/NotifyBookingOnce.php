@@ -12,9 +12,12 @@ final class NotifyBookingOnce
     public function execute(User $user, Booking $booking, string $event): void
     {
         DB::transaction(function () use ($user, $booking, $event): void {
-            $lockedUser = User::query()->whereKey($user->getKey())->lockForUpdate()->firstOrFail();
-            $key = $event.':'.$booking->getKey();
+            $lockedUser = User::query()
+                ->whereKey($user->getKey())
+                ->lockForUpdate()
+                ->firstOrFail();
 
+            $key = $event . ':' . $booking->getKey();
             if ($lockedUser->notifications()->where('data->key', $key)->exists()) {
                 return;
             }

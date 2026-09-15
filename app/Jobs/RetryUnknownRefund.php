@@ -25,6 +25,7 @@ class RetryUnknownRefund implements ShouldQueue
                 ->where('payment_id', $booking->payment->getKey())
                 ->reconciliationDue()
                 ->latest('id')->first();
+
             if ($attempt !== null && filled($attempt->provider_refund_id)) {
                 ReconcileRefund::dispatch($attempt->getKey());
             } else {
